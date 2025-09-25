@@ -5,22 +5,18 @@ void RegisterNatives()
 {
     CreateNative("MGE_GetPlayerArena", Native_GetPlayerArena);
     CreateNative("MGE_GetPlayerStats", Native_GetPlayerStats);
+    CreateNative("MGE_GetArenaInfo", Native_GetArenaInfo);
     CreateNative("MGE_IsPlayerInArena", Native_IsPlayerInArena);
     CreateNative("MGE_GetArenaCount", Native_GetArenaCount);
-    CreateNative("MGE_GetArenaPlayerCount", Native_GetArenaPlayerCount);
-    CreateNative("MGE_GetArenaStatus", Native_GetArenaStatus);
-    CreateNative("MGE_GetArenaGameMode", Native_GetArenaGameMode);
     CreateNative("MGE_GetArenaPlayer", Native_GetArenaPlayer);
     CreateNative("MGE_IsValidArena", Native_IsValidArena);
     CreateNative("MGE_AddPlayerToArena", Native_AddPlayerToArena);
     CreateNative("MGE_RemovePlayerFromArena", Native_RemovePlayerFromArena);
-    CreateNative("MGE_IsArena2v2", Native_IsArena2v2);
     CreateNative("MGE_IsPlayerReady", Native_IsPlayerReady);
     CreateNative("MGE_SetPlayerReady", Native_SetPlayerReady);
     CreateNative("MGE_GetPlayerTeammate", Native_GetPlayerTeammate);
     CreateNative("MGE_ArenaHasGameMode", Native_ArenaHasGameMode);
     CreateNative("MGE_IsValidSlotForArena", Native_IsValidSlotForArena);
-    CreateNative("MGE_GetArenaMaxSlots", Native_GetArenaMaxSlots);
 }
 
 // ===== PLAYER INFORMATION NATIVES =====
@@ -75,68 +71,6 @@ int Native_GetArenaCount(Handle plugin, int numParams)
     return g_iArenaCount;
 }
 
-// Gets the number of players currently in an arena
-int Native_GetArenaPlayerCount(Handle plugin, int numParams)
-{
-    int arena_index = GetNativeCell(1);
-    
-    if (arena_index < 1 || arena_index > g_iArenaCount)
-        return 0;
-    
-    int count = 0;
-    int maxSlots = g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO;
-    
-    for (int i = SLOT_ONE; i <= maxSlots; i++)
-    {
-        if (g_iArenaQueue[arena_index][i] > 0)
-            count++;
-    }
-    
-    return count;
-}
-
-// Gets an arena's current status
-int Native_GetArenaStatus(Handle plugin, int numParams)
-{
-    int arena_index = GetNativeCell(1);
-    
-    if (arena_index < 1 || arena_index > g_iArenaCount)
-        return AS_IDLE;
-        
-    return g_iArenaStatus[arena_index];
-}
-
-// Gets an arena's game mode
-int Native_GetArenaGameMode(Handle plugin, int numParams)
-{
-    int arena_index = GetNativeCell(1);
-    
-    if (arena_index < 1 || arena_index > g_iArenaCount)
-        return 0;
-    
-    int flags = 0;
-    
-    if (g_bArenaMGE[arena_index])
-        flags |= MGE_GAMEMODE_MGE;
-    if (g_bArenaBBall[arena_index])
-        flags |= MGE_GAMEMODE_BBALL;
-    if (g_bArenaKoth[arena_index])
-        flags |= MGE_GAMEMODE_KOTH;
-    if (g_bArenaAmmomod[arena_index])
-        flags |= MGE_GAMEMODE_AMMOMOD;
-    if (g_bArenaMidair[arena_index])
-        flags |= MGE_GAMEMODE_MIDAIR;
-    if (g_bArenaEndif[arena_index])
-        flags |= MGE_GAMEMODE_ENDIF;
-    if (g_bArenaUltiduo[arena_index])
-        flags |= MGE_GAMEMODE_ULTIDUO;
-    if (g_bArenaTurris[arena_index])
-        flags |= MGE_GAMEMODE_TURRIS;
-    if (g_bFourPersonArena[arena_index])
-        flags |= MGE_GAMEMODE_4PLAYER;
-        
-    return flags;
-}
 
 // Gets a player in a specific arena slot
 int Native_GetArenaPlayer(Handle plugin, int numParams)
@@ -228,16 +162,6 @@ int Native_RemovePlayerFromArena(Handle plugin, int numParams)
 
 // ===== 2V2 NATIVES =====
 
-// Checks if an arena is a 2v2 arena
-int Native_IsArena2v2(Handle plugin, int numParams)
-{
-    int arena_index = GetNativeCell(1);
-    
-    if (arena_index < 1 || arena_index > g_iArenaCount)
-        return false;
-        
-    return g_bFourPersonArena[arena_index];
-}
 
 // Gets a player's ready status in 2v2
 int Native_IsPlayerReady(Handle plugin, int numParams)
@@ -325,14 +249,64 @@ int Native_IsValidSlotForArena(Handle plugin, int numParams)
     return IsValidSlotForArena(arena_index, slot);
 }
 
-// Gets the maximum number of slots for an arena
-int Native_GetArenaMaxSlots(Handle plugin, int numParams)
+
+// Gets complete arena information
+int Native_GetArenaInfo(Handle plugin, int numParams)
 {
     int arena_index = GetNativeCell(1);
     
     if (arena_index < 1 || arena_index > g_iArenaCount)
-        return 0;
+        return false;
     
-    return g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO;
+    // Create a temporary struct to populate
+    int info[7]; // MGEArenaInfo has 7 fields
+    
+    // Populate the struct fields
+    // name is at offset 0, but it's a string array so we handle it separately
+    
+    // Calculate player count
+    int playerCount = 0;
+    int maxSlots = g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO;
+    for (int i = SLOT_ONE; i <= maxSlots; i++)
+    {
+        if (g_iArenaQueue[arena_index][i] > 0)
+            playerCount++;
+    }
+    
+    // Calculate game mode flags
+    int flags = 0;
+    if (g_bArenaMGE[arena_index])
+        flags |= MGE_GAMEMODE_MGE;
+    if (g_bArenaBBall[arena_index])
+        flags |= MGE_GAMEMODE_BBALL;
+    if (g_bArenaKoth[arena_index])
+        flags |= MGE_GAMEMODE_KOTH;
+    if (g_bArenaAmmomod[arena_index])
+        flags |= MGE_GAMEMODE_AMMOMOD;
+    if (g_bArenaMidair[arena_index])
+        flags |= MGE_GAMEMODE_MIDAIR;
+    if (g_bArenaEndif[arena_index])
+        flags |= MGE_GAMEMODE_ENDIF;
+    if (g_bArenaUltiduo[arena_index])
+        flags |= MGE_GAMEMODE_ULTIDUO;
+    if (g_bArenaTurris[arena_index])
+        flags |= MGE_GAMEMODE_TURRIS;
+    if (g_bFourPersonArena[arena_index])
+        flags |= MGE_GAMEMODE_4PLAYER;
+    
+    info[1] = playerCount;  // players
+    info[2] = maxSlots;  // maxSlots  
+    info[3] = g_iArenaStatus[arena_index];  // status
+    info[4] = flags;  // gameMode
+    info[5] = g_bFourPersonArena[arena_index] ? 1 : 0;  // is2v2 (as int)
+    info[6] = g_iArenaFraglimit[arena_index];  // fragLimit
+    
+    // Set the struct in the native parameter
+    SetNativeArray(2, info, sizeof(info));
+    
+    // Set the arena name separately (string field at offset 0)
+    SetNativeString(2, g_sArenaName[arena_index], 64);
+    
+    return true;
 }
 

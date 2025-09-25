@@ -37,6 +37,18 @@ enum struct MGEPlayerStats
     float rating;       // Win/Loss ratio
 }
 
+// Arena Information Structure
+enum struct MGEArenaInfo
+{
+    char name[64];      // Arena display name (e.g., "Spire [MGE 1v1]")
+    int players;        // Current player count
+    int maxSlots;       // Maximum players (2 for 1v1, 4 for 2v2)
+    int status;         // Arena status (AS_IDLE, AS_FIGHT, etc.)
+    int gameMode;       // Game mode flags
+    bool is2v2;         // True if 2v2 arena
+    int fragLimit;      // Frag limit for this arena
+}
+
 enum
 {
     AS_IDLE = 0,
@@ -182,6 +194,15 @@ native int MGE_GetPlayerArena(int client);
 native bool MGE_GetPlayerStats(int client, MGEPlayerStats stats);
 
 /**
+ * Gets complete arena information
+ *
+ * @param arena_index    Arena index
+ * @param info           Structure to store arena information in
+ * @return               True on success, false if arena is invalid
+ */
+native bool MGE_GetArenaInfo(int arena_index, MGEArenaInfo info);
+
+/**
  * Checks if a player is currently in an MGE arena
  *
  * @param client         Client index
@@ -196,29 +217,6 @@ native bool MGE_IsPlayerInArena(int client);
  */
 native int MGE_GetArenaCount();
 
-/**
- * Gets the number of players currently in an arena
- *
- * @param arena_index    Arena index
- * @return               Number of players (0-4)
- */
-native int MGE_GetArenaPlayerCount(int arena_index);
-
-/**
- * Gets an arena's current status
- *
- * @param arena_index    Arena index
- * @return               Arena status (see constants)
- */
-native int MGE_GetArenaStatus(int arena_index);
-
-/**
- * Gets an arena's game mode
- *
- * @param arena_index    Arena index
- * @return               Game mode flags
- */
-native int MGE_GetArenaGameMode(int arena_index);
 
 /**
  * Gets a player in a specific arena slot
@@ -256,13 +254,6 @@ native bool MGE_AddPlayerToArena(int client, int arena_index, int slot = 0);
  */
 native bool MGE_RemovePlayerFromArena(int client);
 
-/**
- * Checks if an arena is a 2v2 arena
- *
- * @param arena_index    Arena index
- * @return               True if 2v2 arena, false otherwise
- */
-native bool MGE_IsArena2v2(int arena_index);
 
 /**
  * Gets a player's ready status in 2v2
@@ -307,13 +298,6 @@ native bool MGE_ArenaHasGameMode(int arena_index, int game_mode);
  */
 native bool MGE_IsValidSlotForArena(int arena_index, int slot);
 
-/**
- * Gets the maximum number of slots for an arena
- *
- * @param arena_index    Arena index
- * @return               Maximum slots (2 for 1v1, 4 for 2v2, 0 if invalid)
- */
-native int MGE_GetArenaMaxSlots(int arena_index);
 
 public SharedPlugin __pl_mge = 
 {
@@ -331,21 +315,17 @@ public void __pl_mge_SetNTVOptional()
 {
     MarkNativeAsOptional("MGE_GetPlayerArena");
     MarkNativeAsOptional("MGE_GetPlayerStats");
+    MarkNativeAsOptional("MGE_GetArenaInfo");
     MarkNativeAsOptional("MGE_IsPlayerInArena");
     MarkNativeAsOptional("MGE_GetArenaCount");
-    MarkNativeAsOptional("MGE_GetArenaPlayerCount");
-    MarkNativeAsOptional("MGE_GetArenaStatus");
-    MarkNativeAsOptional("MGE_GetArenaGameMode");
     MarkNativeAsOptional("MGE_GetArenaPlayer");
     MarkNativeAsOptional("MGE_IsValidArena");
     MarkNativeAsOptional("MGE_AddPlayerToArena");
     MarkNativeAsOptional("MGE_RemovePlayerFromArena");
-    MarkNativeAsOptional("MGE_IsArena2v2");
     MarkNativeAsOptional("MGE_IsPlayerReady");
     MarkNativeAsOptional("MGE_SetPlayerReady");
     MarkNativeAsOptional("MGE_GetPlayerTeammate");
     MarkNativeAsOptional("MGE_ArenaHasGameMode");
     MarkNativeAsOptional("MGE_IsValidSlotForArena");
-    MarkNativeAsOptional("MGE_GetArenaMaxSlots");
 }
 #endif
