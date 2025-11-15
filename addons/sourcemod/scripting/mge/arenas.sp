@@ -306,7 +306,7 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
                 }
             }
 
-            if (g_iArenaStatus[arena_index] >= AS_FIGHT && g_iArenaStatus[arena_index] < AS_REPORTED && calcstats && !g_bNoStats && foe)
+            if (g_iArenaStatus[arena_index] >= AS_FIGHT && g_iArenaStatus[arena_index] < AS_REPORTED && calcstats && !g_bNoStats && IsValidClient(foe))
             {
                 char foe_name[MAX_NAME_LENGTH * 2];
                 char player_name[MAX_NAME_LENGTH * 2];
@@ -315,8 +315,16 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
 
                 GetClientName(foe, foe_name, sizeof(foe_name));
                 GetClientName(client, player_name, sizeof(player_name));
-                GetClientName(foe2, foe2_name, sizeof(foe2_name));
-                GetClientName(player_teammate, player_teammate_name, sizeof(player_teammate_name));
+                
+                if (IsValidClient(foe2))
+                    GetClientName(foe2, foe2_name, sizeof(foe2_name));
+                else
+                    strcopy(foe2_name, sizeof(foe2_name), "Unknown");
+                    
+                if (IsValidClient(player_teammate))
+                    GetClientName(player_teammate, player_teammate_name, sizeof(player_teammate_name));
+                else
+                    strcopy(player_teammate_name, sizeof(player_teammate_name), "Unknown");
 
                 Format(foe_name, sizeof(foe_name), "%s and %s", foe_name, foe2_name);
                 Format(player_name, sizeof(player_name), "%s and %s", player_name, player_teammate_name);
@@ -328,7 +336,8 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
                     if (g_iArenaScore[arena_index][foe_team_slot] >= g_iArenaEarlyLeave[arena_index])
                     {
                         CalcELO(foe, client);
-                        CalcELO(foe2, client);
+                        if (IsValidClient(foe2))
+                            CalcELO(foe2, client);
                         MC_PrintToChatAll("%t", "XdefeatsYearly", foe_name, g_iArenaScore[arena_index][foe_team_slot], player_name, g_iArenaScore[arena_index][player_team_slot], g_sArenaName[arena_index]);
                     }
                 }
@@ -349,7 +358,7 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
                 
                 UpdateHudForArena(arena_index);
             } else {
-                if (foe && IsFakeClient(foe))
+                if (IsValidClient(foe) && IsFakeClient(foe))
                 {
                     ConVar cvar = FindConVar("tf_bot_quota");
                     int quota = cvar.IntValue;
@@ -395,7 +404,7 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
                 }
             }
 
-            if (g_iArenaStatus[arena_index] >= AS_FIGHT && g_iArenaStatus[arena_index] < AS_REPORTED && calcstats && !g_bNoStats && foe)
+            if (g_iArenaStatus[arena_index] >= AS_FIGHT && g_iArenaStatus[arena_index] < AS_REPORTED && calcstats && !g_bNoStats && IsValidClient(foe))
             {
                 char foe_name[MAX_NAME_LENGTH];
                 char player_name[MAX_NAME_LENGTH];
@@ -429,7 +438,7 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
                 
                 UpdateHudForArena(arena_index);
             } else {
-                if (foe && IsFakeClient(foe))
+                if (IsValidClient(foe) && IsFakeClient(foe))
                 {
                     ConVar cvar = FindConVar("tf_bot_quota");
                     int quota = cvar.IntValue;
@@ -946,24 +955,29 @@ void ShowMainMenu(int client, bool listplayers = true)
     {
         int red_f1 = g_iArenaQueue[i][SLOT_ONE];
         int blu_f1 = g_iArenaQueue[i][SLOT_TWO];
-        if (red_f1 > 0 || blu_f1 > 0)
+        
+        // Validate players are still connected
+        bool red_valid = (red_f1 > 0 && IsValidClient(red_f1));
+        bool blu_valid = (blu_f1 > 0 && IsValidClient(blu_f1));
+        
+        if (red_valid || blu_valid)
         {
             Format(report, sizeof(report), "\x05%s:", g_sArenaName[i]);
 
             if (!g_bNoDisplayRating)
             {
-                if (red_f1 > 0 && blu_f1 > 0)
+                if (red_valid && blu_valid)
                     Format(report, sizeof(report), "%s \x04%N \x03(%d) \x05vs \x04%N (%d) \x05", report, red_f1, g_iPlayerRating[red_f1], blu_f1, g_iPlayerRating[blu_f1]);
-                else if (red_f1 > 0)
+                else if (red_valid)
                     Format(report, sizeof(report), "%s \x04%N (%d)\x05", report, red_f1, g_iPlayerRating[red_f1]);
-                else if (blu_f1 > 0)
+                else if (blu_valid)
                     Format(report, sizeof(report), "%s \x04%N (%d)\x05", report, blu_f1, g_iPlayerRating[blu_f1]);
             } else {
-                if (red_f1 > 0 && blu_f1 > 0)
+                if (red_valid && blu_valid)
                     Format(report, sizeof(report), "%s \x04%N \x05vs \x04%N \x05", report, red_f1, blu_f1);
-                else if (red_f1 > 0)
+                else if (red_valid)
                     Format(report, sizeof(report), "%s \x04%N \x05", report, red_f1);
-                else if (blu_f1 > 0)
+                else if (blu_valid)
                     Format(report, sizeof(report), "%s \x04%N \x05", report, blu_f1);
             }
 
@@ -973,10 +987,12 @@ void ShowMainMenu(int client, bool listplayers = true)
                 int j = SLOT_TWO + 1;
                 while (g_iArenaQueue[i][j + 1])
                 {
-                    Format(report, sizeof(report), "%s\x04%N \x05, ", report, g_iArenaQueue[i][j]);
+                    if (IsValidClient(g_iArenaQueue[i][j]))
+                        Format(report, sizeof(report), "%s\x04%N \x05, ", report, g_iArenaQueue[i][j]);
                     j++;
                 }
-                Format(report, sizeof(report), "%s\x04%N", report, g_iArenaQueue[i][j]);
+                if (IsValidClient(g_iArenaQueue[i][j]))
+                    Format(report, sizeof(report), "%s\x04%N", report, g_iArenaQueue[i][j]);
             }
             PrintToChat(client, "%s", report);
         }

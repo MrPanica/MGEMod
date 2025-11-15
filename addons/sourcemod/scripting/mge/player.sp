@@ -115,21 +115,21 @@ void HandleClientDisconnection(int client)
         }
 
         // Bot cleanup logic (queue advancement is handled by RemoveFromQueue)
-        if (foe && IsFakeClient(foe))
+        if (IsValidClient(foe) && IsFakeClient(foe))
         {
             ConVar cvar = FindConVar("tf_bot_quota");
             int quota = cvar.IntValue;
             ServerCommand("tf_bot_quota %d", quota - 1);
         }
 
-        if (foe2 && IsFakeClient(foe2))
+        if (IsValidClient(foe2) && IsFakeClient(foe2))
         {
             ConVar cvar = FindConVar("tf_bot_quota");
             int quota = cvar.IntValue;
             ServerCommand("tf_bot_quota %d", quota - 1);
         }
 
-        if (player_teammate && IsFakeClient(player_teammate))
+        if (IsValidClient(player_teammate) && IsFakeClient(player_teammate))
         {
             ConVar cvar = FindConVar("tf_bot_quota");
             int quota = cvar.IntValue;

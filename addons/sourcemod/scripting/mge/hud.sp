@@ -166,24 +166,24 @@ void ShowFullHud(int client, int arena_index, bool is_spectator)
 
     if (g_bFourPersonArena[arena_index])
         {
-            if (red_f1)
+            if (red_f1 && IsValidClient(red_f1))
                 Format(hp_report, sizeof(hp_report), "%N : %d", red_f1, g_iPlayerHP[red_f1]);
 
-            if (red_f2)
+            if (red_f2 && IsValidClient(red_f2))
                 Format(hp_report, sizeof(hp_report), "%s\n%N : %d", hp_report, red_f2, g_iPlayerHP[red_f2]);
 
-            if (blu_f1)
+            if (blu_f1 && IsValidClient(blu_f1))
                 Format(hp_report, sizeof(hp_report), "%s\n\n%N : %d", hp_report, blu_f1, g_iPlayerHP[blu_f1]);
 
-            if (blu_f2)
+            if (blu_f2 && IsValidClient(blu_f2))
                 Format(hp_report, sizeof(hp_report), "%s\n%N : %d", hp_report, blu_f2, g_iPlayerHP[blu_f2]);
         }
         else
         {
-            if (red_f1)
+            if (red_f1 && IsValidClient(red_f1))
                 Format(hp_report, sizeof(hp_report), "%N : %d", red_f1, g_iPlayerHP[red_f1]);
 
-            if (blu_f1)
+            if (blu_f1 && IsValidClient(blu_f1))
                 Format(hp_report, sizeof(hp_report), "%s\n%N : %d", hp_report, blu_f1, g_iPlayerHP[blu_f1]);
         }
 
@@ -254,7 +254,7 @@ void HideHud(int client)
 // Formats a single player's score line with optional ELO display
 void FormatPlayerScoreLine(int player, int score, bool show_elo, char[] output, int output_size)
 {
-    if (!player)
+    if (!player || !IsValidClient(player))
     {
         output[0] = '\0';
         return;
@@ -269,24 +269,28 @@ void FormatPlayerScoreLine(int player, int score, bool show_elo, char[] output, 
 // Formats a team score line for 2v2 with optional ELO display  
 void FormatTeamScoreLine(int player1, int player2, int score, bool show_elo, bool show_2v2_elo, char[] output, int output_size)
 {
-    if (!player1 && !player2)
+    // Validate both players
+    bool valid1 = (player1 && IsValidClient(player1));
+    bool valid2 = (player2 && IsValidClient(player2));
+    
+    if (!valid1 && !valid2)
     {
         output[0] = '\0';
         return;
     }
     
-    if (player1 && player2)
+    if (valid1 && valid2)
     {
         if (g_bNoStats || g_bNoDisplayRating || !show_elo || !show_2v2_elo)
             Format(output, output_size, "«%N» and «%N» : %d", player1, player2, score);
         else
             Format(output, output_size, "«%N» and «%N» (%d): %d", player1, player2, g_iPlayerRating[player1], score);
     }
-    else if (player1)
+    else if (valid1)
     {
         FormatPlayerScoreLine(player1, score, show_elo && show_2v2_elo, output, output_size);
     }
-    else if (player2)
+    else if (valid2)
     {
         FormatPlayerScoreLine(player2, score, show_elo && show_2v2_elo, output, output_size);
     }
