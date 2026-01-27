@@ -658,6 +658,18 @@ Action Event_PlayerTeam(Event event, const char[] name, bool dontBroadcast)
     int newTeam = event.GetInt("team");
     if (IsValidClient(client) && newTeam == TEAM_SPEC)
     {
+        int player_arena = g_iPlayerArena[client];
+        int player_slot = g_iPlayerSlot[client];
+        
+        if (player_arena > 0 && player_slot > 0)
+        {
+            int max_active_slot = g_bFourPersonArena[player_arena] ? SLOT_FOUR : SLOT_TWO;
+            if (player_slot <= max_active_slot)
+            {
+                RemoveFromQueue(client, true);
+            }
+        }
+        
         CreateTimer(0.3, Timer_ChangeSpecTarget, GetClientUserId(client));
     }
     return Plugin_Continue;
