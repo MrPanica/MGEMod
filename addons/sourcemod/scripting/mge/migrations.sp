@@ -60,7 +60,13 @@ void RunMigration(const char[] migrationName)
     }
     else if (StrEqual(migrationName, "003_add_primary_keys"))
     {
-        g_migrationProgress.SetValue(migrationName, 3);
+        // Step counts differ by database type
+        switch (g_DatabaseType)
+        {
+            case DB_SQLITE: g_migrationProgress.SetValue(migrationName, 11);
+            case DB_MYSQL: g_migrationProgress.SetValue(migrationName, 4);
+            default: g_migrationProgress.SetValue(migrationName, 1);
+        }
         Migration_003_AddPrimaryKeys();
     }
     else if (StrEqual(migrationName, "004_add_elo_tracking"))
@@ -166,8 +172,18 @@ void GenericMigrationCallback(Database db, DBResultSet results, const char[] err
     
     if (!StrEqual("", error))
     {
-        LogError("[Migration %s] Step %d failed: %s", migrationName, stepNumber, error);
-        return;
+        // Treat "duplicate column" errors as success - the column already exists which is what we wanted
+        // This handles cases where migration 003 (SQLite table recreation) already added columns that 004 tries to add
+        if (StrContains(error, "duplicate column name") != -1)
+        {
+            LogMessage("[Migration %s] Step %d: column already exists (continuing)", migrationName, stepNumber);
+            // Fall through to success handling below
+        }
+        else
+        {
+            LogError("[Migration %s] Step %d failed: %s", migrationName, stepNumber, error);
+            return;
+        }
     }
     
     // Get expected total steps for this migration
@@ -247,7 +263,9 @@ void Migration_001_AddClassColumns()
         }
         case DB_POSTGRESQL:
         {
-            LogMessage("[Migration 001] Skipping migration on PostgreSQL");
+            // PostgreSQL gets modern schema in CREATE TABLE - mark as complete
+            LogMessage("[Migration 001] Skipping migration on PostgreSQL (schema already includes these columns)");
+            MarkMigrationComplete("001_add_class_columns");
         }
     }
 }
@@ -275,7 +293,9 @@ void Migration_002_DuelTimingColumns()
         }
         case DB_POSTGRESQL:
         {
-            LogMessage("[Migration 002] Skipping migration on PostgreSQL");
+            // PostgreSQL gets modern schema in CREATE TABLE - mark as complete
+            LogMessage("[Migration 002] Skipping migration on PostgreSQL (schema already includes these columns)");
+            MarkMigrationComplete("002_duel_timing_columns");
         }
     }
 }
@@ -289,14 +309,16 @@ void Migration_003_AddPrimaryKeys()
     {
         case DB_SQLITE:
         {
+            // Note: DO NOT include ELO columns here - those are added by migration 004
+            // Only include columns that exist after migrations 001 (class columns) and 002 (timing columns)
             ExecuteMigrationStep("003_add_primary_keys", "CREATE TABLE mgemod_duels_backup AS SELECT * FROM mgemod_duels", 1);
-            ExecuteMigrationStep("003_add_primary_keys", "CREATE TABLE mgemod_duels_new (id INTEGER PRIMARY KEY, winner TEXT, loser TEXT, winnerscore INTEGER, loserscore INTEGER, winlimit INTEGER, endtime INTEGER, starttime INTEGER, mapname TEXT, arenaname TEXT, winnerclass TEXT, loserclass TEXT, winner_previous_elo INTEGER, winner_new_elo INTEGER, loser_previous_elo INTEGER, loser_new_elo INTEGER)", 2);
-            ExecuteMigrationStep("003_add_primary_keys", "INSERT INTO mgemod_duels_new SELECT NULL, winner, loser, winnerscore, loserscore, winlimit, endtime, starttime, mapname, arenaname, winnerclass, loserclass, winner_previous_elo, winner_new_elo, loser_previous_elo, loser_new_elo FROM mgemod_duels", 3);
+            ExecuteMigrationStep("003_add_primary_keys", "CREATE TABLE mgemod_duels_new (id INTEGER PRIMARY KEY, winner TEXT, loser TEXT, winnerscore INTEGER, loserscore INTEGER, winlimit INTEGER, endtime INTEGER, starttime INTEGER, mapname TEXT, arenaname TEXT, winnerclass TEXT, loserclass TEXT)", 2);
+            ExecuteMigrationStep("003_add_primary_keys", "INSERT INTO mgemod_duels_new SELECT NULL, winner, loser, winnerscore, loserscore, winlimit, endtime, starttime, mapname, arenaname, winnerclass, loserclass FROM mgemod_duels", 3);
             ExecuteMigrationStep("003_add_primary_keys", "DROP TABLE mgemod_duels", 4);
             ExecuteMigrationStep("003_add_primary_keys", "ALTER TABLE mgemod_duels_new RENAME TO mgemod_duels", 5);
             ExecuteMigrationStep("003_add_primary_keys", "CREATE TABLE mgemod_duels_2v2_backup AS SELECT * FROM mgemod_duels_2v2", 6);
-            ExecuteMigrationStep("003_add_primary_keys", "CREATE TABLE mgemod_duels_2v2_new (id INTEGER PRIMARY KEY, winner TEXT, winner2 TEXT, loser TEXT, loser2 TEXT, winnerscore INTEGER, loserscore INTEGER, winlimit INTEGER, endtime INTEGER, starttime INTEGER, mapname TEXT, arenaname TEXT, winnerclass TEXT, winner2class TEXT, loserclass TEXT, loser2class TEXT, winner_previous_elo INTEGER, winner_new_elo INTEGER, winner2_previous_elo INTEGER, winner2_new_elo INTEGER, loser_previous_elo INTEGER, loser_new_elo INTEGER, loser2_previous_elo INTEGER, loser2_new_elo INTEGER)", 7);
-            ExecuteMigrationStep("003_add_primary_keys", "INSERT INTO mgemod_duels_2v2_new SELECT NULL, winner, winner2, loser, loser2, winnerscore, loserscore, winlimit, endtime, starttime, mapname, arenaname, winnerclass, winner2class, loserclass, loser2class, winner_previous_elo, winner_new_elo, winner2_previous_elo, winner2_new_elo, loser_previous_elo, loser_new_elo, loser2_previous_elo, loser2_new_elo FROM mgemod_duels_2v2", 8);
+            ExecuteMigrationStep("003_add_primary_keys", "CREATE TABLE mgemod_duels_2v2_new (id INTEGER PRIMARY KEY, winner TEXT, winner2 TEXT, loser TEXT, loser2 TEXT, winnerscore INTEGER, loserscore INTEGER, winlimit INTEGER, endtime INTEGER, starttime INTEGER, mapname TEXT, arenaname TEXT, winnerclass TEXT, winner2class TEXT, loserclass TEXT, loser2class TEXT)", 7);
+            ExecuteMigrationStep("003_add_primary_keys", "INSERT INTO mgemod_duels_2v2_new SELECT NULL, winner, winner2, loser, loser2, winnerscore, loserscore, winlimit, endtime, starttime, mapname, arenaname, winnerclass, winner2class, loserclass, loser2class FROM mgemod_duels_2v2", 8);
             ExecuteMigrationStep("003_add_primary_keys", "DROP TABLE mgemod_duels_2v2", 9);
             ExecuteMigrationStep("003_add_primary_keys", "ALTER TABLE mgemod_duels_2v2_new RENAME TO mgemod_duels_2v2", 10);
             ExecuteMigrationStep("003_add_primary_keys", "CREATE UNIQUE INDEX IF NOT EXISTS idx_stats_steamid ON mgemod_stats (steamid)", 11);
@@ -310,8 +332,9 @@ void Migration_003_AddPrimaryKeys()
         }
         case DB_POSTGRESQL:
         {
-            // PostgreSQL gets modern schema immediately - this migration should never run
-            LogMessage("[Migration 003] Skipping migration on PostgreSQL");
+            // PostgreSQL gets modern schema in CREATE TABLE - mark as complete
+            LogMessage("[Migration 003] Skipping migration on PostgreSQL (schema already includes primary keys)");
+            MarkMigrationComplete("003_add_primary_keys");
         }
     }
 }
@@ -357,8 +380,9 @@ void Migration_004_AddEloTracking()
         }
         case DB_POSTGRESQL:
         {
-            // PostgreSQL gets modern schema immediately - this migration should never run
-            LogMessage("[Migration 004] Skipping migration on PostgreSQL");
+            // PostgreSQL gets modern schema in CREATE TABLE - mark as complete
+            LogMessage("[Migration 004] Skipping migration on PostgreSQL (schema already includes ELO columns)");
+            MarkMigrationComplete("004_add_elo_tracking");
         }
     }
 }
