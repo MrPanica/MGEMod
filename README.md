@@ -111,3 +111,10 @@ The ELO display logic in 2v2 mode is confusing since individual ELOs get merged/
 ### Make all timers configurable
 
 Make game start, round start, game end, round end and any other timer configurable.
+
+WEB FULL AI*:
+<img width="1905" height="912" alt="image" src="https://github.com/user-attachments/assets/cdb8ff44-c462-4760-82df-bcde8a641c5f" />
+<img width="1907" height="913" alt="image" src="https://github.com/user-attachments/assets/f3e918bd-d41f-4a32-9f8a-d14093d4230d" />
+<img width="1902" height="911" alt="image" src="https://github.com/user-attachments/assets/621f291c-f4e9-4500-8945-b88a1674d5c6" />
+<img width="1904" height="906" alt="image" src="https://github.com/user-attachments/assets/89e5b1ce-e3f1-4bd2-a027-ef7cf5aadbd1" />
+<img width="1919" height="912" alt="image" src="https://github.com/user-attachments/assets/7eba2985-137a-4883-9010-cb834641cd30" />
