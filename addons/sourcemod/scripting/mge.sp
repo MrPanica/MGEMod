@@ -15,7 +15,7 @@
 #include <convar_class>
 #include <mge>
 
-#define PL_VERSION "3.1.0-beta9"
+#define PL_VERSION "3.1.0-beta10"
 
 #define MAXARENAS 63
 #define MAXSPAWNS 15
@@ -727,6 +727,21 @@ Action Event_PlayerTeam(Event event, const char[] name, bool dontBroadcast)
     int newTeam = event.GetInt("team");
     if (IsValidClient(client) && newTeam == TEAM_SPEC)
     {
+        // Check if player is in an active arena slot before removing from queue
+        int player_arena = g_iPlayerArena[client];
+        int player_slot = g_iPlayerSlot[client];
+
+        if (player_arena > 0 && player_slot > 0)
+        {
+            int max_active_slot = g_bFourPersonArena[player_arena] ? SLOT_FOUR : SLOT_TWO;
+
+            // Only remove from queue if player was in an active slot (not waiting)
+            if (player_slot <= max_active_slot)
+            {
+                RemoveFromQueue(client, true, true);
+            }
+        }
+
         CreateTimer(0.3, Timer_ChangeSpecTarget, GetClientUserId(client));
     }
     return Plugin_Continue;

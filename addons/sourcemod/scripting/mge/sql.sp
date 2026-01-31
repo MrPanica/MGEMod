@@ -9,24 +9,44 @@ void PrepareSQL()
     if (strlen(g_sDBConfig) == 0)
     {
         g_DB = SQL_Connect("storage-local", true, error, sizeof(error));
-        
+
         if (g_DB == null)
         {
-            SetFailState("Could not connect to SQLite database: %s", error);
+            LogError("Could not connect to SQLite database: %s", error);
+            g_bNoStats = true;
+            return;
         }
     }
     else
     {
         if (!SQL_CheckConfig(g_sDBConfig))
         {
-            SetFailState("Database config '%s' not found in databases.cfg", g_sDBConfig);
+            LogError("Database config '%s' not found in databases.cfg, falling back to storage-local", g_sDBConfig);
+            g_DB = SQL_Connect("storage-local", true, error, sizeof(error));
+
+            if (g_DB == null)
+            {
+                LogError("Could not connect to SQLite database: %s", error);
+                g_bNoStats = true;
+                return;
+            }
         }
-        
-        g_DB = SQL_Connect(g_sDBConfig, true, error, sizeof(error));
-        
-        if (g_DB == null)
+        else
         {
-            SetFailState("Could not connect to specified database config '%s': %s", g_sDBConfig, error);
+            g_DB = SQL_Connect(g_sDBConfig, true, error, sizeof(error));
+
+            if (g_DB == null)
+            {
+                LogError("Could not connect to specified database config '%s': %s, falling back to storage-local", g_sDBConfig, error);
+                g_DB = SQL_Connect("storage-local", true, error, sizeof(error));
+
+                if (g_DB == null)
+                {
+                    LogError("Could not connect to SQLite database: %s", error);
+                    g_bNoStats = true;
+                    return;
+                }
+            }
         }
     }
 
@@ -47,7 +67,9 @@ void PrepareSQL()
     }
     else
     {
-        SetFailState("Unsupported database type: %s", ident);
+        LogError("Unsupported database type: %s", ident);
+        g_bNoStats = true;
+        return;
     }
 
     LogMessage("Successfully connected to database config '%s' [%s]", g_sDBConfig, ident);
