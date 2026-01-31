@@ -106,6 +106,39 @@
 		"es"			"{green}[MGE]{default} Has perdido {green}{1}{default} puntos."
 		"pt"			"{green}[MGE]{default} Você perdeu {green}{1}{default} pontos."
 	}
+	"GainedClassPoints"
+	{
+		"#format"		"{1:s},{2:i}"
+		"en"			"{green}[MGE]{default} Class {green}{1}{default}: +{green}{2}{default}."
+		"ru"			"{green}[MGE]{default} Класс {green}{1}{default}: +{green}{2}{default}."
+	}
+	"LostClassPoints"
+	{
+		"#format"		"{1:s},{2:i}"
+		"en"			"{green}[MGE]{default} Class {green}{1}{default}: -{green}{2}{default}."
+		"ru"			"{green}[MGE]{default} Класс {green}{1}{default}: -{green}{2}{default}."
+	}
+	"GainedMatchupPoints"
+	{
+		"#format"		"{1:s},{2:s},{3:i}"
+		"en"			"{green}[MGE]{default} {green}{1}{default} Vs {green}{2}{default}: +{green}{3}{default}."
+		"ru"			"{green}[MGE]{default} {green}{1}{default} против {green}{2}{default}: +{green}{3}{default}."
+	}
+	"LostMatchupPoints"
+	{
+		"#format"		"{1:s},{2:s},{3:i}"
+		"en"			"{green}[MGE]{default} {green}{1}{default} Vs {green}{2}{default}: -{green}{3}{default}."
+		"ru"			"{green}[MGE]{default} {green}{1}{default} против {green}{2}{default}: -{green}{3}{default}."
+	}
+	"MatchupLabel"
+	{
+		"en"			"cVc"
+		"chi"			"cVc"
+		"de"			"cVc"
+		"ru"			"cVc"
+		"es"			"cVc"
+		"pt"			"cVc"
+	}
 	"MyRank"
 	{
 		"#format"		"{1:i},{2:i},{3:i}"
@@ -115,6 +148,18 @@
 		"ru"			"{green}[MGE]{default} Ваш рейтинг равен {green}{1}{default}. Побед: {green}{2}{default}. Поражений: {green}{3}{default}"
 		"es"			"{green}[MGE]{default} Tu rating es {green}{1}{default}. Ganados: {green}{2}{default}. Perdidos: {green}{3}{default}"
 		"pt"			"{green}[MGE]{default} Seu rating é {green}{1}{default}. Ganhos: {green}{2}{default}. Perdidos: {green}{3}{default}"
+	}
+	"PanelRatingLine"
+	{
+		"#format"		"{1:i},{2:i}"
+		"en"			"Rating: {1} (#{2})"
+		"ru"			"Рейтинг: {1} (#{2})"
+	}
+	"PanelClassRatingLine"
+	{
+		"#format"		"{1:s},{2:i}"
+		"en"			"Class: {1} ({2})"
+		"ru"			"Класс: {1} ({2})"
 	}
 	"MyRankNoRating"
 	{
@@ -185,23 +230,23 @@
 	}
 	"XdefeatsY"
 	{
-		"#format"		"{1:s},{2:i},{3:s},{4:i},{5:i},{6:s}"
-		"en"			"{green}[MGE]{default} {lightgreen}{1}{default} (Score: {green}{2}{default}) defeats {lightgreen}{3}{default} (Score: {green}{4}{default}) in duel to {green}{5}{default} on {green}{6}"
-		"chi"			"{green}[MGE]{default} {lightgreen}{1}{default} (Score: {2}) 打败了 {lightgreen}{3}{default}（得分：{4}）in duel to {green}{5}{default}（竞技场：{green}{6}）"
-		"de"			"{green}[MGE]{default} {lightgreen}{1}{default} (Punkte: {2}) besiegt {lightgreen}{3}{default} (Punkte: {4}) in einem Duell bis {green}{5}{default} auf {green}{6}"
-		"ru"			"{green}[MGE]{default} {lightgreen}{1}{default} (Score: {2}) победил {lightgreen}{3}{default} (Счет: {4}) в дуели до {green}{5}{default} на арене {green}{6}"
-		"es"			"{green}[MGE]{default} {lightgreen}{1}{default} (Puntos: {2}) derrota a {lightgreen}{3}{default} (Puntos: {4}) en duelo a {green}{5}{default} en {green}{6}"
-		"pt"			"{green}[MGE]{default} {lightgreen}{1}{default} (Pontos: {2}) derrota {lightgreen}{3}{default} (Pontos: {4}) em duelo para {green}{5}{default} em {green}{6}"
+		"#format"		"{1:s},{2:i},{3:s},{4:i},{5:i},{6:s},{7:s}"
+		"en"			"{green}[MGE]{default} {lightgreen}{1}{default} (Score: {green}{2}{default}) defeats {lightgreen}{3}{default} (Score: {green}{4}{default}) in duel to {green}{5}{default} on {green}{6}{default} (in {7})"
+		"chi"			"{green}[MGE]{default} {lightgreen}{1}{default} (Score: {2}) 打败了 {lightgreen}{3}{default}（得分：{4}）in duel to {green}{5}{default}（竞技场：{green}{6}）（用时 {7}）"
+		"de"			"{green}[MGE]{default} {lightgreen}{1}{default} (Punkte: {2}) besiegt {lightgreen}{3}{default} (Punkte: {4}) in einem Duell bis {green}{5}{default} auf {green}{6}{default} (in {7})"
+		"ru"			"{green}[MGE]{default} {lightgreen}{1}{default} (Score: {2}) победил {lightgreen}{3}{default} (Счет: {4}) в дуели до {green}{5}{default} на арене {green}{6}{default} (за {7})"
+		"es"			"{green}[MGE]{default} {lightgreen}{1}{default} (Puntos: {2}) derrota a {lightgreen}{3}{default} (Puntos: {4}) en duelo a {green}{5}{default} en {green}{6}{default} (en {7})"
+		"pt"			"{green}[MGE]{default} {lightgreen}{1}{default} (Pontos: {2}) derrota {lightgreen}{3}{default} (Pontos: {4}) em duelo para {green}{5}{default} em {green}{6}{default} (em {7})"
 	}
 	"XdefeatsYearly"
 	{
-		"#format"		"{1:s},{2:i},{3:s},{4:i},{5:s}"
-		"en"			"{lightgreen}{1}{default} (Score: {green}{2}{default}) defeats {lightgreen}{3}{default} (Score: {green}{4}{default}) in a duel on {green}{5}"
-		"chi"			"{lightgreen}{1}{default} (Score: {2}) 打败了 {lightgreen}{3}{default}（Score:{4}）（竞技场：{green}{5}）"
-		"de"			"{lightgreen}{1}{default} (Punkte: {2}) besiegt {lightgreen}{3}{default} (Punkte:{4}) in einem Duell auf {green}{5}"
-		"ru"			"{lightgreen}{1}{default} (Счет: {2}) победил {lightgreen}{3}{default} (Счет:{4}) в дуели до {green}{5}"
-		"es"			"{lightgreen}{1}{default} (Puntos: {2}) derrota a {lightgreen}{3}{default} (Puntos: {4}) en duelo en {green}{5}"
-		"pt"			"{lightgreen}{1}{default} (Pontos: {2}) derrota {lightgreen}{3}{default} (Pontos: {4}) em duelo em {green}{5}"
+		"#format"		"{1:s},{2:i},{3:s},{4:i},{5:s},{6:s}"
+		"en"			"{lightgreen}{1}{default} (Score: {green}{2}{default}) defeats {lightgreen}{3}{default} (Score: {green}{4}{default}) in a duel on {green}{5}{default} (in {6})"
+		"chi"			"{lightgreen}{1}{default} (Score: {2}) 打败了 {lightgreen}{3}{default}（Score:{4}）（竞技场：{green}{5}）（用时 {6}）"
+		"de"			"{lightgreen}{1}{default} (Punkte: {2}) besiegt {lightgreen}{3}{default} (Punkte:{4}) in einem Duell auf {green}{5}{default} (in {6})"
+		"ru"			"{lightgreen}{1}{default} (Счет: {2}) победил {lightgreen}{3}{default} (Счет:{4}) в дуели до {green}{5}{default} (за {6})"
+		"es"			"{lightgreen}{1}{default} (Puntos: {2}) derrota a {lightgreen}{3}{default} (Puntos: {4}) en duelo en {green}{5}{default} (en {6})"
+		"pt"			"{lightgreen}{1}{default} (Pontos: {2}) derrota {lightgreen}{3}{default} (Pontos: {4}) em duelo em {green}{5}{default} (em {6})"
 	}
 	"SpecRemove"
 	{
@@ -468,6 +513,16 @@
 		"ru"			"{green}[MGE]{default} Лимит здоровья отключен."
 		"es"			"{green}[MGE]{default} Handicap desactivado."
 		"pt"			"{green}[MGE]{default} Handicap desativado."
+	}
+	"TopRatedOnlinePlayer"
+	{
+		"#format"		"{1:s},{2:i}"
+		"en"			"{olive}[MGE] {lightgreen}{1} {default}has the highest rating among online players on the server: {green}{2}"
+		"chi"			"{olive}[MGE] {lightgreen}{1} {default}在服务器在线玩家中拥有最高评分：{green}{2}"
+		"de"			"{olive}[MGE] {lightgreen}{1} {default}hat die höchste Wertung unter den Online-Spielern auf dem Server: {green}{2}"
+		"ru"			"{olive}[MGE] {lightgreen}{1} {default}имеет самый высокий рейтинг среди игроков онлайн на сервере: {green}{2}"
+		"es"			"{olive}[MGE] {lightgreen}{1} {default}tiene la calificación más alta entre los jugadores en línea en el servidor: {green}{2}"
+		"pt"			"{olive}[MGE] {lightgreen}{1} {default}tem a maior classificação entre os jogadores online no servidor: {green}{2}"
 	}
 	"PluginReloaded"
 	{
@@ -1144,5 +1199,267 @@
 		"ru"			"У вас {1}% шансов их победить"
 		"es"			"Tienes un {1}% de chances de vencerlos"
 		"pt"			"Você tem {1}% de chances de vencê-los"
+	}
+	"InviteReceived"
+	{
+		"#format"		"{1:s},{2:s}"
+		"en"			"{green}[MGE]{default} {1} invites you to join arena {green}{2}{default}!"
+		"chi"			"{green}[MGE]{default} {1} 邀请您加入竞技场 {green}{2}{default}！"
+		"de"			"{green}[MGE]{default} {1} lädt dich ein, der Arena {green}{2}{default} beizutreten!"
+		"ru"			"{green}[MGE]{default} {1} приглашает вас присоединиться к арене {green}{2}{default}!"
+		"es"			"{green}[MGE]{default} ¡{1} te invita a unirte a la arena {green}{2}{default}!"
+		"pt"			"{green}[MGE]{default} {1} te convida a entrar na arena {green}{2}{default}!"
+	}
+	"InviteInstructions"
+	{
+		"en"			"{green}[MGE]{default} Type {green}!acc{default} to accept or {green}!dec{default} to decline."
+		"chi"			"{green}[MGE]{default} 输入 {green}!acc{default} 接受或 {green}!dec{default} 拒绝。"
+		"de"			"{green}[MGE]{default} Tippe {green}!acc{default} um anzunehmen oder {green}!dec{default} um abzulehnen."
+		"ru"			"{green}[MGE]{default} Напишите {green}!acc{default} чтобы принять или {green}!dec{default} чтобы отклонить."
+		"es"			"{green}[MGE]{default} Escribe {green}!acc{default} para aceptar o {green}!dec{default} para rechazar."
+		"pt"			"{green}[MGE]{default} Digite {green}!acc{default} para aceitar ou {green}!dec{default} para recusar."
+	}
+	"InviteWillMoveYou"
+	{
+		"en"			"{green}[MGE]{default} Accepting will move you from your current arena."
+		"chi"			"{green}[MGE]{default} 接受将使您离开当前竞技场。"
+		"de"			"{green}[MGE]{default} Die Annahme wird dich aus deiner aktuellen Arena entfernen."
+		"ru"			"{green}[MGE]{default} Принятие переместит вас с текущей арены."
+		"es"			"{green}[MGE]{default} Aceptar te moverá de tu arena actual."
+		"pt"			"{green}[MGE]{default} Aceitar irá movê-lo da sua arena atual."
+	}
+	"InviteSent"
+	{
+		"#format"		"{1:s}"
+		"en"			"{green}[MGE]{default} Invite sent to {green}{1}{default}!"
+		"chi"			"{green}[MGE]{default} 邀请已发送给 {green}{1}{default}！"
+		"de"			"{green}[MGE]{default} Einladung an {green}{1}{default} gesendet!"
+		"ru"			"{green}[MGE]{default} Приглашение отправлено игроку {green}{1}{default}!"
+		"es"			"{green}[MGE]{default} ¡Invitación enviada a {green}{1}{default}!"
+		"pt"			"{green}[MGE]{default} Convite enviado para {green}{1}{default}!"
+	}
+	"InviteAccepted"
+	{
+		"#format"		"{1:s}"
+		"en"			"{green}[MGE]{default} {green}{1}{default} accepted your invite!"
+		"chi"			"{green}[MGE]{default} {green}{1}{default} 接受了您的邀请！"
+		"de"			"{green}[MGE]{default} {green}{1}{default} hat deine Einladung angenommen!"
+		"ru"			"{green}[MGE]{default} {green}{1}{default} принял ваше приглашение!"
+		"es"			"{green}[MGE]{default} ¡{green}{1}{default} aceptó tu invitación!"
+		"pt"			"{green}[MGE]{default} {green}{1}{default} aceitou seu convite!"
+	}
+	"InviteDeclined"
+	{
+		"#format"		"{1:s}"
+		"en"			"{green}[MGE]{default} {green}{1}{default} declined your invite."
+		"chi"			"{green}[MGE]{default} {green}{1}{default} 拒绝了您的邀请。"
+		"de"			"{green}[MGE]{default} {green}{1}{default} hat deine Einladung abgelehnt."
+		"ru"			"{green}[MGE]{default} {green}{1}{default} отклонил ваше приглашение."
+		"es"			"{green}[MGE]{default} {green}{1}{default} rechazó tu invitación."
+		"pt"			"{green}[MGE]{default} {green}{1}{default} recusou seu convite."
+	}
+	"InviteDeclinedSelf"
+	{
+		"en"			"{green}[MGE]{default} You declined the invite."
+		"chi"			"{green}[MGE]{default} 您拒绝了邀请。"
+		"de"			"{green}[MGE]{default} Du hast die Einladung abgelehnt."
+		"ru"			"{green}[MGE]{default} Вы отклонили приглашение."
+		"es"			"{green}[MGE]{default} Rechazaste la invitación."
+		"pt"			"{green}[MGE]{default} Você recusou o convite."
+	}
+	"CannotInviteNow"
+	{
+		"en"			"{green}[MGE]{default} You can only invite when you're alone on an arena with no queue."
+		"chi"			"{green}[MGE]{default} 您只能在竞技场上独自一人且没有队列时发出邀请。"
+		"de"			"{green}[MGE]{default} Du kannst nur einladen, wenn du alleine in einer Arena ohne Warteschlange bist."
+		"ru"			"{green}[MGE]{default} Вы можете приглашать только когда находитесь один на арене без очереди."
+		"es"			"{green}[MGE]{default} Solo puedes invitar cuando estás solo en una arena sin cola."
+		"pt"			"{green}[MGE]{default} Você só pode convidar quando estiver sozinho em uma arena sem fila."
+	}
+	"NoInviteToAccept"
+	{
+		"en"			"{green}[MGE]{default} You have no invite to accept."
+		"chi"			"{green}[MGE]{default} 您没有要接受的邀请。"
+		"de"			"{green}[MGE]{default} Du hast keine Einladung zum Annehmen."
+		"ru"			"{green}[MGE]{default} У вас нет приглашения для принятия."
+		"es"			"{green}[MGE]{default} No tienes invitación para aceptar."
+		"pt"			"{green}[MGE]{default} Você não tem convite para aceitar."
+	}
+	"NoInviteToDecline"
+	{
+		"en"			"{green}[MGE]{default} You have no invite to decline."
+		"chi"			"{green}[MGE]{default} 您没有要拒绝的邀请。"
+		"de"			"{green}[MGE]{default} Du hast keine Einladung zum Ablehnen."
+		"ru"			"{green}[MGE]{default} У вас нет приглашения для отклонения."
+		"es"			"{green}[MGE]{default} No tienes invitación para rechazar."
+		"pt"			"{green}[MGE]{default} Você não tem convite para recusar."
+	}
+	"InviteExpired"
+	{
+		"en"			"{green}[MGE]{default} The invite has expired."
+		"chi"			"{green}[MGE]{default} 邀请已过期。"
+		"de"			"{green}[MGE]{default} Die Einladung ist abgelaufen."
+		"ru"			"{green}[MGE]{default} Приглашение истекло."
+		"es"			"{green}[MGE]{default} La invitación ha expirado."
+		"pt"			"{green}[MGE]{default} O convite expirou."
+	}
+	"PlayerNotFound"
+	{
+		"#format"		"{1:s}"
+		"en"			"{green}[MGE]{default} Player '{1}' not found."
+		"chi"			"{green}[MGE]{default} 未找到玩家 '{1}'。"
+		"de"			"{green}[MGE]{default} Spieler '{1}' nicht gefunden."
+		"ru"			"{green}[MGE]{default} Игрок '{1}' не найден."
+		"es"			"{green}[MGE]{default} Jugador '{1}' no encontrado."
+		"pt"			"{green}[MGE]{default} Jogador '{1}' não encontrado."
+	}
+	"CannotInviteSelf"
+	{
+		"en"			"{green}[MGE]{default} You cannot invite yourself."
+		"chi"			"{green}[MGE]{default} 您不能邀请自己。"
+		"de"			"{green}[MGE]{default} Du kannst dich nicht selbst einladen."
+		"ru"			"{green}[MGE]{default} Вы не можете пригласить себя."
+		"es"			"{green}[MGE]{default} No puedes invitarte a ti mismo."
+		"pt"			"{green}[MGE]{default} Você não pode convidar a si mesmo."
+	}
+	"PlayerAlreadyInArena"
+	{
+		"#format"		"{1:N}"
+		"en"			"{green}[MGE]{default} {1} is already in an arena."
+		"chi"			"{green}[MGE]{default} {1} 已经在竞技场中。"
+		"de"			"{green}[MGE]{default} {1} ist bereits in einer Arena."
+		"ru"			"{green}[MGE]{default} {1} уже находится на арене."
+		"es"			"{green}[MGE]{default} {1} ya está en una arena."
+		"pt"			"{green}[MGE]{default} {1} já está em uma arena."
+	}
+	"InviteMenuTitle"
+	{
+		"en"			"Select player to invite:"
+		"chi"			"选择要邀请的玩家："
+		"de"			"Spieler zum Einladen auswählen:"
+		"ru"			"Выберите игрока для приглашения:"
+		"es"			"Seleccionar jugador para invitar:"
+		"pt"			"Selecionar jogador para convidar:"
+	}
+	"InviteAnyone"
+	{
+		"en"			"Invite Anyone"
+		"chi"			"邀请任何人"
+		"de"			"Jeden einladen"
+		"ru"			"Позвать любого"
+		"es"			"Invitar a cualquiera"
+		"pt"			"Convidar qualquer um"
+	}
+	"InviteAnyoneMessage"
+	{
+		"#format"		"{1:s},{2:s}"
+		"en"			"{green}[MGE]{default} {lightgreen}{1} {default}invites anyone to join arena {green}{2}{default}. Type {green}!acc{default} to join."
+		"chi"			"{green}[MGE]{default} {lightgreen}{1} {default}邀请任何人加入竞技场 {green}{2}{default}。输入 {green}!acc{default} 加入。"
+		"de"			"{green}[MGE]{default} {lightgreen}{1} {default}lädt jeden ein, der Arena {green}{2}{default} beizutreten. Tippe {green}!acc{default} um beizutreten."
+		"ru"			"{green}[MGE]{default} {lightgreen}{1} {default}зовёт любого игрока на арену {green}{2}{default}. Введите {green}!acc{default} чтобы присоединиться."
+		"es"			"{green}[MGE]{default} {lightgreen}{1} {default}invita a cualquiera a unirse a la arena {green}{2}{default}. Escribe {green}!acc{default} para unirte."
+		"pt"			"{green}[MGE]{default} {lightgreen}{1} {default}convida qualquer um a entrar na arena {green}{2}{default}. Digite {green}!acc{default} para entrar."
+	}
+	"NoPlayersAvailable"
+	{
+		"en"			"{green}[MGE]{default} No players available to invite."
+		"chi"			"{green}[MGE]{default} 没有可邀请的玩家。"
+		"de"			"{green}[MGE]{default} Keine Spieler zum Einladen verfügbar."
+		"ru"			"{green}[MGE]{default} Нет доступных игроков для приглашения."
+		"es"			"{green}[MGE]{default} No hay jugadores disponibles para invitar."
+		"pt"			"{green}[MGE]{default} Nenhum jogador disponível para convidar."
+	}
+	"QueueLabel"
+	{
+		"en"			"Queue (!q):"
+		"chi"			"队列 (!q)："
+		"de"			"Warteschlange (!q):"
+		"ru"			"Очередь (!q):"
+		"es"			"Cola (!q):"
+		"pt"			"Fila (!q):"
+	}
+	"QueueLabelArena"
+	{
+		"#format"		"{1:s}"
+		"en"			"Queue (!q) [{1}]"
+		"chi"			"{1} (!q) 竞技场队列"
+		"de"			"Warteschlange (!q) [{1}]"
+		"ru"			"Очередь (!q) [{1}]"
+		"es"			"Cola (!q) [{1}]"
+		"pt"			"Fila (!q) [{1}]"
+	}
+	"QueueKeyhintEnabled"
+	{
+		"en"			"{green}[MGE]{default} Queue display in keyhint: {green}enabled"
+		"chi"			"{green}[MGE]{default} Keyhint中的队列显示：{green}启用"
+		"de"			"{green}[MGE]{default} Warteschlangen-Anzeige in Keyhint: {green}aktiviert"
+		"ru"			"{green}[MGE]{default} Показ очереди в keyhint: {green}включен"
+		"es"			"{green}[MGE]{default} Mostrar cola en keyhint: {green}habilitado"
+		"pt"			"{green}[MGE]{default} Exibição de fila no keyhint: {green}ativada"
+	}
+	"QueueKeyhintDisabled"
+	{
+		"en"			"{green}[MGE]{default} Queue display in keyhint: {red}disabled"
+		"chi"			"{green}[MGE]{default} Keyhint中的队列显示：{red}禁用"
+		"de"			"{green}[MGE]{default} Warteschlangen-Anzeige in Keyhint: {red}deaktiviert"
+		"ru"			"{green}[MGE]{default} Показ очереди в keyhint: {red}выключен"
+		"es"			"{green}[MGE]{default} Mostrar cola en keyhint: {red}deshabilitado"
+		"pt"			"{green}[MGE]{default} Exibição de fila no keyhint: {red}desativada"
+	}
+	"AlreadyInWaitingList"
+	{
+		"#format"		"{1:s}"
+		"en"			"{green}[MGE]{default} You are already in the waiting list for arena {green}{1}{default}."
+		"chi"			"{green}[MGE]{default} 您已经在竞技场 {green}{1}{default} 的等待列表中。"
+		"de"			"{green}[MGE]{default} Du bist bereits in der Warteliste für Arena {green}{1}{default}."
+		"ru"			"{green}[MGE]{default} Вы уже находитесь в списке ожидания для арены {green}{1}{default}."
+		"es"			"{green}[MGE]{default} Ya estás en la lista de espera para la arena {green}{1}{default}."
+		"pt"			"{green}[MGE]{default} Você já está na lista de espera para a arena {green}{1}{default}."
+	}
+	"AlreadyInArena"
+	{
+		"en"			"{green}[MGE]{default} You are already in an arena. Use {green}!remove{default} first."
+		"chi"			"{green}[MGE]{default} 您已经在竞技场中。首先使用 {green}!remove{default}。"
+		"de"			"{green}[MGE]{default} Du bist bereits in einer Arena. Verwende zuerst {green}!remove{default}."
+		"ru"			"{green}[MGE]{default} Вы уже находитесь в арене. Используйте {green}!remove{default} сначала."
+		"es"			"{green}[MGE]{default} Ya estás en una arena. Usa {green}!remove{default} primero."
+		"pt"			"{green}[MGE]{default} Você já está em uma arena. Use {green}!remove{default} primeiro."
+	}
+	"AddedToWaitingList"
+	{
+		"en"			"{green}[MGE]{default} You will automatically join the arena when a spot becomes available or when a player leaves."
+		"chi"			"{green}[MGE]{default} 当有空位或玩家离开时，您将自动加入竞技场。"
+		"de"			"{green}[MGE]{default} Du wirst automatisch der Arena beitreten, wenn ein Platz frei wird oder ein Spieler geht."
+		"ru"			"{green}[MGE]{default} Вы автоматически зайдёте на арену при наличии свободного места или выходе игрока."
+		"es"			"{green}[MGE]{default} Te unirás automáticamente a la arena cuando haya un lugar disponible o cuando un jugador se vaya."
+		"pt"			"{green}[MGE]{default} Você entrará automaticamente na arena quando houver uma vaga disponível ou quando um jogador sair."
+	}
+	"RemovedFromWaitingList"
+	{
+		"en"			"{green}[MGE]{default} You have been removed from the waiting list."
+		"chi"			"{green}[MGE]{default} 您已从等待列表中移除。"
+		"de"			"{green}[MGE]{default} Du wurdest von der Warteliste entfernt."
+		"ru"			"{green}[MGE]{default} Вы удалены из списка ожидания."
+		"es"			"{green}[MGE]{default} Ha sido removido de la lista de espera."
+		"pt"			"{green}[MGE]{default} Você foi removido da lista de espera."
+	}
+	"AutoJoinedArena"
+	{
+		"#format"		"{1:s}"
+		"en"			"{green}[MGE]{default} You have automatically joined arena {green}{1}{default}!"
+		"chi"			"{green}[MGE]{default} 您已自动加入竞技场 {green}{1}{default}！"
+		"de"			"{green}[MGE]{default} Du bist automatisch Arena {green}{1}{default} beigetreten!"
+		"ru"			"{green}[MGE]{default} Вы автоматически зашли на арену {green}{1}{default}!"
+		"es"			"{green}[MGE]{default} ¡Te has unido automáticamente a la arena {green}{1}{default}!"
+		"pt"			"{green}[MGE]{default} Você entrou automaticamente na arena {green}{1}{default}!"
+	}
+	"SpectatingLabel"
+	{
+		"en"			"spectating"
+		"chi"			"旁观中"
+		"de"			"zuschauend"
+		"ru"			"наблюдает"
+		"es"			"especteando"
+		"pt"			"assistindo"
 	}
 }
