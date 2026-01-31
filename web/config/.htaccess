@@ -1,0 +1,5 @@
+# .htaccess file to deny access to configuration files
+<Files "*.php">
+    Order Deny,Allow
+    Deny from all
+</Files>
