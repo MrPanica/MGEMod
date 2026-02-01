@@ -235,9 +235,16 @@ void Start2v2ReadySystem(int arena_index)
     
     // Delay hint text by 1 second after arena selection
     CreateTimer(1.0, Timer_Show2v2InitialStatus, arena_index);
-    
+
+    // Kill existing hud refresh timer if any
+    if (g_t2v2HudTimer[arena_index] != null)
+    {
+        KillTimer(g_t2v2HudTimer[arena_index]);
+        g_t2v2HudTimer[arena_index] = null;
+    }
+
     // Start hud text refresh timer
-    CreateTimer(5.0, Timer_Refresh2v2Hud, arena_index, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+    g_t2v2HudTimer[arena_index] = CreateTimer(5.0, Timer_Refresh2v2Hud, arena_index, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
 }
 
 // Displays the ready confirmation menu to players in 2v2 arenas
@@ -319,7 +326,10 @@ void Update2v2ReadyStatus(int arena_index)
     if (total_players == 4)
     {
         Show2v2ReadyHud(arena_index, ready_count);
-        
+
+        // Show console output to all players in arena
+        Show2v2ReadyConsole(arena_index);
+
         if (ready_count == 4)
         {
             // All players ready, start the match
@@ -329,43 +339,171 @@ void Update2v2ReadyStatus(int arena_index)
     }
 }
 
+// Function to show ready status to console for all players in arena
+void Show2v2ReadyConsole(int arena_index)
+{
+    // Count ready players per team
+    int red_ready = 0, red_total = 0;
+    int blu_ready = 0, blu_total = 0;
+
+    for (int j = SLOT_ONE; j <= SLOT_FOUR; j++)
+    {
+        int player = g_iArenaQueue[arena_index][j];
+        if (player && IsValidClient(player))
+        {
+            if (j == SLOT_ONE || j == SLOT_THREE) // RED team (slots 1 and 3)
+            {
+                red_total++;
+                if (g_bPlayer2v2Ready[player])
+                    red_ready++;
+            }
+            else // BLU team (slots 2 and 4)
+            {
+                blu_total++;
+                if (g_bPlayer2v2Ready[player])
+                    blu_ready++;
+            }
+        }
+    }
+
+    // Get player status text using the new function
+    char red_players_list[256];
+    char blu_players_list[256];
+    GetPlayerStatusText(arena_index, red_players_list, sizeof(red_players_list), blu_players_list, sizeof(blu_players_list));
+
+    // Format team sections with headers
+    char red_team_section[512];
+    char blu_team_section[512];
+    char red_header[128], blu_header[128];
+    Format(red_header, sizeof(red_header), "%T: ", "Ready2v2RedTeam", 0); // Using space instead of \n
+    Format(blu_header, sizeof(blu_header), "%T: ", "Ready2v2BluTeam", 0); // Using space instead of \n
+
+    Format(red_team_section, sizeof(red_team_section), "%s%s", red_header, red_players_list);
+    Format(blu_team_section, sizeof(blu_team_section), "%s%s", blu_header, blu_players_list);
+
+    // Format the team brackets
+    char teams_bracket[256];
+    Format(teams_bracket, sizeof(teams_bracket), "%T [%d/%d] | %T [%d/%d]",
+           "Ready2v2RedTeamShort", 0, red_ready, red_total,
+           "Ready2v2BluTeamShort", 0, blu_ready, blu_total);
+
+    // Send console output to all players in the arena
+    for (int j = SLOT_ONE; j <= SLOT_FOUR; j++)
+    {
+        int player = g_iArenaQueue[arena_index][j];
+        if (player && IsValidClient(player))
+        {
+            // Create the full console text to check for duplicates
+            char fullConsoleText[1024];
+            Format(fullConsoleText, sizeof(fullConsoleText), "\n=== 2v2 Ready Status ===\n%T (%s)\n%s\n%s\n========================\n",
+                   "Ready2v2HudTitle", player, teams_bracket, red_team_section, blu_team_section);
+
+            // Check if this is a duplicate message before sending
+            if (!IsDuplicateText(player, fullConsoleText, true))
+            {
+                PrintToConsole(player, "\n=== 2v2 Ready Status ===");
+                PrintToConsole(player, "%T (%s)", "Ready2v2HudTitle", player, teams_bracket);
+                PrintToConsole(player, "%s", red_team_section);
+                PrintToConsole(player, "%s", blu_team_section);
+                PrintToConsole(player, "========================\n");
+            }
+        }
+    }
+}
+
 
 // ===== HUD DISPLAY SYSTEM =====
 
 // Shows personalized ready status HUD text to each player in the arena
-void Show2v2ReadyHud(int arena_index, int ready_count)
+void Show2v2ReadyHud(int arena_index, int ready_count_unused)
 {
+    // Count ready players per team once for all clients
+    int red_ready = 0, red_total = 0;
+    int blu_ready = 0, blu_total = 0;
+
+    // Count players per team
+    for (int j = SLOT_ONE; j <= SLOT_FOUR; j++)
+    {
+        int player = g_iArenaQueue[arena_index][j];
+        if (player && IsValidClient(player))
+        {
+            if (j == SLOT_ONE || j == SLOT_THREE) // RED team (slots 1 and 3)
+            {
+                red_total++;
+                if (g_bPlayer2v2Ready[player])
+                    red_ready++;
+            }
+            else // BLU team (slots 2 and 4)
+            {
+                blu_total++;
+                if (g_bPlayer2v2Ready[player])
+                    blu_ready++;
+            }
+        }
+    }
+
     // Show personalized HUD text to each player
     for (int i = SLOT_ONE; i <= SLOT_FOUR; i++)
     {
         int client = g_iArenaQueue[arena_index][i];
         if (client && IsValidClient(client))
         {
-            char hudtext[256];
-            char status_indicator[64];
-            
-            // Set personal ready status indicator
-            if (g_bPlayer2v2Ready[client])
+            char hudtext[1024]; // Increased size to accommodate all players and teams
+            char red_players_list[64]; // Increased size for the list
+            char blu_players_list[64]; // Increased size for the list
+
+            // Initialize player lists
+            red_players_list[0] = '\0';
+            blu_players_list[0] = '\0';
+
+            // Get player status text using the new function
+            GetPlayerStatusText(arena_index, red_players_list, sizeof(red_players_list), blu_players_list, sizeof(blu_players_list));
+
+            // Format team sections with headers
+            char red_team_section[128];
+            char blu_team_section[128];
+            char red_header[128], blu_header[128];
+            Format(red_header, sizeof(red_header), "%T: ", "Ready2v2RedTeam", client);  // Space instead of \n
+            Format(blu_header, sizeof(blu_header), "%T: ", "Ready2v2BluTeam", client);  // Space instead of \n
+
+            Format(red_team_section, sizeof(red_team_section), "%s\n%s", red_header, red_players_list);
+            Format(blu_team_section, sizeof(blu_team_section), "%s\n%s", blu_header, blu_players_list);
+
+            // Format the main HUD text with team brackets
+            char teams_bracket[256];
+            Format(teams_bracket, sizeof(teams_bracket), "%T [%d/%d] | %T [%d/%d]",
+                   "Ready2v2RedTeamShort", client, red_ready, red_total,
+                   "Ready2v2BluTeamShort", client, blu_ready, blu_total);
+
+            // Final HUD text, includes team brackets and player lists
+            Format(hudtext, sizeof(hudtext), "%T (%s)\n%s\n%s",
+                   "Ready2v2HudTitle", client, // Title "2v2 Ready Up"
+                   teams_bracket, // Teams bracket "RED [0/2] | BLU [0/2]"
+                   red_team_section, // RED team section
+                   blu_team_section); // BLU team section
+
+            // Check if this is a duplicate message before sending
+            if (!IsDuplicateText(client, hudtext, false))
             {
-                Format(status_indicator, sizeof(status_indicator), "%T", "Ready2v2StatusReady", client);
+                // Send the HUD text to the player
+                PrintHintText(client, "%s", hudtext);
+                StopSound(client, SNDCHAN_STATIC, "UI/hint.wav");
             }
-            else
-            {
-                Format(status_indicator, sizeof(status_indicator), "%T", "Ready2v2StatusNotReady", client);
-            }
-            
-            // Format personalized hud text
-            Format(hudtext, sizeof(hudtext), "%T", "Ready2v2HudText", client, ready_count, status_indicator);
-            
-            PrintHintText(client, "%s", hudtext);
-            StopSound(client, SNDCHAN_STATIC, "UI/hint.wav");
         }
     }
 }
 
+
 // Clears ready status HUD text from all players in the arena
 void Clear2v2ReadyHud(int arena_index)
 {
+    // Kill the hud refresh timer
+    if (g_t2v2HudTimer[arena_index] != null)
+    {
+        KillTimer(g_t2v2HudTimer[arena_index]);
+        g_t2v2HudTimer[arena_index] = null;
+    }
+
     // Clear HUD text for all players in arena
     for (int i = SLOT_ONE; i <= SLOT_FOUR; i++)
     {
@@ -778,7 +916,7 @@ Action Timer_Refresh2v2Hud(Handle timer, any arena_index)
     {
         int ready_count = 0;
         int valid_players = 0;
-        
+
         for (int i = SLOT_ONE; i <= SLOT_FOUR; i++)
         {
             int client = g_iArenaQueue[arena_index][i];
@@ -789,7 +927,7 @@ Action Timer_Refresh2v2Hud(Handle timer, any arena_index)
                     ready_count++;
             }
         }
-        
+
         if (valid_players == 4)
         {
             Show2v2ReadyHud(arena_index, ready_count);
@@ -797,15 +935,17 @@ Action Timer_Refresh2v2Hud(Handle timer, any arena_index)
         else
         {
             // Not enough valid players, stop the timer
+            g_t2v2HudTimer[arena_index] = null;
             return Plugin_Stop;
         }
     }
     else
     {
         // Arena is no longer in ready state, stop the timer
+        g_t2v2HudTimer[arena_index] = null;
         return Plugin_Stop;
     }
-    
+
     return Plugin_Continue;
 }
 
@@ -882,4 +1022,88 @@ Action Timer_ResetSwap(Handle timer, int client)
     g_bCanPlayerSwap[client] = true;
 
     return Plugin_Continue;
+}
+
+// Global variables to store last sent messages for duplicate checking
+char g_sLastReadyHUDText[MAXPLAYERS+1][1024];
+char g_sLastReadyConsoleText[MAXPLAYERS+1][1024];
+
+// Function to get player names and status text for 2v2 arena
+void GetPlayerStatusText(int arena_index, char[] red_players_text, int red_text_size, char[] blu_players_text, int blu_text_size)
+{
+    // Build player lists for each team
+    char temp_red_list[256] = "";
+    char temp_blu_list[256] = "";
+
+    for (int j = SLOT_ONE; j <= SLOT_FOUR; j++)
+    {
+        int player = g_iArenaQueue[arena_index][j];
+        if (player && IsValidClient(player))
+        {
+            char player_name[MAX_NAME_LENGTH];
+            GetClientName(player, player_name, sizeof(player_name));
+
+            char status_symbol[10];
+            if (g_bPlayer2v2Ready[player])
+            {
+                strcopy(status_symbol, sizeof(status_symbol), "[✓]"); // Checkmark in brackets for ready
+            }
+            else
+            {
+                strcopy(status_symbol, sizeof(status_symbol), "[✘]"); // Cross in brackets for not ready
+            }
+
+            char player_status_line[128];
+            Format(player_status_line, sizeof(player_status_line), "%s - %s", player_name, status_symbol);
+
+            if (j == SLOT_ONE || j == SLOT_THREE) // RED team
+            {
+                if (temp_red_list[0] != '\0') // Add newline if not first player
+                {
+                    Format(temp_red_list, sizeof(temp_red_list), "%s\n%s", temp_red_list, player_status_line);
+                }
+                else
+                {
+                    strcopy(temp_red_list, sizeof(temp_red_list), player_status_line);
+                }
+            }
+            else // BLU team
+            {
+                if (temp_blu_list[0] != '\0') // Add newline if not first player
+                {
+                    Format(temp_blu_list, sizeof(temp_blu_list), "%s\n%s", temp_blu_list, player_status_line);
+                }
+                else
+                {
+                    strcopy(temp_blu_list, sizeof(temp_blu_list), player_status_line);
+                }
+            }
+        }
+    }
+
+    // Copy the results to output parameters
+    strcopy(red_players_text, red_text_size, temp_red_list);
+    strcopy(blu_players_text, blu_text_size, temp_blu_list);
+}
+
+// Function to check if the text is a duplicate
+bool IsDuplicateText(int client, const char[] newText, bool isConsole = false)
+{
+    if (!IsValidClient(client))
+        return true;
+
+    char lastText[1024];
+    if (isConsole)
+    {
+        strcopy(lastText, sizeof(lastText), g_sLastReadyConsoleText[client]);
+        strcopy(g_sLastReadyConsoleText[client], sizeof(g_sLastReadyConsoleText), newText);
+    }
+    else
+    {
+        strcopy(lastText, sizeof(lastText), g_sLastReadyHUDText[client]);
+        strcopy(g_sLastReadyHUDText[client], sizeof(g_sLastReadyHUDText), newText);
+    }
+
+    // Compare the new text with the last sent text
+    return (StrEqual(newText, lastText));
 }

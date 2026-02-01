@@ -421,6 +421,48 @@
 		"es"			"[MGE] elo - Activar/desactivar el ELO."
 		"pt"			"[MGE] elo - Ativar/desativar o ELO."
 	}
+	"AdminForceRemovedPlayer"
+	{
+		"#format"		"{1:s},{2:s}"
+		"en"			"{green}[MGE]{default} {lightgreen}{1}{default} force removed {lightgreen}{2}{default} from arena"
+		"ru"			"{green}[MGE]{default} {lightgreen}{1}{default} принудительно удалил {lightgreen}{2}{default} с арены"
+	}
+	"AdminForceAddedPlayer"
+	{
+		"#format"		"{1:s},{2:s},{3:s}"
+		"en"			"{green}[MGE]{default} {lightgreen}{1}{default} force added {lightgreen}{2}{default} to arena {green}{3}"
+		"ru"			"{green}[MGE]{default} {lightgreen}{1}{default} принудительно добавил {lightgreen}{2}{default} на арену {green}{3}"
+	}
+	"Ready2v2HudTitle"
+	{
+		"en"			"2v2 Ready Up"
+		"ru"			"Подготовка к 2v2"
+	}
+	"Ready2v2HudSubtitle"
+	{
+		"en"			"Players Ready"
+		"ru"			"Игроков готово"
+	}
+	"Ready2v2RedTeam"
+	{
+		"en"			"Red"
+		"ru"			"Красные"
+	}
+	"Ready2v2BluTeam"
+	{
+		"en"			"Blue"
+		"ru"			"Синие"
+	}
+	"Ready2v2RedTeamShort"
+	{
+		"en"			"Red"
+		"ru"			"Крс"
+	}
+	"Ready2v2BluTeamShort"
+	{
+		"en"			"Blu"
+		"ru"			"Син"
+	}
 	"Cmd_Handicap"
 	{
 		"en"			"[MGE] handicap - Reduce your maximum HP. Type '!handicap off' to disable."
@@ -951,21 +993,21 @@
 	}
 	"Ready2v2StatusReady"
 	{
-		"en"			"✓ You are READY"
-		"chi"			"✓ 您已准备就绪"
-		"de"			"✓ Du bist BEREIT"
-		"ru"			"✓ Вы ГОТОВЫ"
-		"es"			"✓ Estás LISTO"
-		"pt"			"✓ Você está LISTO"
+		"en"			"ready"
+		"chi"			"已准备"
+		"de"			"bereit"
+		"ru"			"готов"
+		"es"			"listo"
+		"pt"			"pronto"
 	}
 	"Ready2v2StatusNotReady"
 	{
-		"en"			"✘ You are NOT READY"
-		"chi"			"✘ 您尚未准备就绪"
-		"de"			"✘ Du bist NICHT BEREIT"
-		"ru"			"✘ Вы НЕ ГОТОВЫ"
-		"es"			"✘ NO estás listo"
-		"pt"			"✘ Você NÃO está LISTO"
+		"en"			"not ready"
+		"chi"			"未准备"
+		"de"			"nicht bereit"
+		"ru"			"не готов"
+		"es"			"no listo"
+		"pt"			"não pronto"
 	}
 	"Ready2v2HudText"
 	{

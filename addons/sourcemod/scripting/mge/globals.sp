@@ -88,6 +88,7 @@ bool g_tfctClassAllowed[10];
 
 // Arena Vars
 Handle g_tKothTimer         [MAXARENAS + 1];
+Handle g_t2v2HudTimer       [MAXARENAS + 1];
 char
     g_sArenaName            [MAXARENAS + 1][64],
     // From chillymge

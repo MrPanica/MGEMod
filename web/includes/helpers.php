@@ -78,14 +78,14 @@ function getPlayerEloChange($duel, $isWinner) {
  */
 function validateSortParams($orderBy, $orderDir) {
     // Validate order by field to prevent SQL injection
-    $allowedFields = ['rating', 'wins', 'losses', 'winrate'];
+    $allowedFields = ['rating', 'wins', 'losses', 'winrate', 'last_duel'];
     if (!in_array($orderBy, $allowedFields)) {
         $orderBy = 'rating';
     }
 
     // Validate order direction
     $orderDir = strtoupper($orderDir) === 'ASC' ? 'ASC' : 'DESC';
-    
+
     return [$orderBy, $orderDir];
 }
 

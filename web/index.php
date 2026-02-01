@@ -28,6 +28,10 @@ CREATE INDEX idx_player_playtime_steamid_server ON player_playtime(steamid, serv
 
 require_once 'includes/helpers.php';
 
+// Initialize query counter and timer
+$queryCount = 0;
+$startTime = microtime(true);
+
 // Database configuration for MGE tables
 $config = include __DIR__ . '/config/secure_config_statstf2.php';
 $dbHost = $config['db']['host'];
@@ -40,6 +44,87 @@ if ($db->connect_error) {
     die("Connection failed: " . $db->connect_error);
 }
 $db->set_charset('utf8mb4');
+
+// Function to execute a prepared statement and increment query counter
+function executeQuery($db, $sql, $params = [], $types = '') {
+    global $queryCount;
+    $queryCount++;
+
+    $stmt = $db->prepare($sql);
+    if (!$stmt) {
+        return false;
+    }
+
+    if (!empty($params) && !empty($types)) {
+        $stmt->bind_param($types, ...$params);
+    }
+
+    $result = $stmt->execute();
+    if (!$result) {
+        $stmt->close();
+        return false;
+    }
+
+    $result = $stmt->get_result();
+    $data = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+    $stmt->close();
+
+    return $data;
+}
+
+// Function to execute a prepared statement and get single result
+function executeQuerySingle($db, $sql, $params = [], $types = '') {
+    global $queryCount;
+    $queryCount++;
+
+    $stmt = $db->prepare($sql);
+    if (!$stmt) {
+        return false;
+    }
+
+    if (!empty($params) && !empty($types)) {
+        $stmt->bind_param($types, ...$params);
+    }
+
+    $result = $stmt->execute();
+    if (!$result) {
+        $stmt->close();
+        return false;
+    }
+
+    $result = $stmt->get_result();
+    $data = $result ? $result->fetch_assoc() : false;
+    $stmt->close();
+
+    return $data;
+}
+
+// Function to execute a count query
+function executeCountQuery($db, $sql, $params = [], $types = '') {
+    global $queryCount;
+    $queryCount++;
+
+    $stmt = $db->prepare($sql);
+    if (!$stmt) {
+        return 0;
+    }
+
+    if (!empty($params) && !empty($types)) {
+        $stmt->bind_param($types, ...$params);
+    }
+
+    $result = $stmt->execute();
+    if (!$result) {
+        $stmt->close();
+        return 0;
+    }
+
+    $result = $stmt->get_result();
+    $row = $result ? $result->fetch_assoc() : false;
+    $stmt->close();
+
+    return $row ? (int)$row['total'] : 0;
+}
 
 // CSRF protection
 if (!isset($_SESSION['csrf_token'])) {
@@ -103,17 +188,34 @@ function getSteamUserInfo($steamId64, $apiKey) {
 
 // MGE-specific functions
 function getMGERating($db, $steamId) {
-    $stmt = $db->prepare("SELECT rating FROM mgemod_stats WHERE steamid = ?");
-    $stmt->bind_param('s', $steamId);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $row = $result->fetch_assoc();
-    $stmt->close();
+    $row = executeQuerySingle($db, "SELECT rating FROM mgemod_stats WHERE steamid = ?", [$steamId], 's');
 
     return $row ? $row['rating'] : null;
 }
 
 function getMGEDuels($db, $steamId, $limit = 10) {
+    // Debug: Log the SQL query being used
+    error_log("DEBUG SQL: SELECT * FROM (
+        SELECT
+            '1v1' as type,
+            id, endtime, winner, loser, winnerclass, loserclass,
+            winnerscore, loserscore, mapname, arenaname,
+            winner_new_elo, winner_previous_elo, loser_new_elo, loser_previous_elo
+        FROM mgemod_duels
+        WHERE (winner = '$steamId' OR loser = '$steamId') AND winner IS NOT NULL AND loser IS NOT NULL
+        UNION ALL
+        SELECT
+            '2v2' as type,
+            id, endtime, winner, loser, winnerclass, loserclass,
+            winnerscore, loserscore, mapname, arenaname,
+            winner_new_elo, winner_previous_elo, loser_new_elo, loser_previous_elo
+        FROM mgemod_duels_2v2
+        WHERE (winner = '$steamId' OR (winner2 IS NOT NULL AND winner2 = '$steamId') OR loser = '$steamId' OR (loser2 IS NOT NULL AND loser2 = '$steamId'))
+          AND winner IS NOT NULL AND loser IS NOT NULL
+    ) AS combined
+    ORDER BY endtime DESC
+    LIMIT $limit");
+
     $stmt = $db->prepare("
         SELECT * FROM (
             SELECT
@@ -122,7 +224,7 @@ function getMGEDuels($db, $steamId, $limit = 10) {
                 winnerscore, loserscore, mapname, arenaname,
                 winner_new_elo, winner_previous_elo, loser_new_elo, loser_previous_elo
             FROM mgemod_duels
-            WHERE winner = ? OR loser = ?
+            WHERE (winner = ? OR loser = ?) AND winner IS NOT NULL AND loser IS NOT NULL
             UNION ALL
             SELECT
                 '2v2' as type,
@@ -130,28 +232,43 @@ function getMGEDuels($db, $steamId, $limit = 10) {
                 winnerscore, loserscore, mapname, arenaname,
                 winner_new_elo, winner_previous_elo, loser_new_elo, loser_previous_elo
             FROM mgemod_duels_2v2
-            WHERE winner = ? OR winner2 = ? OR loser = ? OR loser2 = ?
+            WHERE (winner = ? OR (winner2 IS NOT NULL AND winner2 = ?) OR loser = ? OR (loser2 IS NOT NULL AND loser2 = ?))
+              AND winner IS NOT NULL AND loser IS NOT NULL
         ) AS combined
         ORDER BY endtime DESC
         LIMIT ?
     ");
 
-    $stmt->bind_param('ssssssi', $steamId, $steamId, $steamId, $steamId, $steamId, $steamId, $limit);
+    $stmt->bind_param('ssssssii', $steamId, $steamId, $steamId, $steamId, $steamId, $steamId, $limit);
     $stmt->execute();
     $result = $stmt->get_result();
     $duels = $result->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
 
-    return $duels;
+    // Debug: Log the raw results
+    error_log("DEBUG: Raw duels count for $steamId: " . count($duels));
+    foreach ($duels as $index => $duel) {
+        error_log("DEBUG: Duel $index - Type: {$duel['type']}, ID: {$duel['id']}, Winner: {$duel['winner']}, Loser: {$duel['loser']}");
+        if ($duel['type'] === '2v2') {
+            error_log("DEBUG: 2v2 Duel $index - Winner2: {$duel['winner2']}, Loser2: {$duel['loser2']}");
+        }
+    }
+
+    // Process duels to determine if the current player is the winner
+    $processedDuels = processDuelWinners($duels, $steamId);
+
+    // Debug: Log the processed results
+    error_log("DEBUG: Processed duels count for $steamId: " . count($processedDuels));
+    foreach ($processedDuels as $index => $duel) {
+        error_log("DEBUG: Processed Duel $index - Type: {$duel['type']}, ID: {$duel['id']}, Is Winner: " . ($duel['is_winner'] ? 'YES' : 'NO'));
+    }
+
+    return $processedDuels;
 }
 
+
 function getMGEStats($db, $steamId) {
-    $stmt = $db->prepare("SELECT wins, losses FROM mgemod_stats WHERE steamid = ?");
-    $stmt->bind_param('s', $steamId);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $row = $result->fetch_assoc();
-    $stmt->close();
+    $row = executeQuerySingle($db, "SELECT wins, losses FROM mgemod_stats WHERE steamid = ?", [$steamId], 's');
 
     $wins = $row['wins'] ?? 0;
     $losses = $row['losses'] ?? 0;
@@ -182,18 +299,13 @@ function getTopPlayers($db, $limit = 10, $orderBy = 'rating', $orderDir = 'DESC'
     // Validate order direction
     $orderDir = strtoupper($orderDir) === 'ASC' ? 'ASC' : 'DESC';
 
-    $stmt = $db->prepare("
+    $players = executeQuery($db, "
         SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name
         FROM mgemod_stats ms
         WHERE ms.rating IS NOT NULL
         ORDER BY ms.{$orderBy} {$orderDir}
         LIMIT ?
-    ");
-    $stmt->bind_param('i', $limit);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $players = $result->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
+    ", [$limit], 'i');
 
     $cache[$cacheKey] = $players;
     return $players;
@@ -226,22 +338,7 @@ function getRecentDuels($db, $limit = 10, $offset = 0) {
         LIMIT ? OFFSET ?
     ";
 
-    $stmt = $db->prepare($sql);
-    if (!$stmt) {
-        error_log("Prepare failed for getRecentDuels: " . $db->error);
-        return [];
-    }
-
-    $stmt->bind_param('ii', $limit, $offset);
-    if (!$stmt->execute()) {
-        error_log("Execute failed for getRecentDuels: " . $stmt->error);
-        $stmt->close();
-        return [];
-    }
-
-    $result = $stmt->get_result();
-    $duels = $result->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
+    $duels = executeQuery($db, $sql, [$limit, $offset], 'ii');
 
     return $duels;
 }
@@ -261,14 +358,8 @@ function getTotalDuelsCount($db) {
             (SELECT COUNT(*) FROM mgemod_duels_2v2) as total_count
     ";
 
-    $result = $db->query($sql);
-    if (!$result) {
-        error_log("Query failed for getTotalDuelsCount: " . $db->error);
-        return 0;
-    }
-
-    $row = $result->fetch_assoc();
-    $totalCount = $row['total_count'];
+    $row = executeQuerySingle($db, $sql);
+    $totalCount = $row ? $row['total_count'] : 0;
     $cache['total_duels_count'] = $totalCount;
 
     return $totalCount;
@@ -277,32 +368,16 @@ function getTotalDuelsCount($db) {
 // Function to get duel details by ID
 function getDuelDetails($db, $duelId, $type) {
     $table = $type === '1v1' ? 'mgemod_duels' : 'mgemod_duels_2v2';
-    $stmt = $db->prepare("
+    $duel = executeQuerySingle($db, "
         SELECT * FROM {$table} WHERE id = ?
-    ");
-
-    if (!$stmt) {
-        error_log("Prepare failed for getDuelDetails: " . $db->error);
-        return null;
-    }
-
-    $stmt->bind_param('i', $duelId);
-    if (!$stmt->execute()) {
-        error_log("Execute failed for getDuelDetails: " . $stmt->error);
-        $stmt->close();
-        return null;
-    }
-
-    $result = $stmt->get_result();
-    $duel = $result->fetch_assoc();
-    $stmt->close();
+    ", [$duelId], 'i');
 
     return $duel;
 }
 
 // Function to get player nemesis (most duels with)
 function getPlayerNemesis($db, $steamId) {
-    $stmt = $db->prepare("
+    $row = executeQuerySingle($db, "
         SELECT
             CASE
                 WHEN winner = ? THEN loser
@@ -314,23 +389,7 @@ function getPlayerNemesis($db, $steamId) {
         GROUP BY opponent
         ORDER BY duels_count DESC
         LIMIT 1
-    ");
-
-    if (!$stmt) {
-        error_log("Prepare failed for getPlayerNemesis: " . $db->error);
-        return null;
-    }
-
-    $stmt->bind_param('ssss', $steamId, $steamId, $steamId, $steamId);
-    if (!$stmt->execute()) {
-        error_log("Execute failed for getPlayerNemesis: " . $stmt->error);
-        $stmt->close();
-        return null;
-    }
-
-    $result = $stmt->get_result();
-    $row = $result->fetch_assoc();
-    $stmt->close();
+    ", [$steamId, $steamId, $steamId, $steamId], 'ssss');
 
     if ($row) {
         $opponentId = $row['opponent'];
@@ -347,7 +406,29 @@ function getPlayerNemesis($db, $steamId) {
 
 // Function to get MGE duels for a specific player with pagination
 function getMGEDuelsPaginated($db, $steamId, $limit = 10, $offset = 0) {
-    $stmt = $db->prepare("
+    // Debug: Log the SQL query being used
+    error_log("DEBUG SQL: SELECT * FROM (
+        SELECT
+            '1v1' as type,
+            id, endtime, winner, loser, winnerclass, loserclass,
+            winnerscore, loserscore, mapname, arenaname,
+            winner_new_elo, winner_previous_elo, loser_new_elo, loser_previous_elo
+        FROM mgemod_duels
+        WHERE (winner = '$steamId' OR loser = '$steamId') AND winner IS NOT NULL AND loser IS NOT NULL
+        UNION ALL
+        SELECT
+            '2v2' as type,
+            id, endtime, winner, loser, winnerclass, loserclass,
+            winnerscore, loserscore, mapname, arenaname,
+            winner_new_elo, winner_previous_elo, loser_new_elo, loser_previous_elo
+        FROM mgemod_duels_2v2
+        WHERE (winner = '$steamId' OR (winner2 IS NOT NULL AND winner2 = '$steamId') OR loser = '$steamId' OR (loser2 IS NOT NULL AND loser2 = '$steamId'))
+          AND winner IS NOT NULL AND loser IS NOT NULL
+    ) AS combined
+    ORDER BY endtime DESC
+    LIMIT $limit OFFSET $offset");
+
+    $duels = executeQuery($db, "
         SELECT * FROM (
             SELECT
                 '1v1' as type,
@@ -355,7 +436,7 @@ function getMGEDuelsPaginated($db, $steamId, $limit = 10, $offset = 0) {
                 winnerscore, loserscore, mapname, arenaname,
                 winner_new_elo, winner_previous_elo, loser_new_elo, loser_previous_elo
             FROM mgemod_duels
-            WHERE winner = ? OR loser = ?
+            WHERE (winner = ? OR loser = ?) AND winner IS NOT NULL AND loser IS NOT NULL
             UNION ALL
             SELECT
                 '2v2' as type,
@@ -363,24 +444,37 @@ function getMGEDuelsPaginated($db, $steamId, $limit = 10, $offset = 0) {
                 winnerscore, loserscore, mapname, arenaname,
                 winner_new_elo, winner_previous_elo, loser_new_elo, loser_previous_elo
             FROM mgemod_duels_2v2
-            WHERE winner = ? OR winner2 = ? OR loser = ? OR loser2 = ?
+            WHERE (winner = ? OR (winner2 IS NOT NULL AND winner2 = ?) OR loser = ? OR (loser2 IS NOT NULL AND loser2 = ?))
+              AND winner IS NOT NULL AND loser IS NOT NULL
         ) AS combined
         ORDER BY endtime DESC
         LIMIT ? OFFSET ?
-    ");
+    ", [$steamId, $steamId, $steamId, $steamId, $steamId, $steamId, $limit, $offset], 'ssssssii');
 
-    $stmt->bind_param('sssssiii', $steamId, $steamId, $steamId, $steamId, $steamId, $steamId, $limit, $offset);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $duels = $result->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
+    // Debug: Log the raw results
+    error_log("DEBUG: Raw duels count for $steamId: " . count($duels));
+    foreach ($duels as $index => $duel) {
+        error_log("DEBUG: Duel $index - Type: {$duel['type']}, ID: {$duel['id']}, Winner: {$duel['winner']}, Loser: {$duel['loser']}");
+        if ($duel['type'] === '2v2') {
+            error_log("DEBUG: 2v2 Duel $index - Winner2: {$duel['winner2']}, Loser2: {$duel['loser2']}");
+        }
+    }
 
-    return $duels;
+    // Process duels to determine if the current player is the winner
+    $processedDuels = processDuelWinners($duels, $steamId);
+
+    // Debug: Log the processed results
+    error_log("DEBUG: Processed duels count for $steamId: " . count($processedDuels));
+    foreach ($processedDuels as $index => $duel) {
+        error_log("DEBUG: Processed Duel $index - Type: {$duel['type']}, ID: {$duel['id']}, Is Winner: " . ($duel['is_winner'] ? 'YES' : 'NO'));
+    }
+
+    return $processedDuels;
 }
 
 // Function to get total count of MGE duels for a specific player
 function getMGEDuelsCount($db, $steamId) {
-    $stmt = $db->prepare("
+    $row = executeQuerySingle($db, "
         SELECT SUM(duel_count) as total FROM (
             SELECT COUNT(*) as duel_count
             FROM mgemod_duels
@@ -390,15 +484,37 @@ function getMGEDuelsCount($db, $steamId) {
             FROM mgemod_duels_2v2
             WHERE winner = ? OR winner2 = ? OR loser = ? OR loser2 = ?
         ) AS counts
-    ");
-
-    $stmt->bind_param('ssssss', $steamId, $steamId, $steamId, $steamId, $steamId, $steamId);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $row = $result->fetch_assoc();
-    $stmt->close();
+    ", [$steamId, $steamId, $steamId, $steamId, $steamId, $steamId], 'ssssss');
 
     return $row ? $row['total'] : 0;
+}
+
+// Function to get the most recent duel for a player
+function getLastDuelForPlayer($db, $steamId) {
+    $duel = executeQuerySingle($db, "
+        SELECT * FROM (
+            SELECT
+                '1v1' as type,
+                id, endtime, winner, loser, winnerclass, loserclass,
+                winnerscore, loserscore, mapname, arenaname,
+                winner_new_elo, winner_previous_elo, loser_new_elo, loser_previous_elo
+            FROM mgemod_duels
+            WHERE (winner = ? OR loser = ?) AND winner IS NOT NULL AND loser IS NOT NULL
+            UNION ALL
+            SELECT
+                '2v2' as type,
+                id, endtime, winner, loser, winnerclass, loserclass,
+                winnerscore, loserscore, mapname, arenaname,
+                winner_new_elo, winner_previous_elo, loser_new_elo, loser_previous_elo
+            FROM mgemod_duels_2v2
+            WHERE (winner = ? OR (winner2 IS NOT NULL AND winner2 = ?) OR loser = ? OR (loser2 IS NOT NULL AND loser2 = ?))
+              AND winner IS NOT NULL AND loser IS NOT NULL
+        ) AS combined
+        ORDER BY endtime DESC
+        LIMIT 1
+    ", [$steamId, $steamId, $steamId, $steamId, $steamId, $steamId], 'ssssss');
+
+    return $duel;
 }
 
 // Function to get rating history for the last month
@@ -406,48 +522,117 @@ function getRatingHistory($db, $steamId, $days = 30) {
     $endDate = time();
     $startDate = $endDate - ($days * 24 * 60 * 60);
 
-    // Optimized query to get rating history with better performance
-    $sql = "
-        SELECT
-            UNIX_TIMESTAMP(DATE(FROM_UNIXTIME(endtime))) as date_ts,
-            CASE
-                WHEN winner = ? THEN winner_new_elo
-                WHEN loser = ? THEN loser_new_elo
-                WHEN winner2 = ? THEN winner_new_elo
-                WHEN loser2 = ? THEN loser_new_elo
-            END as rating
-        FROM (
-            SELECT endtime, winner, loser, winner2, loser2, winner_new_elo, loser_new_elo
-            FROM mgemod_duels
-            WHERE (winner = ? OR loser = ?) AND endtime >= ?
-            UNION ALL
-            SELECT endtime, winner, loser, winner2, loser2, winner_new_elo, loser_new_elo
-            FROM mgemod_duels_2v2
-            WHERE (winner = ? OR winner2 = ? OR loser = ? OR loser2 = ?) AND endtime >= ?
-        ) AS combined
-        WHERE rating IS NOT NULL
-        GROUP BY DATE(FROM_UNIXTIME(endtime))
-        ORDER BY date_ts
-    ";
+    $history = [];
 
-    $stmt = $db->prepare($sql);
-    if (!$stmt) {
-        error_log("Prepare failed for getRatingHistory: " . $db->error);
-        return [];
+    // Query 1v1 duels where player won
+    $sql1 = "SELECT endtime, winner_new_elo as rating FROM mgemod_duels WHERE winner = ? AND winner_new_elo IS NOT NULL AND endtime >= ?";
+    $results1 = executeQuery($db, $sql1, [$steamId, $startDate], 'si');
+    $count1 = 0;
+    foreach ($results1 as $row) {
+        if ($row['rating'] !== null) {  // Only add if rating is not null
+            $row['date_ts'] = strtotime(date('Y-m-d', $row['endtime']));
+            $history[] = $row;
+            $count1++;
+        }
+    }
+    // Debug: uncomment next line to see results
+    error_log("1v1 wins query for $steamId: $count1 records");
+
+    // Query 1v1 duels where player lost
+    $sql2 = "SELECT endtime, loser_new_elo as rating FROM mgemod_duels WHERE loser = ? AND loser_new_elo IS NOT NULL AND endtime >= ?";
+    $results2 = executeQuery($db, $sql2, [$steamId, $startDate], 'si');
+    $count2 = 0;
+    foreach ($results2 as $row) {
+        if ($row['rating'] !== null) {  // Only add if rating is not null
+            $row['date_ts'] = strtotime(date('Y-m-d', $row['endtime']));
+            $history[] = $row;
+            $count2++;
+        }
+    }
+    // Debug: uncomment next line to see results
+    error_log("1v1 losses query for $steamId: $count2 records");
+
+    // Query 2v2 duels where player won as first winner
+    $sql3 = "SELECT endtime, winner_new_elo as rating FROM mgemod_duels_2v2 WHERE winner = ? AND winner_new_elo IS NOT NULL AND endtime >= ?";
+    $results3 = executeQuery($db, $sql3, [$steamId, $startDate], 'si');
+    $count3 = 0;
+    foreach ($results3 as $row) {
+        if ($row['rating'] !== null) {  // Only add if rating is not null
+            $row['date_ts'] = strtotime(date('Y-m-d', $row['endtime']));
+            $history[] = $row;
+            $count3++;
+        }
+    }
+    // Debug: uncomment next line to see results
+    error_log("2v2 wins query for $steamId: $count3 records");
+
+    // Query 2v2 duels where player won as second winner
+    $sql4 = "SELECT endtime, winner2_new_elo as rating FROM mgemod_duels_2v2 WHERE winner2 = ? AND winner2_new_elo IS NOT NULL AND endtime >= ?";
+    $results4 = executeQuery($db, $sql4, [$steamId, $startDate], 'si');
+    $count4 = 0;
+    foreach ($results4 as $row) {
+        if ($row['rating'] !== null) {  // Only add if rating is not null
+            $row['date_ts'] = strtotime(date('Y-m-d', $row['endtime']));
+            $history[] = $row;
+            $count4++;
+        }
+    }
+    // Debug: uncomment next line to see results
+    error_log("2v2 wins2 query for $steamId: $count4 records");
+
+    // Query 2v2 duels where player lost as first loser
+    $sql5 = "SELECT endtime, loser_new_elo as rating FROM mgemod_duels_2v2 WHERE loser = ? AND loser_new_elo IS NOT NULL AND endtime >= ?";
+    $results5 = executeQuery($db, $sql5, [$steamId, $startDate], 'si');
+    $count5 = 0;
+    foreach ($results5 as $row) {
+        if ($row['rating'] !== null) {  // Only add if rating is not null
+            $row['date_ts'] = strtotime(date('Y-m-d', $row['endtime']));
+            $history[] = $row;
+            $count5++;
+        }
+    }
+    // Debug: uncomment next line to see results
+    error_log("2v2 losses query for $steamId: $count5 records");
+
+    // Query 2v2 duels where player lost as second loser
+    $sql6 = "SELECT endtime, loser2_new_elo as rating FROM mgemod_duels_2v2 WHERE loser2 = ? AND loser2_new_elo IS NOT NULL AND endtime >= ?";
+    $results6 = executeQuery($db, $sql6, [$steamId, $startDate], 'si');
+    $count6 = 0;
+    foreach ($results6 as $row) {
+        if ($row['rating'] !== null) {  // Only add if rating is not null
+            $row['date_ts'] = strtotime(date('Y-m-d', $row['endtime']));
+            $history[] = $row;
+            $count6++;
+        }
+    }
+    // Debug: uncomment next line to see results
+    error_log("2v2 losses2 query for $steamId: $count6 records");
+
+    // Debug: log total records found
+    error_log("Total rating history records for $steamId: " . count($history));
+
+    // Sort by date
+    usort($history, function($a, $b) {
+        return $a['date_ts'] - $b['date_ts'];
+    });
+
+    // Group by date to get one rating per day
+    $grouped = [];
+    foreach ($history as $item) {
+        $dateKey = $item['date_ts'];
+        // Only keep the last rating for each day
+        if (!isset($grouped[$dateKey]) || $item['endtime'] > $grouped[$dateKey]['endtime']) {
+            $grouped[$dateKey] = $item;
+        }
     }
 
-    $stmt->bind_param('ssssiiisssii', $steamId, $steamId, $steamId, $steamId, $steamId, $steamId, $startDate, $steamId, $steamId, $steamId, $steamId, $startDate);
-    if (!$stmt->execute()) {
-        error_log("Execute failed for getRatingHistory: " . $stmt->error);
-        $stmt->close();
-        return [];
-    }
+    // Return sorted array
+    $result = array_values($grouped);
+    usort($result, function($a, $b) {
+        return $a['date_ts'] - $b['date_ts'];
+    });
 
-    $result = $stmt->get_result();
-    $history = $result->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
-
-    return $history;
+    return $result;
 }
 
 // Function to get total statistics
@@ -455,56 +640,20 @@ function getTotalStats($db) {
     $stats = [];
 
     // Total duels
-    $stmt = $db->prepare("SELECT COUNT(*) as total FROM mgemod_duels");
-    if ($stmt) {
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $row = $result->fetch_assoc();
-        $stats['total_duels'] = $row['total'] ?? 0;
-        $stmt->close();
-    } else {
-        error_log("Prepare failed for total duels query: " . $db->error);
-        $stats['total_duels'] = 0;
-    }
+    $row = executeQuerySingle($db, "SELECT COUNT(*) as total FROM mgemod_duels");
+    $stats['total_duels'] = $row ? ($row['total'] ?? 0) : 0;
 
     // Total 2v2 duels
-    $stmt = $db->prepare("SELECT COUNT(*) as total FROM mgemod_duels_2v2");
-    if ($stmt) {
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $row = $result->fetch_assoc();
-        $stats['total_duels_2v2'] = $row['total'] ?? 0;
-        $stmt->close();
-    } else {
-        error_log("Prepare failed for total 2v2 duels query: " . $db->error);
-        $stats['total_duels_2v2'] = 0;
-    }
+    $row = executeQuerySingle($db, "SELECT COUNT(*) as total FROM mgemod_duels_2v2");
+    $stats['total_duels_2v2'] = $row ? ($row['total'] ?? 0) : 0;
 
     // Total players
-    $stmt = $db->prepare("SELECT COUNT(*) as total FROM mgemod_stats");
-    if ($stmt) {
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $row = $result->fetch_assoc();
-        $stats['total_players'] = $row['total'] ?? 0;
-        $stmt->close();
-    } else {
-        error_log("Prepare failed for total players query: " . $db->error);
-        $stats['total_players'] = 0;
-    }
+    $row = executeQuerySingle($db, "SELECT COUNT(*) as total FROM mgemod_stats");
+    $stats['total_players'] = $row ? ($row['total'] ?? 0) : 0;
 
     // Highest rating
-    $stmt = $db->prepare("SELECT MAX(rating) as max_rating FROM mgemod_stats");
-    if ($stmt) {
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $row = $result->fetch_assoc();
-        $stats['highest_rating'] = $row['max_rating'] ?? 0;
-        $stmt->close();
-    } else {
-        error_log("Prepare failed for highest rating query: " . $db->error);
-        $stats['highest_rating'] = 0;
-    }
+    $row = executeQuerySingle($db, "SELECT MAX(rating) as max_rating FROM mgemod_stats");
+    $stats['highest_rating'] = $row ? ($row['max_rating'] ?? 0) : 0;
 
     return $stats;
 }
@@ -579,8 +728,8 @@ if (isset($_GET['ajax'])) {
 
     if ($_GET['ajax'] === 'search_players') {
         $query = sanitizeInput($_GET['q'] ?? '');
-        $orderBy = $_GET['sort_by'] ?? 'rating';
-        $orderDir = $_GET['sort_dir'] ?? 'DESC';
+        $orderBy = trim(strtolower($_GET['sort_by'] ?? 'rating'));
+        $orderDir = trim(strtoupper($_GET['sort_dir'] ?? 'DESC'));
 
         // Validate sort parameters to prevent SQL injection
         list($orderBy, $orderDir) = validateSortParams($orderBy, $orderDir);
@@ -680,8 +829,8 @@ if (isset($_GET['ajax'])) {
 
     if ($_GET['ajax'] === 'get_players_page') {
         $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
-        $orderBy = $_GET['sort_by'] ?? 'rating';
-        $orderDir = $_GET['sort_dir'] ?? 'DESC';
+        $orderBy = trim(strtolower($_GET['sort_by'] ?? 'rating'));
+        $orderDir = trim(strtoupper($_GET['sort_dir'] ?? 'DESC'));
         $limit = 25;
         $offset = ($page - 1) * $limit;
 
@@ -689,20 +838,48 @@ if (isset($_GET['ajax'])) {
         list($orderBy, $orderDir) = validateSortParams($orderBy, $orderDir);
 
         // Get total count for pagination
-        $countStmt = $db->prepare("SELECT COUNT(*) as total FROM mgemod_stats ms WHERE ms.rating IS NOT NULL");
-        $countStmt->execute();
-        $countResult = $countStmt->get_result();
-        $totalCount = $countResult->fetch_assoc()['total'];
-        $countStmt->close();
+        $totalCount = executeCountQuery($db, "SELECT COUNT(*) as total FROM mgemod_stats ms WHERE ms.rating IS NOT NULL");
 
-        $stmt = $db->prepare("
-            SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name
-            FROM mgemod_stats ms
-            WHERE ms.rating IS NOT NULL
-            ORDER BY ms.{$orderBy} {$orderDir}
-            LIMIT ? OFFSET ?
-        ");
+        // Special handling for 'last_duel' sort
+        if ($orderBy === 'last_duel') {
+            // For last_duel sorting, we need to join with duel data
+            $stmt = $db->prepare("
+                SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name,
+                       GREATEST(
+                           COALESCE((SELECT MAX(endtime) FROM mgemod_duels WHERE winner = ms.steamid OR loser = ms.steamid), 0),
+                           COALESCE((SELECT MAX(endtime) FROM mgemod_duels_2v2 WHERE winner = ms.steamid OR winner2 = ms.steamid OR loser = ms.steamid OR loser2 = ms.steamid), 0)
+                       ) AS last_duel_time_val
+                FROM mgemod_stats ms
+                WHERE ms.rating IS NOT NULL
+                ORDER BY last_duel_time_val {$orderDir}
+                LIMIT ? OFFSET ?
+            ");
+        }
+        // Special handling for 'winrate' sort
+        else if ($orderBy === 'winrate') {
+            // For winrate sorting, we need to calculate winrate in the query
+            $stmt = $db->prepare("
+                SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name,
+                       CASE
+                           WHEN (ms.wins + ms.losses) > 0 THEN ROUND((ms.wins / (ms.wins + ms.losses)) * 100, 2)
+                           ELSE 0
+                       END as winrate_calc
+                FROM mgemod_stats ms
+                WHERE ms.rating IS NOT NULL
+                ORDER BY winrate_calc {$orderDir}
+                LIMIT ? OFFSET ?
+            ");
+        } else {
+            $stmt = $db->prepare("
+                SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name
+                FROM mgemod_stats ms
+                WHERE ms.rating IS NOT NULL
+                ORDER BY ms.{$orderBy} {$orderDir}
+                LIMIT ? OFFSET ?
+            ");
+        }
 
+        $players = [];
         if ($stmt) {
             $stmt->bind_param('ii', $limit, $offset);
             $stmt->execute();
@@ -714,20 +891,34 @@ if (isset($_GET['ajax'])) {
 
             foreach ($players as &$player) {
                 $player['nick'] = $player['name'] ?: $player['steamid'];
-                $winrate = ($player['wins'] + $player['losses']) > 0 ?
-                    round(($player['wins'] / ($player['wins'] + $player['losses'])) * 100, 2) : 0;
-                $player['winrate'] = $winrate;
-            }
 
-            echo json_encode([
-                'players' => $players,
-                'current_page' => $page,
-                'total_pages' => $totalPages,
-                'total_players' => $totalCount
-            ]);
-        } else {
-            echo json_encode(['players' => [], 'current_page' => 1, 'total_pages' => 1, 'total_players' => 0]);
+                // If we're sorting by winrate, use the calculated value from the query
+                if ($orderBy === 'winrate' && isset($player['winrate_calc'])) {
+                    $player['winrate'] = $player['winrate_calc'];
+                } else {
+                    // Otherwise calculate winrate as before
+                    $winrate = ($player['wins'] + $player['losses']) > 0 ?
+                        round(($player['wins'] / ($player['wins'] + $player['losses'])) * 100, 2) : 0;
+                    $player['winrate'] = $winrate;
+                }
+
+                // Get the most recent duel for this player
+                $lastDuel = getLastDuelForPlayer($db, $player['steamid']);
+                $player['last_duel_time'] = $lastDuel ? date('d.m.Y H:i', $lastDuel['endtime']) : 'Нет данных';
+
+                // Add last duel time value for sorting if needed
+                if ($orderBy === 'last_duel') {
+                    $player['last_duel_time_val'] = $lastDuel ? $lastDuel['endtime'] : 0;
+                }
+            }
         }
+
+        echo json_encode([
+            'players' => $players,
+            'current_page' => $page,
+            'total_pages' => $totalPages,
+            'total_players' => $totalCount
+        ]);
         exit;
     }
 
@@ -740,6 +931,12 @@ if (isset($_GET['ajax'])) {
         $duels = getMGEDuelsPaginated($db, $steamId, $limit, $offset);
         $totalDuels = getMGEDuelsCount($db, $steamId);
         $totalPages = ceil($totalDuels / $limit);
+
+        // Debug: Log the duels before adding nicknames
+        error_log("DEBUG AJAX: Before adding nicknames, duels count: " . count($duels));
+        foreach ($duels as $index => $duel) {
+            error_log("DEBUG AJAX: Pre-nickname duel $index - Type: {$duel['type']}, ID: {$duel['id']}, Winner: {$duel['winner']}, Loser: {$duel['loser']}, Is Winner: " . ($duel['is_winner'] ? 'YES' : 'NO'));
+        }
 
         foreach ($duels as &$duel) {
             $winnerNick = getPlayerNickname($db, $duel['winner']);
@@ -755,8 +952,11 @@ if (isset($_GET['ajax'])) {
             }
         }
 
-        // Process duels to determine if the current player is the winner
-        $duels = processDuelWinners($duels, $steamId);
+        // Debug: Log the duels after adding nicknames (this is what gets sent to browser)
+        error_log("DEBUG AJAX: After adding nicknames, duels count: " . count($duels));
+        foreach ($duels as $index => $duel) {
+            error_log("DEBUG AJAX: Final duel $index - Type: {$duel['type']}, ID: {$duel['id']}, Winner: {$duel['winner_nick']}, Loser: {$duel['loser_nick']}, Is Winner: " . ($duel['is_winner'] ? 'YES' : 'NO'));
+        }
 
         echo json_encode([
             'duels' => $duels,
@@ -1352,8 +1552,8 @@ $viewDuel = isset($_GET['duel']) ? (int)$_GET['duel'] : null;
 $duelType = isset($_GET['type']) ? $_GET['type'] : '1v1';
 
 // Get sorting parameters
-$orderBy = $_GET['sort_by'] ?? 'rating';
-$orderDir = $_GET['sort_dir'] ?? 'DESC';
+$orderBy = trim(strtolower($_GET['sort_by'] ?? 'rating'));
+$orderDir = trim(strtoupper($_GET['sort_dir'] ?? 'DESC'));
 
 // Validate sort parameters to prevent SQL injection
 list($orderBy, $orderDir) = validateSortParams($orderBy, $orderDir);
@@ -1586,13 +1786,44 @@ $limit = 25; // Using 25 players per page
 $offset = ($page - 1) * $limit;
 
 // Get top players with pagination
-$stmt = $db->prepare("
-    SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name
-    FROM mgemod_stats ms
-    WHERE ms.rating IS NOT NULL
-    ORDER BY ms.{$orderBy} {$orderDir}
-    LIMIT ? OFFSET ?
-");
+// Special handling for 'last_duel' sort
+if ($orderBy === 'last_duel') {
+    // For last_duel sorting, we need to join with duel data
+    $stmt = $db->prepare("
+        SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name,
+               GREATEST(
+                   COALESCE((SELECT MAX(endtime) FROM mgemod_duels WHERE winner = ms.steamid OR loser = ms.steamid), 0),
+                   COALESCE((SELECT MAX(endtime) FROM mgemod_duels_2v2 WHERE winner = ms.steamid OR winner2 = ms.steamid OR loser = ms.steamid OR loser2 = ms.steamid), 0)
+               ) AS last_duel_time_val
+        FROM mgemod_stats ms
+        WHERE ms.rating IS NOT NULL
+        ORDER BY last_duel_time_val {$orderDir}
+        LIMIT ? OFFSET ?
+    ");
+}
+// Special handling for 'winrate' sort
+else if ($orderBy === 'winrate') {
+    // For winrate sorting, we need to calculate winrate in the query
+    $stmt = $db->prepare("
+        SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name,
+               CASE
+                   WHEN (ms.wins + ms.losses) > 0 THEN ROUND((ms.wins / (ms.wins + ms.losses)) * 100, 2)
+                   ELSE 0
+               END as winrate_calc
+        FROM mgemod_stats ms
+        WHERE ms.rating IS NOT NULL
+        ORDER BY winrate_calc {$orderDir}
+        LIMIT ? OFFSET ?
+    ");
+} else {
+    $stmt = $db->prepare("
+        SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name
+        FROM mgemod_stats ms
+        WHERE ms.rating IS NOT NULL
+        ORDER BY ms.{$orderBy} {$orderDir}
+        LIMIT ? OFFSET ?
+    ");
+}
 
 if ($stmt) {
     $stmt->bind_param('ii', $limit, $offset);
@@ -1603,20 +1834,23 @@ if ($stmt) {
 
     foreach ($topPlayers as &$player) {
         $player['nick'] = $player['name'] ?: $player['steamid'];
-        $winrate = ($player['wins'] + $player['losses']) > 0 ?
-            round(($player['wins'] / ($player['wins'] + $player['losses'])) * 100, 2) : 0;
-        $player['winrate'] = $winrate;
+
+        // If we're sorting by winrate, use the calculated value from the query
+        if ($orderBy === 'winrate' && isset($player['winrate_calc'])) {
+            $player['winrate'] = $player['winrate_calc'];
+        } else {
+            // Otherwise calculate winrate as before
+            $winrate = ($player['wins'] + $player['losses']) > 0 ?
+                round(($player['wins'] / ($player['wins'] + $player['losses'])) * 100, 2) : 0;
+            $player['winrate'] = $winrate;
+        }
     }
 } else {
     $topPlayers = [];
 }
 
 // Get total count for players pagination
-$countStmt = $db->prepare("SELECT COUNT(*) as total FROM mgemod_stats ms WHERE ms.rating IS NOT NULL");
-$countStmt->execute();
-$countResult = $countStmt->get_result();
-$totalPlayers = $countResult->fetch_assoc()['total'];
-$countStmt->close();
+$totalPlayers = executeCountQuery($db, "SELECT COUNT(*) as total FROM mgemod_stats ms WHERE ms.rating IS NOT NULL");
 $totalPagesPlayers = ceil($totalPlayers / $limit);
 
 $totalStats = getTotalStats($db);
@@ -1646,6 +1880,11 @@ if ($viewProfile) {
 
     $profileNemesis = getPlayerNemesis($db, $viewProfile);
     $profileRatingHistory = getRatingHistory($db, $viewProfile);
+    if (isset($_GET['debug']) && $_GET['debug'] === 'true') {
+        echo "<!-- Raw rating history data: ";
+        var_dump($profileRatingHistory);
+        echo " -->";
+    }
 
     // Get player nickname
     $profileNickname = getPlayerNickname($db, $viewProfile);
@@ -1678,6 +1917,12 @@ if ($viewProfile) {
         'matchup_ratings' => getMatchupRatings($db, $viewProfile),
         'matchup_stats' => getMatchupStats($db, $viewProfile)
     ];
+
+    if (isset($_GET['debug']) && $_GET['debug'] === 'true') {
+        echo "<!-- Profile data rating_history: ";
+        var_dump($profileData['rating_history']);
+        echo " -->";
+    }
 }
 
 // Get duel data if viewing a specific duel
@@ -1710,6 +1955,8 @@ if ($viewDuel) {
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="css/profile.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@latest/dist/chartjs-plugin-zoom.min.js"></script>
     <script src="js/profile.js" defer></script>
 </head>
 <body>
@@ -1944,16 +2191,42 @@ if ($viewDuel) {
                 </div>
             <?php endif; ?>
 
-            <?php if (!empty($profileData['rating_history'])): ?>
-                <div class="rating-chart-container">
-                    <h3><i class="fas fa-chart-line"></i> Изменение рейтинга за месяц</h3>
-                    <div class="chart-wrapper">
-                        <canvas id="ratingChart"></canvas>
-                    </div>
-                </div>
+            <?php
+            // Debug output to see what rating history data we have
+            if (isset($_GET['debug']) && $_GET['debug'] === 'true') {
+                echo "<!-- Rating history data: ";
+                var_dump($profileData['rating_history']);
+                echo " -->";
+            }
+            ?>
+            <!-- DEBUG: Checking rating history -->
+            <?php
+            $hasRatingHistory = !empty($profileData['rating_history']);
+            if (isset($_GET['debug']) && $_GET['debug'] === 'true'):
+            ?>
+                <p style="color: cyan; margin-top: 20px;">DEBUG: Has rating history: <?php echo $hasRatingHistory ? 'YES' : 'NO'; ?></p>
+                <p style="color: cyan; margin-top: 20px;">DEBUG: Rating history count: <?php echo count($profileData['rating_history'] ?? []); ?></p>
             <?php endif; ?>
 
-            <div class="card">
+            <?php if ($hasRatingHistory): ?>
+                <div style="margin-top: 20px;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2 class="card-title"><i class="fas fa-chart-line"></i> Изменение рейтинга за месяц</h2>
+                        </div>
+                        <div class="chart-container" style="height: 345px; padding: 16px;">
+                            <canvas id="ratingChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            <?php else: ?>
+                <!-- Rating history is empty, showing message for debugging -->
+                <?php if (isset($_GET['debug']) && $_GET['debug'] === 'true'): ?>
+                    <p style="color: orange; margin-top: 20px;">DEBUG: No rating history data available for this player</p>
+                <?php endif; ?>
+            <?php endif; ?>
+
+            <div class="card" style="margin-top: 20px;">
                 <div class="card-header">
                     <h2 class="card-title"><i class="fas fa-fist-raised"></i> Последние дуэли</h2>
                 </div>
@@ -1975,11 +2248,35 @@ if ($viewDuel) {
                             </thead>
                             <tbody>
                                 <?php foreach ($profileData['duels'] as $duel):
-                                    $isWinner = ($duel['winner'] === $profileData['steamid']);
-                                    $eloChange = $isWinner ?
-                                        ($duel['winner_new_elo'] - $duel['winner_previous_elo']) :
-                                        ($duel['loser_new_elo'] - $duel['loser_previous_elo']);
+                                    $isWinner = $duel['is_winner'] ?? false;
+
+                                    // Calculate ELO change based on whether the player won or lost
+                                    if ($duel['type'] === '1v1') {
+                                        if ($duel['winner'] === $profileData['steamid']) {
+                                            $eloChange = ($duel['winner_new_elo'] ?? 0) - ($duel['winner_previous_elo'] ?? 0);
+                                        } else {
+                                            $eloChange = ($duel['loser_new_elo'] ?? 0) - ($duel['loser_previous_elo'] ?? 0);
+                                        }
+                                    } else { // 2v2
+                                        if ($duel['winner'] === $profileData['steamid'] || $duel['winner2'] === $profileData['steamid']) {
+                                            $eloChange = ($duel['winner_new_elo'] ?? 0) - ($duel['winner_previous_elo'] ?? 0);
+                                        } else {
+                                            $eloChange = ($duel['loser_new_elo'] ?? 0) - ($duel['loser_previous_elo'] ?? 0);
+                                        }
+                                    }
+
+                                    // Debug: Output the duel data to HTML for inspection
+                                    if (isset($_GET['debug']) && $_GET['debug'] === 'true') {
+                                        echo "<!-- DEBUG DUEL DATA: ID={$duel['id']}, Type={$duel['type']}, Winner={$duel['winner']}, Winner2={$duel['winner2']}, Loser={$duel['loser']}, Loser2={$duel['loser2']}, ProfileID={$profileData['steamid']}, IsWinner=" . ($isWinner ? 'YES' : 'NO') . " -->";
+                                    }
                                 ?>
+                                    <?php if (isset($_GET['debug']) && $_GET['debug'] === 'true'): ?>
+                                    <tr>
+                                        <td colspan="8" style="background-color: #333; color: #0f0; font-family: monospace; font-size: 12px; padding: 5px;">
+                                            DEBUG: ID=<?= $duel['id'] ?>, Type=<?= $duel['type'] ?>, Winner=<?= $duel['winner'] ?>, Winner2=<?= $duel['winner2'] ?? 'NULL' ?>, Loser=<?= $duel['loser'] ?>, Loser2=<?= $duel['loser2'] ?? 'NULL' ?>, ProfileID=<?= $profileData['steamid'] ?>, IsWinner=<?= $isWinner ? 'YES' : 'NO' ?>
+                                        </td>
+                                    </tr>
+                                    <?php endif; ?>
                                     <tr>
                                         <td>
                                             <a href="?duel=<?= $duel['id'] ?>&type=<?= $duel['type'] ?>&profile=<?= urlencode($viewProfile) ?>" class="duel-id-link">
@@ -2050,7 +2347,7 @@ if ($viewDuel) {
                 }
             }
             ?>
-            <div class="card">
+            <div class="card" style="margin-top: 20px;">
                 <div class="card-header">
                     <h2 class="card-title"><i class="fas fa-chess-board"></i> Сетка матчапов</h2>
                 </div>
@@ -2192,7 +2489,7 @@ if ($viewDuel) {
                 $selectedYear = $_GET['year'];
             }
             ?>
-            <div class="card">
+            <div class="card" style="margin-top: 20px;">
                 <div class="card-header">
                     <h2 class="card-title"><i class="fas fa-fire"></i> Активность</h2>
                 </div>
@@ -2516,12 +2813,24 @@ if ($viewDuel) {
                                                             <?php endif; ?>
                                                         </a>
                                                     </th>
+                                                    <th>
+    <!-- DEBUG: orderBy=<?=$orderBy?>, orderDir=<?=$orderDir?> -->
+    <a href="?sort_by=last_duel&sort_dir=<?= $orderBy === 'last_duel' && $orderDir === 'DESC' ? 'ASC' : 'DESC' ?><?php if (isset($_GET['page'])) echo '&page=' . $_GET['page']; ?><?php if (isset($_GET['search'])) echo '&search=' . urlencode($_GET['search']); ?>" style="color: inherit; text-decoration: none;">
+        Последняя дуэль
+        <?php if ($orderBy === 'last_duel'): ?>
+            <i class="fas fa-sort-<?= $orderDir === 'ASC' ? 'up' : 'down' ?>"></i>
+        <?php endif; ?>
+    </a>
+</th>
                                                 </tr>
                                             </thead>
                                             <tbody id="players-tbody">
                                                 <?php foreach ($topPlayers as $index => $player):
                                                     $winrate = ($player['wins'] + $player['losses']) > 0 ?
                                                         round(($player['wins'] / ($player['wins'] + $player['losses'])) * 100, 2) : 0;
+
+                                                    // Get the most recent duel for this player
+                                                    $lastDuel = getLastDuelForPlayer($db, $player['steamid']);
                                                 ?>
                                                     <tr class="rank-<?= $index + 1 ?>">
                                                         <td>
@@ -2536,6 +2845,13 @@ if ($viewDuel) {
                                                         <td><?= $player['wins'] ?></td>
                                                         <td><?= $player['losses'] ?></td>
                                                         <td><?= $winrate ?>%</td>
+                                                        <td>
+                                                            <?php if ($lastDuel): ?>
+                                                                <?= date('d.m.Y H:i', $lastDuel['endtime']) ?>
+                                                            <?php else: ?>
+                                                                Нет данных
+                                                            <?php endif; ?>
+                                                        </td>
                                                     </tr>
                                                 <?php endforeach; ?>
                                             </tbody>
@@ -2660,63 +2976,289 @@ if ($viewDuel) {
     <script src="js/script.js"></script>
     <script>
         // Initialize rating chart if on profile page
+        console.log('Profile view:', <?php echo json_encode($viewProfile ?? false); ?>);
+        console.log('Rating history exists:', <?php echo json_encode(!empty($profileData['rating_history']) ? true : false); ?>);
+        console.log('Both conditions:', <?php echo json_encode(($viewProfile && !empty($profileData['rating_history'])) ? true : false); ?>);
         <?php if ($viewProfile && !empty($profileData['rating_history'])): ?>
-        const ratingCtx = document.getElementById('ratingChart').getContext('2d');
-        const ratingData = {
-            labels: [
-                <?php
-                $labels = [];
-                $datasets = [];
-                foreach ($profileData['rating_history'] as $entry) {
-                    $labels[] = date('d.m', $entry['date_ts']);
-                    $datasets[] = $entry['rating'];
-                }
-                echo '"' . implode('", "', $labels) . '"';
-                ?>
-            ],
-            datasets: [{
-                label: 'Рейтинг',
-                data: [<?php echo implode(', ', $datasets); ?>],
-                borderColor: 'rgb(74, 222, 128)',
-                backgroundColor: 'rgba(74, 222, 128, 0.1)',
-                tension: 0.4,
-                fill: true
-            }]
-        };
+        // Declare variables in outer scope to ensure they're accessible in callbacks
+        let labels = [];
+        let ratings = [];
+        let dateLabels = [];
+        let datasets = [];
 
-        const ratingChart = new Chart(ratingCtx, {
+        try {
+            console.log('Initializing rating chart...');
+            const ratingCtx = document.getElementById('ratingChart');
+            console.log('Canvas element found:', !!ratingCtx);
+            if (!ratingCtx) {
+                console.error('Rating chart canvas element not found');
+            }
+            ctx = ratingCtx.getContext('2d');
+            console.log('Canvas context obtained:', !!ctx);
+
+            // Configure Chart defaults to match stats.php appearance
+            Chart.defaults.color = '#cfd5e0';
+            Chart.defaults.font.family = "'Inter', 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif";
+            Chart.defaults.font.size = 12;
+            Chart.defaults.plugins.legend.labels.color = '#cfd5e0';
+            Chart.defaults.plugins.legend.labels.usePointStyle = true;
+            Chart.defaults.plugins.legend.labels.boxWidth = 8;
+            Chart.defaults.plugins.legend.labels.boxHeight = 8;
+            Chart.defaults.plugins.title.color = '#e3e7ef';
+            Chart.defaults.plugins.tooltip.backgroundColor = '#2f3440';
+            Chart.defaults.plugins.tooltip.titleColor = '#f5f7fb';
+            Chart.defaults.plugins.tooltip.bodyColor = '#d6dbe6';
+            Chart.defaults.plugins.tooltip.borderColor = 'rgba(255, 255, 255, 0.08)';
+            Chart.defaults.plugins.tooltip.borderWidth = 1;
+            Chart.defaults.plugins.tooltip.padding = 10;
+            Chart.defaults.plugins.tooltip.cornerRadius = 6;
+            Chart.defaults.scale.grid.color = 'rgba(255, 255, 255, 0.08)';
+            Chart.defaults.scale.grid.tickColor = 'rgba(255, 255, 255, 0.08)';
+            Chart.defaults.scale.ticks.color = '#bfc6d4';
+            Chart.defaults.elements.line.borderWidth = 2;
+            Chart.defaults.elements.line.tension = 0.35;
+            Chart.defaults.elements.point.radius = 2;
+            Chart.defaults.elements.point.hoverRadius = 4;
+
+            // Prepare data for segmented chart (similar to stats.php)
+            const ratingHistory = <?php echo json_encode($profileData['rating_history'] ?? []); ?>;
+            console.log('Rating history data:', ratingHistory); // Debug log
+            console.log('Rating history length:', ratingHistory.length);
+
+            if (!ratingHistory || ratingHistory.length === 0) {
+                console.warn('No rating history data available');
+            }
+
+            // Clear and populate arrays (they were declared in outer scope)
+            labels = [];
+            ratings = [];
+            dateLabels = [];
+            let prevRating = null;
+            let currentSegment = { start: 0, color: 'rgba(76, 175, 80, 0.15)', borderColor: 'rgba(76, 175, 80, 1)' }; // начальный цвет - зеленый
+            const segments = [];
+
+            ratingHistory.forEach((point, index) => {
+                // point.date_ts is already a Unix timestamp from strtotime(), no need to multiply by 1000
+                const date = new Date(point.date_ts * 1000);
+                const dateString = date.toLocaleString('ru-RU', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+
+                // Create labels with dates and times for each point
+                labels.push(dateString);
+                dateLabels.push(dateString);
+                ratings.push(point.rating);
+
+                if (prevRating !== null) {
+                    let color, borderColor;
+                    if (point.rating > prevRating) {
+                        color = 'rgba(76, 175, 80, 0.15)'; // green
+                        borderColor = 'rgba(76, 175, 80, 1)';
+                    } else if (point.rating < prevRating) {
+                        color = 'rgba(244, 67, 54, 0.15)'; // red
+                        borderColor = 'rgba(244, 67, 54, 1)';
+                    } else {
+                        color = 'rgba(255, 193, 7, 0.15)'; // yellow
+                        borderColor = 'rgba(255, 193, 7, 1)';
+                    }
+
+                    if (color !== currentSegment.color) {
+                        // End previous segment
+                        currentSegment.end = index - 1;
+                        if (currentSegment.start <= currentSegment.end) {
+                            segments.push({...currentSegment});
+                        }
+
+                        // Start new segment
+                        currentSegment = { start: index, color: color, borderColor: borderColor };
+                    }
+                }
+                prevRating = point.rating;
+            });
+
+            // Add the last segment
+            if (currentSegment.start <= ratingHistory.length - 1) {
+                currentSegment.end = ratingHistory.length - 1;
+                segments.push(currentSegment);
+            }
+
+            // Create multiple datasets for each line segment with different colors based on rating changes (like in stats.php)
+            datasets = [];
+
+            // Create a dataset for each line segment between points
+            for (let i = 0; i < ratings.length - 1; i++) {
+                let color, borderColor, bgColor;
+                if (ratings[i+1] > ratings[i]) {
+                    color = 'rgba(76, 175, 80, 1)'; // green for increase
+                    borderColor = 'rgba(76, 175, 80, 1)';
+                    bgColor = 'rgba(76, 175, 80, 0.15)'; // light green for fill
+                } else if (ratings[i+1] < ratings[i]) {
+                    color = 'rgba(244, 67, 54, 1)'; // red for decrease
+                    borderColor = 'rgba(244, 67, 54, 1)';
+                    bgColor = 'rgba(244, 67, 54, 0.15)'; // light red for fill
+                } else {
+                    color = 'rgba(255, 193, 7, 1)'; // yellow for no change
+                    borderColor = 'rgba(255, 193, 7, 1)';
+                    bgColor = 'rgba(255, 193, 7, 0.15)'; // light yellow for fill
+                }
+
+                // Create data array with current and next point, with nulls for others
+                const segmentData = [];
+                for (let j = 0; j < ratings.length; j++) {
+                    if (j === i || j === i + 1) {
+                        segmentData.push(ratings[j]);
+                    } else {
+                        segmentData.push(null);
+                    }
+                }
+
+                datasets.push({
+                    data: segmentData,
+                    borderColor: borderColor,
+                    backgroundColor: bgColor,
+                    borderWidth: 2,
+                    fill: true,
+                    pointBackgroundColor: function(context) {
+                        // Color the points based on the rating change
+                        const index = context.dataIndex;
+                        if (index === i) {
+                            // Point color based on change from this to next
+                            if (ratings[i+1] > ratings[i]) return 'rgba(76, 175, 80, 1)'; // green
+                            else if (ratings[i+1] < ratings[i]) return 'rgba(244, 67, 54, 1)'; // red
+                            else return 'rgba(255, 193, 7, 1)'; // yellow
+                        } else if (index === i + 1) {
+                            // Point color based on change from previous to this
+                            if (ratings[i+1] > ratings[i]) return 'rgba(76, 175, 80, 1)'; // green
+                            else if (ratings[i+1] < ratings[i]) return 'rgba(244, 67, 54, 1)'; // red
+                            else return 'rgba(255, 193, 7, 1)'; // yellow
+                        }
+                        return 'rgba(76, 175, 80, 1)'; // default
+                    },
+                    pointBorderColor: borderColor,
+                    pointRadius: 3,
+                    tension: 0.35,
+                    spanGaps: false
+                });
+            }
+
+            // Add a dataset for isolated points (if any exist)
+            if (ratings.length === 1) {
+                datasets.push({
+                    data: ratings,
+                    borderColor: 'rgba(76, 175, 80, 1)',
+                    backgroundColor: 'rgba(76, 175, 80, 0.15)',
+                    borderWidth: 2,
+                    fill: true,
+                    pointBackgroundColor: 'rgba(76, 175, 80, 1)',
+                    pointBorderColor: 'rgba(76, 175, 80, 1)',
+                    pointRadius: 3,
+                    tension: 0.35,
+                    spanGaps: false
+                });
+            }
+
+        } catch (error) {
+            console.error('Error initializing rating chart:', error);
+        }
+
+        console.log('Creating chart with labels:', labels);
+        console.log('Creating chart with datasets:', datasets);
+        console.log('Labels length:', labels.length);
+        console.log('Datasets length:', datasets.length);
+        if (datasets.length > 0) {
+            console.log('First dataset length:', datasets[0].data.length);
+        }
+
+        // Проверим, есть ли элемент canvas в DOM
+        console.log('Canvas element exists in DOM:', document.getElementById('ratingChart') !== null);
+
+        const ratingChart = new Chart(ctx, {
             type: 'line',
-            data: ratingData,
+            data: {
+                labels: labels,
+                datasets: datasets
+            },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                interaction: { mode: 'nearest', intersect: false },
                 plugins: {
+                    title: {
+                        display: false  // Title is now in the card header
+                    },
                     legend: {
-                        display: false
+                        display: false  // Hide legend
+                    },
+                    tooltip: {
+                        mode: 'nearest',
+                        intersect: false,
+                        callbacks: {
+                            title: function(context) {
+                                // Show date from dateLabels
+                                return dateLabels[context[0].dataIndex];
+                            },
+                            label: function(context) {
+                                const dataIndex = context.dataIndex;
+                                const rating = context.parsed.y;
+                                let change = '';
+                                if (dataIndex > 0) {
+                                    const prevRating = ratings[dataIndex - 1];
+                                    const diff = rating - prevRating;
+                                    change = diff > 0 ? ` (+${diff})` : diff < 0 ? ` (${diff})` : ' (±0)';
+                                }
+                                return `Рейтинг: ${rating}${change}`;
+                            }
+                        }
+                    },
+                    zoom: {
+                        zoom: {
+                            wheel: { enabled: false },
+                            mode: 'x'
+                        },
+                        pan: {
+                            enabled: true,
+                            mode: 'x'
+                        }
                     }
                 },
                 scales: {
                     y: {
                         beginAtZero: false,
+                        title: { display: true, text: 'Рейтинг' },
                         grid: {
-                            color: 'rgba(255, 255, 255, 0.1)'
-                        },
-                        ticks: {
-                            color: '#888'
+                            color: function(context) {
+                                if (context.tick.value === 0) return 'rgba(255, 255, 255, 0.1)';
+                                return 'rgba(255, 255, 255, 0.05)';
+                            }
                         }
                     },
                     x: {
+                        title: { display: true, text: 'Дата' },
                         grid: {
-                            color: 'rgba(255, 255, 255, 0.1)'
+                            color: 'rgba(255, 255, 255, 0.05)'
                         },
                         ticks: {
-                            color: '#888'
+                            maxRotation: 0,
+                            minRotation: 0,
+                            callback: function(value, index, values) {
+                                const currentLabel = labels[index];
+                                // Show every 5th date or first/last date to avoid overcrowding
+                                if (index === 0 || index === labels.length - 1 || index % 5 === 0) {
+                                    return currentLabel;
+                                }
+                                return '';
+                            }
                         }
                     }
                 }
             }
         });
-        <?php endif; ?>
+        console.log('Chart created successfully:', ratingChart);
+        <?php endif; ?> // Close rating chart initialization
 
         // Auto-refresh duels periodically if authenticated
         <?php if ($isAuthenticated): ?>
@@ -2732,6 +3274,28 @@ if ($viewDuel) {
             urlParams.set('year', year);
             window.location.search = urlParams.toString();
         }
+
+        // Helper function to escape HTML
+        function htmlspecialchars(text) {
+            if (typeof text !== 'string') {
+                text = String(text);
+            }
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // Removed AJAX pagination for sort links to allow normal navigation
+
     </script>
+
+    <!-- Loading statistics -->
+    <div style="margin-top: 20px; padding: 10px; font-size: 12px; color: #666; text-align: center; border-top: 1px solid #eee;">
+        <span>Загрузка: <?php echo round((microtime(true) - $startTime) * 1000, 2); ?> мс</span> |
+        <span>Запросов: <?php echo $queryCount; ?></span>
+    </div>
 </body>
 </html>

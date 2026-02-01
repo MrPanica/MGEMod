@@ -2737,3 +2737,104 @@ Action Command_ToggleQueue(int client, int args)
 
     return Plugin_Handled;
 }
+
+// Админская команда для принудительного удаления игрока из арены
+Action Command_ForceRemove(int client, int args)
+{
+    if (args < 1)
+    {
+        ReplyToCommand(client, "[MGE] Usage: sm_force_remove <player>");
+        return Plugin_Handled;
+    }
+
+    char arg[64];
+    GetCmdArg(1, arg, sizeof(arg));
+
+    int target = FindTarget(client, arg, false, false);
+    if (target == -1)
+    {
+        ReplyToCommand(client, "[MGE] Player not found");
+        return Plugin_Handled;
+    }
+
+    int target_arena = g_iPlayerArena[target];
+    if (target_arena == 0)
+    {
+        ReplyToCommand(client, "[MGE] Target player is not in an arena");
+        return Plugin_Handled;
+    }
+
+    char admin_name[MAX_NAME_LENGTH];
+    char target_name[MAX_NAME_LENGTH];
+    GetClientName(client, admin_name, sizeof(admin_name));
+    GetClientName(target, target_name, sizeof(target_name));
+
+    // Удалить игрока из очереди
+    RemoveFromQueue(target, true);
+
+    // Сообщить в чат
+    MC_PrintToChatAll("%t", "AdminForceRemovedPlayer", admin_name, target_name);
+
+    LogAction(client, target, "\"%L\" force removed \"%L\" from arena", client, target);
+
+    return Plugin_Handled;
+}
+
+// Админская команда для принудительного добавления игрока на арену администратора
+Action Command_ForceAdd(int client, int args)
+{
+    if (args < 1)
+    {
+        ReplyToCommand(client, "[MGE] Usage: sm_force_add <player>");
+        return Plugin_Handled;
+    }
+
+    char arg[64];
+    GetCmdArg(1, arg, sizeof(arg));
+
+    int target = FindTarget(client, arg, false, false);
+    if (target == -1)
+    {
+        ReplyToCommand(client, "[MGE] Player not found");
+        return Plugin_Handled;
+    }
+
+    int admin_arena = g_iPlayerArena[client];
+    if (admin_arena == 0)
+    {
+        ReplyToCommand(client, "[MGE] You are not in an arena");
+        return Plugin_Handled;
+    }
+
+    // Проверить, не находится ли уже целевой игрок в арене
+    if (g_iPlayerArena[target] != 0)
+    {
+        // Удалить игрока из текущей арены
+        RemoveFromQueue(target, true);
+    }
+
+    char admin_name[MAX_NAME_LENGTH];
+    char target_name[MAX_NAME_LENGTH];
+    GetClientName(client, admin_name, sizeof(admin_name));
+    GetClientName(target, target_name, sizeof(target_name));
+
+    int playerPrefTeam = 0;
+
+    // Если арена 2v2, выбрать случайную команду
+    if (g_bFourPersonArena[admin_arena])
+    {
+        // Выбрать случайную команду (1 - красная, 2 - синяя)
+        int randomTeam = GetRandomInt(1, 2);
+        playerPrefTeam = (randomTeam == 1) ? TEAM_RED : TEAM_BLU;
+    }
+
+    // Добавить игрока в арену администратора
+    AddInQueue(target, admin_arena, true, playerPrefTeam, false);
+
+    // Сообщить в чат
+    MC_PrintToChatAll("%t", "AdminForceAddedPlayer", admin_name, target_name, g_sArenaName[admin_arena]);
+
+    LogAction(client, target, "\"%L\" force added \"%L\" to their arena", client, target);
+
+    return Plugin_Handled;
+}
