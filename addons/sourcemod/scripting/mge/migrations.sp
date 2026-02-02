@@ -47,25 +47,53 @@ void RunMigration(const char[] migrationName)
     // NOTE: Migrations 001-004 are legacy migrations for SQLite/MySQL only
     // PostgreSQL gets modern schema immediately in CREATE TABLE statements
     // Future migrations (005+) should include PostgreSQL-specific queries using g_DatabaseType switch
-    
+
     if (StrEqual(migrationName, "001_add_class_columns"))
     {
-        g_migrationProgress.SetValue(migrationName, 6);
+        if (g_DatabaseType == DB_POSTGRESQL)
+        {
+            g_migrationProgress.SetValue(migrationName, 1); // Just mark as complete for PostgreSQL
+        }
+        else
+        {
+            g_migrationProgress.SetValue(migrationName, 6);
+        }
         Migration_001_AddClassColumns();
     }
     else if (StrEqual(migrationName, "002_duel_timing_columns"))
     {
-        g_migrationProgress.SetValue(migrationName, 6);
+        if (g_DatabaseType == DB_POSTGRESQL)
+        {
+            g_migrationProgress.SetValue(migrationName, 1); // Just mark as complete for PostgreSQL
+        }
+        else
+        {
+            g_migrationProgress.SetValue(migrationName, 6);
+        }
         Migration_002_DuelTimingColumns();
     }
     else if (StrEqual(migrationName, "003_add_primary_keys"))
     {
-        g_migrationProgress.SetValue(migrationName, 3);
+        if (g_DatabaseType == DB_POSTGRESQL)
+        {
+            g_migrationProgress.SetValue(migrationName, 1); // Just mark as complete for PostgreSQL
+        }
+        else
+        {
+            g_migrationProgress.SetValue(migrationName, 11); // Updated for SQLite, 4 for MySQL
+        }
         Migration_003_AddPrimaryKeys();
     }
     else if (StrEqual(migrationName, "004_add_elo_tracking"))
     {
-        g_migrationProgress.SetValue(migrationName, 12);
+        if (g_DatabaseType == DB_POSTGRESQL)
+        {
+            g_migrationProgress.SetValue(migrationName, 1); // Just mark as complete for PostgreSQL
+        }
+        else
+        {
+            g_migrationProgress.SetValue(migrationName, 12);
+        }
         Migration_004_AddEloTracking();
     }
     else if (StrEqual(migrationName, "005_add_cancel_fields"))
@@ -75,7 +103,14 @@ void RunMigration(const char[] migrationName)
     }
     else if (StrEqual(migrationName, "006_add_class_ratings"))
     {
-        g_migrationProgress.SetValue(migrationName, 9);
+        if (g_DatabaseType == DB_POSTGRESQL)
+        {
+            g_migrationProgress.SetValue(migrationName, 1); // Just mark as complete for PostgreSQL
+        }
+        else
+        {
+            g_migrationProgress.SetValue(migrationName, 9);
+        }
         Migration_006_AddClassRatings();
     }
 }
@@ -197,6 +232,12 @@ void GenericMigrationCallback(Database db, DBResultSet results, const char[] err
             LogMessage("[Migration %s] Step %d skipped (already applied): %s", migrationName, stepNumber, error);
             stepSkipped = true;
         }
+        else if (StrContains(error, "duplicate column name") != -1)
+        {
+            // Generic handling for duplicate column errors
+            LogMessage("[Migration %s] Step %d skipped (column already exists): %s", migrationName, stepNumber, error);
+            stepSkipped = true;
+        }
         else
         {
             LogError("[Migration %s] Step %d failed: %s", migrationName, stepNumber, error);
@@ -284,7 +325,12 @@ void Migration_001_AddClassColumns()
         }
         case DB_POSTGRESQL:
         {
-            LogMessage("[Migration 001] Skipping migration on PostgreSQL");
+            // PostgreSQL gets modern schema immediately in CREATE TABLE statements
+            // But we still need to mark this migration as complete for consistency
+            int currentTime = GetTime();
+            char migrationQuery[256];
+            g_DB.Format(migrationQuery, sizeof(migrationQuery), "INSERT INTO mgemod_migrations (migration_name, executed_at) VALUES ('001_add_class_columns', %d) ON CONFLICT (migration_name) DO NOTHING", currentTime);
+            g_DB.Query(MarkMigrationCallback, migrationQuery);
         }
     }
 }
@@ -316,7 +362,12 @@ void Migration_002_DuelTimingColumns()
         }
         case DB_POSTGRESQL:
         {
-            LogMessage("[Migration 002] Skipping migration on PostgreSQL");
+            // PostgreSQL gets modern schema immediately in CREATE TABLE statements
+            // But we still need to mark this migration as complete for consistency
+            int currentTime = GetTime();
+            char migrationQuery[256];
+            g_DB.Format(migrationQuery, sizeof(migrationQuery), "INSERT INTO mgemod_migrations (migration_name, executed_at) VALUES ('002_duel_timing_columns', %d) ON CONFLICT (migration_name) DO NOTHING", currentTime);
+            g_DB.Query(MarkMigrationCallback, migrationQuery);
         }
     }
 }
@@ -331,13 +382,13 @@ void Migration_003_AddPrimaryKeys()
         case DB_SQLITE:
         {
             ExecuteMigrationStep("003_add_primary_keys", "CREATE TABLE mgemod_duels_backup AS SELECT * FROM mgemod_duels", 1);
-            ExecuteMigrationStep("003_add_primary_keys", "CREATE TABLE mgemod_duels_new (id INTEGER PRIMARY KEY, winner TEXT, loser TEXT, winnerscore INTEGER, loserscore INTEGER, winlimit INTEGER, endtime INTEGER, starttime INTEGER, mapname TEXT, arenaname TEXT, winnerclass TEXT, loserclass TEXT, winner_previous_elo INTEGER, winner_new_elo INTEGER, loser_previous_elo INTEGER, loser_new_elo INTEGER)", 2);
-            ExecuteMigrationStep("003_add_primary_keys", "INSERT INTO mgemod_duels_new SELECT NULL, winner, loser, winnerscore, loserscore, winlimit, endtime, starttime, mapname, arenaname, winnerclass, loserclass, winner_previous_elo, winner_new_elo, loser_previous_elo, loser_new_elo FROM mgemod_duels", 3);
+            ExecuteMigrationStep("003_add_primary_keys", "CREATE TABLE mgemod_duels_new (id INTEGER PRIMARY KEY, winner TEXT, loser TEXT, winnerscore INTEGER, loserscore INTEGER, winlimit INTEGER, endtime INTEGER, starttime INTEGER, mapname TEXT, arenaname TEXT, winnerclass TEXT, loserclass TEXT)", 2);
+            ExecuteMigrationStep("003_add_primary_keys", "INSERT INTO mgemod_duels_new SELECT NULL, winner, loser, winnerscore, loserscore, winlimit, endtime, starttime, mapname, arenaname, winnerclass, loserclass FROM mgemod_duels", 3);
             ExecuteMigrationStep("003_add_primary_keys", "DROP TABLE mgemod_duels", 4);
             ExecuteMigrationStep("003_add_primary_keys", "ALTER TABLE mgemod_duels_new RENAME TO mgemod_duels", 5);
             ExecuteMigrationStep("003_add_primary_keys", "CREATE TABLE mgemod_duels_2v2_backup AS SELECT * FROM mgemod_duels_2v2", 6);
-            ExecuteMigrationStep("003_add_primary_keys", "CREATE TABLE mgemod_duels_2v2_new (id INTEGER PRIMARY KEY, winner TEXT, winner2 TEXT, loser TEXT, loser2 TEXT, winnerscore INTEGER, loserscore INTEGER, winlimit INTEGER, endtime INTEGER, starttime INTEGER, mapname TEXT, arenaname TEXT, winnerclass TEXT, winner2class TEXT, loserclass TEXT, loser2class TEXT, winner_previous_elo INTEGER, winner_new_elo INTEGER, winner2_previous_elo INTEGER, winner2_new_elo INTEGER, loser_previous_elo INTEGER, loser_new_elo INTEGER, loser2_previous_elo INTEGER, loser2_new_elo INTEGER)", 7);
-            ExecuteMigrationStep("003_add_primary_keys", "INSERT INTO mgemod_duels_2v2_new SELECT NULL, winner, winner2, loser, loser2, winnerscore, loserscore, winlimit, endtime, starttime, mapname, arenaname, winnerclass, winner2class, loserclass, loser2class, winner_previous_elo, winner_new_elo, winner2_previous_elo, winner2_new_elo, loser_previous_elo, loser_new_elo, loser2_previous_elo, loser2_new_elo FROM mgemod_duels_2v2", 8);
+            ExecuteMigrationStep("003_add_primary_keys", "CREATE TABLE mgemod_duels_2v2_new (id INTEGER PRIMARY KEY, winner TEXT, winner2 TEXT, loser TEXT, loser2 TEXT, winnerscore INTEGER, loserscore INTEGER, winlimit INTEGER, endtime INTEGER, starttime INTEGER, mapname TEXT, arenaname TEXT, winnerclass TEXT, winner2class TEXT, loserclass TEXT, loser2class TEXT)", 7);
+            ExecuteMigrationStep("003_add_primary_keys", "INSERT INTO mgemod_duels_2v2_new SELECT NULL, winner, winner2, loser, loser2, winnerscore, loserscore, winlimit, endtime, starttime, mapname, arenaname, winnerclass, winner2class, loserclass, loser2class FROM mgemod_duels_2v2", 8);
             ExecuteMigrationStep("003_add_primary_keys", "DROP TABLE mgemod_duels_2v2", 9);
             ExecuteMigrationStep("003_add_primary_keys", "ALTER TABLE mgemod_duels_2v2_new RENAME TO mgemod_duels_2v2", 10);
             ExecuteMigrationStep("003_add_primary_keys", "CREATE UNIQUE INDEX IF NOT EXISTS idx_stats_steamid ON mgemod_stats (steamid)", 11);
@@ -351,8 +402,12 @@ void Migration_003_AddPrimaryKeys()
         }
         case DB_POSTGRESQL:
         {
-            // PostgreSQL gets modern schema immediately - this migration should never run
-            LogMessage("[Migration 003] Skipping migration on PostgreSQL");
+            // PostgreSQL gets modern schema immediately in CREATE TABLE statements
+            // But we still need to mark this migration as complete for consistency
+            int currentTime = GetTime();
+            char migrationQuery[256];
+            g_DB.Format(migrationQuery, sizeof(migrationQuery), "INSERT INTO mgemod_migrations (migration_name, executed_at) VALUES ('003_add_primary_keys', %d) ON CONFLICT (migration_name) DO NOTHING", currentTime);
+            g_DB.Query(MarkMigrationCallback, migrationQuery);
         }
     }
 }
@@ -398,8 +453,12 @@ void Migration_004_AddEloTracking()
         }
         case DB_POSTGRESQL:
         {
-            // PostgreSQL gets modern schema immediately - this migration should never run
-            LogMessage("[Migration 004] Skipping migration on PostgreSQL");
+            // PostgreSQL gets modern schema immediately in CREATE TABLE statements
+            // But we still need to mark this migration as complete for consistency
+            int currentTime = GetTime();
+            char migrationQuery[256];
+            g_DB.Format(migrationQuery, sizeof(migrationQuery), "INSERT INTO mgemod_migrations (migration_name, executed_at) VALUES ('004_add_elo_tracking', %d) ON CONFLICT (migration_name) DO NOTHING", currentTime);
+            g_DB.Query(MarkMigrationCallback, migrationQuery);
         }
     }
 }
@@ -474,15 +533,12 @@ void Migration_006_AddClassRatings()
         }
         case DB_POSTGRESQL:
         {
-            ExecuteMigrationStep("006_add_class_ratings", "ALTER TABLE mgemod_stats ADD COLUMN scout_rating INTEGER DEFAULT 1600", 1);
-            ExecuteMigrationStep("006_add_class_ratings", "ALTER TABLE mgemod_stats ADD COLUMN sniper_rating INTEGER DEFAULT 1600", 2);
-            ExecuteMigrationStep("006_add_class_ratings", "ALTER TABLE mgemod_stats ADD COLUMN soldier_rating INTEGER DEFAULT 1600", 3);
-            ExecuteMigrationStep("006_add_class_ratings", "ALTER TABLE mgemod_stats ADD COLUMN demoman_rating INTEGER DEFAULT 1600", 4);
-            ExecuteMigrationStep("006_add_class_ratings", "ALTER TABLE mgemod_stats ADD COLUMN medic_rating INTEGER DEFAULT 1600", 5);
-            ExecuteMigrationStep("006_add_class_ratings", "ALTER TABLE mgemod_stats ADD COLUMN heavy_rating INTEGER DEFAULT 1600", 6);
-            ExecuteMigrationStep("006_add_class_ratings", "ALTER TABLE mgemod_stats ADD COLUMN pyro_rating INTEGER DEFAULT 1600", 7);
-            ExecuteMigrationStep("006_add_class_ratings", "ALTER TABLE mgemod_stats ADD COLUMN spy_rating INTEGER DEFAULT 1600", 8);
-            ExecuteMigrationStep("006_add_class_ratings", "ALTER TABLE mgemod_stats ADD COLUMN engineer_rating INTEGER DEFAULT 1600", 9);
+            // PostgreSQL gets modern schema immediately in CREATE TABLE statements
+            // But we still need to mark this migration as complete for consistency
+            int currentTime = GetTime();
+            char migrationQuery[256];
+            g_DB.Format(migrationQuery, sizeof(migrationQuery), "INSERT INTO mgemod_migrations (migration_name, executed_at) VALUES ('006_add_class_ratings', %d) ON CONFLICT (migration_name) DO NOTHING", currentTime);
+            g_DB.Query(MarkMigrationCallback, migrationQuery);
         }
     }
 }
