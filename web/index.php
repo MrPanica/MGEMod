@@ -778,28 +778,13 @@ function getRatingHistory($db, $steamId, $days = 30) {
     // Debug: log total records found
     error_log("Total rating history records for $steamId: " . count($history));
 
-    // Sort by date
+    // Sort by endtime to ensure chronological order
     usort($history, function($a, $b) {
-        return $a['date_ts'] - $b['date_ts'];
+        return $a['endtime'] - $b['endtime'];
     });
 
-    // Group by date to get one rating per day
-    $grouped = [];
-    foreach ($history as $item) {
-        $dateKey = $item['date_ts'];
-        // Only keep the last rating for each day
-        if (!isset($grouped[$dateKey]) || $item['endtime'] > $grouped[$dateKey]['endtime']) {
-            $grouped[$dateKey] = $item;
-        }
-    }
-
-    // Return sorted array
-    $result = array_values($grouped);
-    usort($result, function($a, $b) {
-        return $a['date_ts'] - $b['date_ts'];
-    });
-
-    return $result;
+    // Return all individual duels as separate points
+    return $history;
 }
 
 // Function to get total statistics
@@ -1375,8 +1360,8 @@ if (isset($_GET['ajax'])) {
             }
         }
         ?>
-        <div style="display: flex; gap: 16px; align-items: flex-start;">
-            <div class="calendar-graph-full-width" style="flex: 1;">
+        <div class="flex-gap-16">
+            <div class="calendar-graph-full-width">
                 <svg width="<?= $svgWidth ?>" height="<?= $svgHeight ?>" class="js-calendar-graph-svg">
                     <!-- Month labels -->
                     <g transform="translate(36, 12)" font-size="11" fill="#7d8590">
@@ -1429,13 +1414,13 @@ if (isset($_GET['ajax'])) {
             <?php endif; ?>
         </div>
 
-        <div style="margin-top: 12px; display: flex; justify-content: flex-start; align-items: center; gap: 4px; font-size: 11px; color: #7d8590;">
+        <div class="margin-top-12-flex">
             <span>Меньше</span>
-            <div style="width: 14px; height: 14px; background: #161b22; border-radius: 2px;"></div>
-            <div style="width: 14px; height: 14px; background: #0e4429; border-radius: 2px;"></div>
-            <div style="width: 14px; height: 14px; background: #006d32; border-radius: 2px;"></div>
-            <div style="width: 14px; height: 14px; background: #26a641; border-radius: 2px;"></div>
-            <div style="width: 14px; height: 14px; background: #39d353; border-radius: 2px;"></div>
+            <div class="color-box-14x14 bg-dark-calendar"></div>
+            <div class="color-box-14x14 bg-green-light"></div>
+            <div class="color-box-14x14 bg-green-medium"></div>
+            <div class="color-box-14x14 bg-green-bright"></div>
+            <div class="color-box-14x14 bg-green-highlight"></div>
             <span>Больше</span>
         </div>
         <?php
@@ -2346,7 +2331,7 @@ if ($viewDuel) {
             <div class="card">
                 <div class="card-header">
                     <h2 class="card-title"><i class="fas fa-fist-raised"></i> Дуэль #<?= $viewDuel ?></h2>
-                    <span style="color: #7d8590; font-size: 14px;"><?= date('d.m.Y H:i', $duelData['endtime']) ?> • <?= htmlspecialchars($duelData['mapname']) ?> • <?= htmlspecialchars($duelData['arenaname']) ?></span>
+                    <span class="duel-timestamp"><?= date('d.m.Y H:i', $duelData['endtime']) ?> • <?= htmlspecialchars($duelData['mapname']) ?> • <?= htmlspecialchars($duelData['arenaname']) ?></span>
                 </div>
 
                 <div class="duel-page-content">
@@ -2434,22 +2419,22 @@ if ($viewDuel) {
 
                     <div class="profile-stats-grid" style="margin-top: 15px; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));">
                         <div class="profile-stat-card">
-                            <div class="profile-stat-value" style="color: var(--accent);"><?= $profileData['rating'] !== null ? $profileData['rating'] : 'N/A' ?></div>
+                            <div class="profile-stat-value profile-stat-value-colored"><?= $profileData['rating'] !== null ? $profileData['rating'] : 'N/A' ?></div>
                             <div class="profile-stat-label">Рейтинг</div>
                         </div>
 
                         <div class="profile-stat-card">
-                            <div class="profile-stat-value" style="color: var(--success);"><?= $profileData['stats']['wins'] ?></div>
+                            <div class="profile-stat-value profile-stat-value-success"><?= $profileData['stats']['wins'] ?></div>
                             <div class="profile-stat-label">Победы</div>
                         </div>
 
                         <div class="profile-stat-card">
-                            <div class="profile-stat-value" style="color: var(--danger);"><?= $profileData['stats']['losses'] ?></div>
+                            <div class="profile-stat-value profile-stat-value-danger"><?= $profileData['stats']['losses'] ?></div>
                             <div class="profile-stat-label">Поражения</div>
                         </div>
 
                         <div class="profile-stat-card">
-                            <div class="profile-stat-value" style="color: var(--warning);"><?= $profileData['stats']['winrate'] ?>%</div>
+                            <div class="profile-stat-value profile-stat-value-warning"><?= $profileData['stats']['winrate'] ?>%</div>
                             <div class="profile-stat-label">Винрейт</div>
                         </div>
                     </div>
@@ -2460,7 +2445,7 @@ if ($viewDuel) {
                 <div class="nemesis-info">
                     <h3><i class="fas fa-skull-crossbones"></i> Заклятый враг</h3>
                     <p>
-                        <a href="?profile=<?= urlencode($profileData['nemesis']['steamid']) ?>" style="color: var(--danger); text-decoration: none;">
+                        <a href="?profile=<?= urlencode($profileData['nemesis']['steamid']) ?>" class="nemesis-link">
                             <?= htmlspecialchars($profileData['nemesis']['nick']) ?> (<?= $profileData['nemesis']['steamid'] ?>)
                         </a>
                         - <?= $profileData['nemesis']['duels_count'] ?> встреч
@@ -2481,17 +2466,17 @@ if ($viewDuel) {
             $hasRatingHistory = !empty($profileData['rating_history']);
             if (isset($_GET['debug']) && $_GET['debug'] === 'true'):
             ?>
-                <p style="color: cyan; margin-top: 20px;">DEBUG: Has rating history: <?php echo $hasRatingHistory ? 'YES' : 'NO'; ?></p>
-                <p style="color: cyan; margin-top: 20px;">DEBUG: Rating history count: <?php echo count($profileData['rating_history'] ?? []); ?></p>
+                <p class="debug-cyan">DEBUG: Has rating history: <?php echo $hasRatingHistory ? 'YES' : 'NO'; ?></p>
+                <p class="debug-cyan">DEBUG: Rating history count: <?php echo count($profileData['rating_history'] ?? []); ?></p>
             <?php endif; ?>
 
             <?php if ($hasRatingHistory): ?>
-                <div style="margin-top: 20px;">
+                <div class="margin-top-20-div">
                     <div class="card">
                         <div class="card-header">
                             <h2 class="card-title"><i class="fas fa-chart-line"></i> Изменение рейтинга за месяц</h2>
                         </div>
-                        <div class="chart-container" style="height: 345px; padding: 16px;">
+                        <div class="chart-container chart-container-height">
                             <canvas id="ratingChart"></canvas>
                         </div>
                     </div>
@@ -2503,13 +2488,13 @@ if ($viewDuel) {
                 <?php endif; ?>
             <?php endif; ?>
 
-            <div class="card" style="margin-top: 20px;">
+            <div class="card card-margin-top-20">
                 <div class="card-header">
                     <h2 class="card-title"><i class="fas fa-fist-raised"></i> Последние дуэли</h2>
                 </div>
 
                 <?php if (!empty($profileData['duels'])): ?>
-                    <div style="overflow-x: auto;">
+                    <div class="overflow-auto-div">
                         <table class="duels-table" id="profile-duels-table">
                             <thead>
                                 <tr>
@@ -2623,7 +2608,7 @@ if ($viewDuel) {
                                                 }
                                                 $opponentNick = getPlayerNickname($db, $opponentId);
                                             ?>
-                                            <a href="?profile=<?= urlencode($opponentId) ?>" style="color: var(--accent); text-decoration: none;">
+                                            <a href="?profile=<?= urlencode($opponentId) ?>" class="opponent-link">
                                                 <?= htmlspecialchars($opponentNick) ?>
                                             </a>
                                         </td>
@@ -2698,27 +2683,27 @@ if ($viewDuel) {
                 }
             }
             ?>
-            <div class="card" style="margin-top: 20px;">
+            <div class="card card-margin-top-20">
                 <div class="card-header">
                     <h2 class="card-title"><i class="fas fa-chess-board"></i> Сетка матчапов</h2>
                 </div>
 
-                <div style="margin-top: 8px; display: flex; gap: 20px; align-items: stretch; max-width: 100%; overflow: hidden;">
-                    <div style="flex: 1 1 85%; min-width: 0; overflow: hidden;">
-                        <div style="overflow-x: auto; overflow-y: hidden; width: 100%; padding-right: 5px;">
-                            <table id="matchupHeatmap" style="border-collapse: separate; border-spacing: 3px; background: #1a1a1a; width: 100%; height: 100%; table-layout: fixed;">
+                <div class="flex-stretch-gap-20">
+                    <div class="flex-1-min-width">
+                        <div class="overflow-hidden-width">
+                            <table id="matchupHeatmap" class="table-fixed-layout">
                                 <thead>
                                     <tr>
-                                        <th style="padding: 4px; background: transparent; width: 24px; height: 24px;"></th>
+                                        <th class="th-transparent"></th>
                                         <?php foreach ($classOrder as $oppClass): ?>
                                             <?php $iconPath = getClassIconPath($oppClass); ?>
-                                            <th style="padding: 2px; background: transparent; height: 20px; text-align: center; vertical-align: middle;">
+                                            <th class="th-middle-align">
                                                 <?php if ($iconPath): ?>
                                                     <img src="tf_logo/<?= htmlspecialchars($iconPath) ?>"
                                                          alt="<?= htmlspecialchars($oppClass) ?>"
-                                                         style="width: 22px; height: 22px; display: block; margin: 0 auto;">
+                                                         class="img-center-block">
                                                 <?php else: ?>
-                                                    <span style="font-size: 10px; color: #ccc;"><?= htmlspecialchars(substr($oppClass, 0, 1)) ?></span>
+                                                    <span class="small-font-gray"><?= htmlspecialchars(substr($oppClass, 0, 1)) ?></span>
                                                 <?php endif; ?>
                                             </th>
                                         <?php endforeach; ?>
@@ -2728,13 +2713,13 @@ if ($viewDuel) {
                                     <?php foreach ($classOrder as $myClass): ?>
                                         <?php $iconPath = getClassIconPath($myClass); ?>
                                         <tr>
-                                            <td style="padding: 2px; background: transparent; width: 24px; height: 20px; text-align: center; vertical-align: middle;">
+                                            <td class="td-middle-align">
                                                 <?php if ($iconPath): ?>
                                                     <img src="tf_logo/<?= htmlspecialchars($iconPath) ?>"
                                                          alt="<?= htmlspecialchars($myClass) ?>"
-                                                         style="width: 24px; height: 24px; display: block; margin: 0 auto;">
+                                                         class="img-center-block-24">
                                                 <?php else: ?>
-                                                    <span style="font-size: 10px; color: #ccc;"><?= htmlspecialchars(substr($myClass, 0, 1)) ?></span>
+                                                    <span class="small-font-gray"><?= htmlspecialchars(substr($myClass, 0, 1)) ?></span>
                                                 <?php endif; ?>
                                             </td>
                                             <?php foreach ($classOrder as $oppClass): ?>
@@ -2777,39 +2762,39 @@ if ($viewDuel) {
                             </table>
                         </div>
                     </div>
-                    <div id="matchupDetailsPanel" style="flex: 0 0 220px; padding: 12px; background: #2a2a2a; border-radius: 8px; border: 1px solid #444; display: flex; flex-direction: column;">
-                        <div style="color: #fff; font-weight: bold; font-size: 14px; margin-bottom: 10px; text-align: center;">Детали матчапа</div>
-                        <div id="matchupDetailsContent" style="color: #ccc; font-size: 13px; line-height: 1.4; flex: 1;">
-                            <div style="background: #1a1a1a; padding: 14px; border-radius: 6px; height: 100%; display: flex; align-items: center; justify-content: center;">
-                                <div style="font-size: 12px; color: #666; text-align: center;">
+                    <div id="matchupDetailsPanel" class="matchup-details-panel">
+                        <div class="matchup-details-header">Детали матчапа</div>
+                        <div id="matchupDetailsContent" class="matchup-details-content">
+                            <div class="matchup-details-placeholder">
+                                <div class="matchup-details-placeholder-text">
                                     Выберите ячейку для просмотра статистики
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-                <div id="matchupTooltip" style="position: absolute; background: #2a2a2a; color: #fff; padding: 8px 12px; border-radius: 4px; border: 1px solid #444; font-size: 12px; pointer-events: none; z-index: 10000; display: none; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+                <div id="matchupTooltip" class="matchup-tooltip">
                 </div>
-                <div style="margin-top: 8px; display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px;">
-                    <div style="display: flex; align-items: center; gap: 4px;">
-                        <div style="width: 16px; height: 16px; background: #4caf50; border: 1px solid #333;"></div>
-                        <span style="color: #ccc;">Очень высокий (>2000)</span>
+                <div class="legend-flex-wrap">
+                    <div class="legend-item-flex">
+                        <div class="legend-color-box legend-very-high"></div>
+                        <span class="text-color-ccc">Очень высокий (>2000)</span>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 4px;">
-                        <div style="width: 16px; height: 16px; background: #8bc34a; border: 1px solid #333;"></div>
-                        <span style="color: #ccc;">Высокий (1700-2000)</span>
+                    <div class="legend-item-flex">
+                        <div class="legend-color-box legend-high"></div>
+                        <span class="text-color-ccc">Высокий (1700-2000)</span>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 4px;">
-                        <div style="width: 16px; height: 16px; background: #9ccc65; border: 1px solid #333;"></div>
-                        <span style="color: #ccc;">Средний (1500-1700)</span>
+                    <div class="legend-item-flex">
+                        <div class="legend-color-box legend-medium"></div>
+                        <span class="text-color-ccc">Средний (1500-1700)</span>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 4px;">
-                        <div style="width: 16px; height: 16px; background: #ff9800; border: 1px solid #333;"></div>
-                        <span style="color: #ccc;">Низкий (1000-1500)</span>
+                    <div class="legend-item-flex">
+                        <div class="legend-color-box legend-low"></div>
+                        <span class="text-color-ccc">Низкий (1000-1500)</span>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 4px;">
-                        <div style="width: 16px; height: 16px; background: #f44336; border: 1px solid #333;"></div>
-                        <span style="color: #ccc;">Очень низкий (<1000)</span>
+                    <div class="legend-item-flex">
+                        <div class="legend-color-box legend-very-low"></div>
+                        <span class="text-color-ccc">Очень низкий (<1000)</span>
                     </div>
                 </div>
             </div>
@@ -2840,14 +2825,14 @@ if ($viewDuel) {
                 $selectedYear = $_GET['year'];
             }
             ?>
-            <div class="card" style="margin-top: 20px;">
+            <div class="card card-margin-top-20">
                 <div class="card-header">
                     <h2 class="card-title"><i class="fas fa-fire"></i> Активность</h2>
                 </div>
 
                 <div class="activity-heatmap-container-full-width">
-                    <div style="display: flex; gap: 16px; align-items: flex-start;">
-                        <div class="calendar-graph-full-width" style="flex: 1;">
+                    <div class="flex-start-align">
+                        <div class="calendar-full-width-alt">
                         <?php
                         // GitHub-style heatmap: columns = weeks, rows = days of week
                         // Cell size increased by 40% (10px -> 14px)
@@ -2967,25 +2952,25 @@ if ($viewDuel) {
                         <?php endif; ?>
                     </div>
 
-                    <div style="margin-top: 12px; display: flex; justify-content: flex-start; align-items: center; gap: 4px; font-size: 11px; color: #7d8590;">
+                    <div class="margin-top-12-flex-alt">
                         <span>Меньше</span>
-                        <div style="width: 14px; height: 14px; background: #161b22; border-radius: 2px;"></div>
-                        <div style="width: 14px; height: 14px; background: #0e4429; border-radius: 2px;"></div>
-                        <div style="width: 14px; height: 14px; background: #006d32; border-radius: 2px;"></div>
-                        <div style="width: 14px; height: 14px; background: #26a641; border-radius: 2px;"></div>
-                        <div style="width: 14px; height: 14px; background: #39d353; border-radius: 2px;"></div>
+                        <div class="color-box-14x14 bg-dark-calendar"></div>
+                        <div class="color-box-14x14 bg-green-light"></div>
+                        <div class="color-box-14x14 bg-green-medium"></div>
+                        <div class="color-box-14x14 bg-green-bright"></div>
+                        <div class="color-box-14x14 bg-green-highlight"></div>
                         <span>Больше</span>
                     </div>
 
                 </div>
 
                 <!-- Daily Duels Chart Container (outside of heatmap container for AJAX) -->
-                <div id="daily-duels-chart-container" style="margin-top: 20px; display: none; padding: 16px; background: #1a1a1a; border-radius: 8px;">
-                    <h3 id="daily-chart-title" style="margin: 0 0 12px 0; color: #e6edf3;">Дуэли за <span id="selected-date-display"></span></h3>
+                <div id="daily-duels-chart-container" class="daily-chart-container">
+                    <h3 id="daily-chart-title" class="daily-chart-title">Дуэли за <span id="selected-date-display"></span></h3>
                     <div class="chart-wrapper" style="height: 200px;">
                         <canvas id="dailyDuelsChart"></canvas>
                     </div>
-                    <button onclick="hideDailyDuelsChart()" style="margin-top: 12px; padding: 6px 12px; background: #21262d; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; cursor: pointer; font-size: 12px;">Скрыть график</button>
+                    <button onclick="hideDailyDuelsChart()" class="hide-chart-button">Скрыть график</button>
                 </div>
             </div>
 
@@ -2997,14 +2982,14 @@ if ($viewDuel) {
         <?php else: ?>
             <!-- Main Statistics View -->
             <div class="search-container">
-                <form method="GET" class="search-form" style="display: flex; width: 100%;">
+                <form method="GET" class="search-form search-form-full">
                     <?php if (isset($_GET['profile'])): ?>
                         <input type="hidden" name="profile" value="<?= htmlspecialchars($_GET['profile']) ?>">
                     <?php endif; ?>
                     <input type="text" name="search" placeholder="Поиск игрока..." class="search-input" value="<?= htmlspecialchars($searchQuery) ?>">
                     <button type="submit" class="search-btn">Найти</button>
                     <?php if ($searchQuery): ?>
-                        <a href="?" class="btn btn-secondary" style="margin-left: 10px;">Очистить</a>
+                        <a href="?" class="btn btn-secondary btn-secondary-margin">Очистить</a>
                     <?php endif; ?>
                 </form>
             </div>
@@ -3015,14 +3000,14 @@ if ($viewDuel) {
                         <div class="card-header">
                             <h2 class="card-title"><i class="fas fa-search"></i> Результаты поиска</h2>
                         </div>
-                        <div style="overflow-x: auto;">
+                        <div class="overflow-x-auto-alt">
                             <table class="top-players-table">
                                 <thead>
                                     <tr>
                                         <th>Место</th>
                                         <th>Игрок</th>
                                         <th>
-                                            <a href="?search=<?= urlencode($searchQuery) ?>&sort_by=rating&sort_dir=<?= $orderBy === 'rating' && $orderDir === 'DESC' ? 'ASC' : 'DESC' ?>" style="color: inherit; text-decoration: none;">
+                                            <a href="?search=<?= urlencode($searchQuery) ?>&sort_by=rating&sort_dir=<?= $orderBy === 'rating' && $orderDir === 'DESC' ? 'ASC' : 'DESC' ?>" class="inherit-color-no-decoration">
                                                 Рейтинг
                                                 <?php if ($orderBy === 'rating'): ?>
                                                     <i class="fas fa-sort-<?= $orderDir === 'ASC' ? 'up' : 'down' ?>"></i>
@@ -3085,27 +3070,27 @@ if ($viewDuel) {
                 <div class="stats-overview">
                     <div class="stat-item">
                         <div class="stat-label">Всего дуэлей</div>
-                        <div class="stat-value" style="color: var(--accent);"><?= $totalStats['total_duels'] + $totalStats['total_duels_2v2'] ?></div>
+                        <div class="stat-value stat-value-accent"><?= $totalStats['total_duels'] + $totalStats['total_duels_2v2'] ?></div>
                     </div>
 
                     <div class="stat-item">
                         <div class="stat-label">Всего игроков</div>
-                        <div class="stat-value" style="color: var(--success);"><?= $totalStats['total_players'] ?></div>
+                        <div class="stat-value stat-value-success-alt"><?= $totalStats['total_players'] ?></div>
                     </div>
 
                     <div class="stat-item">
                         <div class="stat-label">Рекордный рейтинг</div>
-                        <div class="stat-value" style="color: var(--warning);"><?= $totalStats['highest_rating'] ?: 'N/A' ?></div>
+                        <div class="stat-value stat-value-warning"><?= $totalStats['highest_rating'] ?: 'N/A' ?></div>
                     </div>
 
                     <div class="stat-item">
                         <div class="stat-label">Дуэлей 1v1</div>
-                        <div class="stat-value" style="color: var(--danger);"><?= $totalStats['total_duels'] ?></div>
+                        <div class="stat-value stat-value-danger-alt"><?= $totalStats['total_duels'] ?></div>
                     </div>
 
                     <div class="stat-item">
                         <div class="stat-label">Дуэлей 2v2</div>
-                        <div class="stat-value" style="color: var(--primary);"><?= $totalStats['total_duels_2v2'] ?></div>
+                        <div class="stat-value stat-value-primary"><?= $totalStats['total_duels_2v2'] ?></div>
                     </div>
                 </div>
 
@@ -3126,7 +3111,7 @@ if ($viewDuel) {
                                     <div class="refresh-spinner"></div>
                                 </div>
                                 <?php if (!empty($topPlayers)): ?>
-                                    <div style="overflow-x: auto;">
+                                    <div class="overflow-x-auto-alt">
                                         <table class="top-players-table">
                                                 <thead>
                                                     <tr>
@@ -3250,7 +3235,7 @@ if ($viewDuel) {
             <div class="refresh-indicator" id="duels-refresh-indicator-2">
                 <div class="refresh-spinner"></div>
             </div>
-            <div style="overflow-x: auto;">
+            <div class="overflow-x-auto-alt">
                 <table class="duels-table">
                     <thead>
                         <tr>
@@ -3446,8 +3431,8 @@ if ($viewDuel) {
             const segments = [];
 
             ratingHistory.forEach((point, index) => {
-                // point.date_ts is already a Unix timestamp from strtotime(), no need to multiply by 1000
-                const date = new Date(point.date_ts * 1000);
+                // Use the exact duel timestamp for precise timing
+                const date = new Date(point.endtime * 1000);
                 const dateString = date.toLocaleString('ru-RU', {
                     year: 'numeric',
                     month: '2-digit',
@@ -3456,7 +3441,7 @@ if ($viewDuel) {
                     minute: '2-digit'
                 });
 
-                // Create labels with dates and times for each point
+                // Create labels with dates and times for each duel
                 labels.push(dateString);
                 dateLabels.push(dateString);
                 ratings.push(point.rating);
@@ -3653,10 +3638,20 @@ if ($viewDuel) {
                             maxRotation: 0,
                             minRotation: 0,
                             callback: function(value, index, values) {
-                                const currentLabel = labels[index];
-                                // Show every 5th date or first/last date to avoid overcrowding
-                                if (index === 0 || index === labels.length - 1 || index % 5 === 0) {
-                                    return currentLabel;
+                                // Show only first, middle and last date labels
+                                const isStart = index === 0;
+                                const isMiddle = index === Math.floor(labels.length / 2);
+                                const isEnd = index === labels.length - 1;
+
+                                if (isStart || isMiddle || isEnd) {
+                                    // Shorten the label to show only date and hour
+                                    const fullLabel = labels[index];
+                                    const datePart = fullLabel.split(',')[0]; // Get date part
+                                    const timePart = fullLabel.split(',')[1]?.trim().split(':')[0]; // Get hour part
+                                    if (timePart) {
+                                        return `${datePart} ${timePart}:00`;
+                                    }
+                                    return datePart;
                                 }
                                 return '';
                             }
@@ -3704,5 +3699,11 @@ if ($viewDuel) {
     <div style="margin-top: 20px; padding: 10px; font-size: 12px; color: #666; text-align: center; border-top: 1px solid #eee;">
         <span>Загрузка: <?php echo round((microtime(true) - $startTime) * 1000, 2); ?> мс</span> |
         <span>Запросов: <?php echo $queryCount; ?></span>
+    </div>
+
+    <!-- GitHub link -->
+    <div class="github-link">
+        <span>Разработано с участием 🤖 | </span>
+        <a href="https://github.com/MrPanica/MGEMod" target="_blank">GitHub</a>
     </div>
 </body>
