@@ -112,9 +112,24 @@ The ELO display logic in 2v2 mode is confusing since individual ELOs get merged/
 
 Make game start, round start, game end, round end and any other timer configurable.
 
-WEB FULL AI*:
-<img width="1905" height="912" alt="image" src="https://github.com/user-attachments/assets/cdb8ff44-c462-4760-82df-bcde8a641c5f" />
-<img width="1907" height="913" alt="image" src="https://github.com/user-attachments/assets/f3e918bd-d41f-4a32-9f8a-d14093d4230d" />
-<img width="1902" height="911" alt="image" src="https://github.com/user-attachments/assets/621f291c-f4e9-4500-8945-b88a1674d5c6" />
-<img width="1904" height="906" alt="image" src="https://github.com/user-attachments/assets/89e5b1ce-e3f1-4bd2-a027-ef7cf5aadbd1" />
-<img width="1919" height="912" alt="image" src="https://github.com/user-attachments/assets/7eba2985-137a-4883-9010-cb834641cd30" />
+WEB FULL AI* DEMO: https://progameszet.ru/pages/test:
+<img width="1902" height="912" alt="image" src="https://github.com/user-attachments/assets/df42fd72-4ec3-4fb0-9fbf-6ced417bb539" />
+<img width="1906" height="908" alt="image" src="https://github.com/user-attachments/assets/b2a6a0f6-7516-4cf5-b32e-80b5f1330ee3" />
+<img width="1903" height="909" alt="image" src="https://github.com/user-attachments/assets/8f700265-ea10-4fcf-91f0-61559e82e5b1" />
+<img width="1904" height="910" alt="image" src="https://github.com/user-attachments/assets/7c2c0300-a7f7-4b0f-b1e1-5faf71e2c53d" />
+<img width="1908" height="911" alt="image" src="https://github.com/user-attachments/assets/cfe3660e-eb7f-4f73-b67d-f3a5c32d6cb5" />
+
+Differences in my version:
+- Arena queue display on the right side in the hint field.
+- Duel timer.
+- Pair class rating system, e.g., Scout vs Soldier.
+- Now when changing the observation target, you will no longer see empty arenas.
+- Fixed exploit with the spectate command.
+- Players with the flag a (res) will be first in the queue.
+- Changes in the included files.
+- WEB.
+
+Added commands:
+- !q - switches the queue display mode.
+- !invite - allows inviting a player to your arena.
+
