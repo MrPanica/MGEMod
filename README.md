@@ -118,6 +118,7 @@ WEB FULL AI* DEMO: https://progameszet.ru/pages/test:
 <img width="1903" height="909" alt="image" src="https://github.com/user-attachments/assets/8f700265-ea10-4fcf-91f0-61559e82e5b1" />
 <img width="1904" height="910" alt="image" src="https://github.com/user-attachments/assets/7c2c0300-a7f7-4b0f-b1e1-5faf71e2c53d" />
 <img width="1908" height="911" alt="image" src="https://github.com/user-attachments/assets/cfe3660e-eb7f-4f73-b67d-f3a5c32d6cb5" />
+<img width="1907" height="909" alt="image" src="https://github.com/user-attachments/assets/64bcad41-97ec-4f34-acc5-b9f7d866c647" />
 
 Differences in my version:
 - Arena queue display on the right side in the hint field.
