@@ -194,74 +194,102 @@ function getMGERating($db, $steamId) {
 }
 
 function getMGEDuels($db, $steamId, $limit = 10) {
-    // Debug: Log the SQL query being used
-    error_log("DEBUG SQL: SELECT * FROM (
-        SELECT
-            '1v1' as type,
-            id, endtime, winner, loser, winnerclass, loserclass,
-            winnerscore, loserscore, mapname, arenaname,
-            winner_new_elo, winner_previous_elo, loser_new_elo, loser_previous_elo
-        FROM mgemod_duels
-        WHERE (winner = '$steamId' OR loser = '$steamId') AND winner IS NOT NULL AND loser IS NOT NULL
-        UNION ALL
-        SELECT
-            '2v2' as type,
-            id, endtime, winner, loser, winnerclass, loserclass,
-            winnerscore, loserscore, mapname, arenaname,
-            winner_new_elo, winner_previous_elo, loser_new_elo, loser_previous_elo
-        FROM mgemod_duels_2v2
-        WHERE (winner = '$steamId' OR (winner2 IS NOT NULL AND winner2 = '$steamId') OR loser = '$steamId' OR (loser2 IS NOT NULL AND loser2 = '$steamId'))
-          AND winner IS NOT NULL AND loser IS NOT NULL
-    ) AS combined
-    ORDER BY endtime DESC
-    LIMIT $limit");
-
+    // Подготавливаем запрос с нужными полями + пагинация через LIMIT
     $stmt = $db->prepare("
         SELECT * FROM (
             SELECT
-                '1v1' as type,
-                id, endtime, winner, loser, winnerclass, loserclass,
-                winnerscore, loserscore, mapname, arenaname,
-                winner_new_elo, winner_previous_elo, loser_new_elo, loser_previous_elo
+                '1v1' AS type,
+                id,
+                endtime,
+                winner,
+                NULL          AS winner2,
+                loser,
+                NULL          AS loser2,
+                winnerscore,
+                loserscore,
+                winlimit,
+                mapname,
+                arenaname,
+                winnerclass,
+                NULL          AS winner2class,
+                loserclass,
+                NULL          AS loser2class,
+                starttime
             FROM mgemod_duels
-            WHERE (winner = ? OR loser = ?) AND winner IS NOT NULL AND loser IS NOT NULL
+            WHERE (winner = ? OR loser = ?)
+              AND winner IS NOT NULL
+              AND loser  IS NOT NULL
+              -- AND canceled = 0    ← раскомментируй, если нужны только завершённые без отмены
+
             UNION ALL
+
             SELECT
-                '2v2' as type,
-                id, endtime, winner, loser, winnerclass, loserclass,
-                winnerscore, loserscore, mapname, arenaname,
-                winner_new_elo, winner_previous_elo, loser_new_elo, loser_previous_elo
+                '2v2' AS type,
+                id,
+                endtime,
+                winner,
+                winner2,
+                loser,
+                loser2,
+                winnerscore,
+                loserscore,
+                winlimit,
+                mapname,
+                arenaname,
+                winnerclass,
+                winner2class,
+                loserclass,
+                loser2class,
+                starttime
             FROM mgemod_duels_2v2
-            WHERE (winner = ? OR (winner2 IS NOT NULL AND winner2 = ?) OR loser = ? OR (loser2 IS NOT NULL AND loser2 = ?))
-              AND winner IS NOT NULL AND loser IS NOT NULL
+            WHERE (winner = ? OR winner2 = ? OR loser = ? OR loser2 = ?)
+              AND winner IS NOT NULL
+              AND loser  IS NOT NULL
+              -- AND canceled = 0    ← раскомментируй, если нужны только завершённые без отмены
         ) AS combined
         ORDER BY endtime DESC
         LIMIT ?
     ");
 
-    $stmt->bind_param('ssssssii', $steamId, $steamId, $steamId, $steamId, $steamId, $steamId, $limit);
+    // Привязываем параметры: 6 раз steamId + limit
+    $stmt->bind_param('ssssssi', 
+        $steamId, $steamId,     // 1v1: winner / loser
+        $steamId, $steamId, $steamId, $steamId,  // 2v2: winner, winner2, loser, loser2
+        $limit
+    );
+
     $stmt->execute();
     $result = $stmt->get_result();
     $duels = $result->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
 
-    // Debug: Log the raw results
-    error_log("DEBUG: Raw duels count for $steamId: " . count($duels));
-    foreach ($duels as $index => $duel) {
-        error_log("DEBUG: Duel $index - Type: {$duel['type']}, ID: {$duel['id']}, Winner: {$duel['winner']}, Loser: {$duel['loser']}");
-        if ($duel['type'] === '2v2') {
-            error_log("DEBUG: 2v2 Duel $index - Winner2: {$duel['winner2']}, Loser2: {$duel['loser2']}");
+    // ────────────────────────────────────────────────
+    // Если у тебя есть функция processDuelWinners — оставляем
+    // Если нет — ниже пример минимальной версии, которая добавляет is_winner
+    // ────────────────────────────────────────────────
+
+    $processedDuels = [];
+    foreach ($duels as $duel) {
+        $isWinner = false;
+
+        if ($duel['type'] === '1v1') {
+            if ($duel['winner'] === $steamId) {
+                $isWinner = true;
+            }
+        } else { // 2v2
+            if ($duel['winner'] === $steamId || $duel['winner2'] === $steamId) {
+                $isWinner = true;
+            }
         }
+
+        $duel['is_winner'] = $isWinner;
+        $processedDuels[] = $duel;
     }
 
-    // Process duels to determine if the current player is the winner
-    $processedDuels = processDuelWinners($duels, $steamId);
-
-    // Debug: Log the processed results
-    error_log("DEBUG: Processed duels count for $steamId: " . count($processedDuels));
-    foreach ($processedDuels as $index => $duel) {
-        error_log("DEBUG: Processed Duel $index - Type: {$duel['type']}, ID: {$duel['id']}, Is Winner: " . ($duel['is_winner'] ? 'YES' : 'NO'));
-    }
+    // ────────────────────────────────────────────────
+    // Debug (можно убрать в продакшене)
+    // ────────────────────────────────────────────────
+    error_log("DEBUG: Fetched {$limit} duels for SteamID $steamId → found: " . count($processedDuels));
 
     return $processedDuels;
 }
@@ -291,7 +319,7 @@ function getTopPlayers($db, $limit = 10, $orderBy = 'rating', $orderDir = 'DESC'
     }
 
     // Validate order by field to prevent SQL injection
-    $allowedFields = ['rating', 'wins', 'losses', 'winrate'];
+    $allowedFields = ['rating', 'wins', 'losses', 'winrate', 'last_duel'];
     if (!in_array($orderBy, $allowedFields)) {
         $orderBy = 'rating';
     }
@@ -299,48 +327,121 @@ function getTopPlayers($db, $limit = 10, $orderBy = 'rating', $orderDir = 'DESC'
     // Validate order direction
     $orderDir = strtoupper($orderDir) === 'ASC' ? 'ASC' : 'DESC';
 
-    $players = executeQuery($db, "
-        SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name
-        FROM mgemod_stats ms
-        WHERE ms.rating IS NOT NULL
-        ORDER BY ms.{$orderBy} {$orderDir}
-        LIMIT ?
-    ", [$limit], 'i');
+    // Special handling for 'last_duel' sort
+    if ($orderBy === 'last_duel') {
+        // Используем оптимизированный запрос с подзапросами
+        $sql = "
+            SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name,
+                   COALESCE(
+                       GREATEST(
+                           (SELECT MAX(endtime) FROM mgemod_duels WHERE winner = ms.steamid OR loser = ms.steamid),
+                           (SELECT MAX(endtime) FROM mgemod_duels_2v2 WHERE winner = ms.steamid OR winner2 = ms.steamid OR loser = ms.steamid OR loser2 = ms.steamid)
+                       ), 0
+                   ) as last_duel_time_val
+            FROM mgemod_stats ms
+            WHERE ms.rating IS NOT NULL
+            ORDER BY last_duel_time_val {$orderDir}
+            LIMIT ?
+        ";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->bind_param('i', $limit);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $players = $result->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+    } else if ($orderBy === 'winrate') {
+        // For winrate sorting, calculate winrate in the query
+        $players = executeQuery($db, "
+            SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name,
+                   CASE
+                       WHEN (ms.wins + ms.losses) > 0 THEN ROUND((ms.wins / (ms.wins + ms.losses)) * 100, 2)
+                       ELSE 0
+                   END as winrate_calc
+            FROM mgemod_stats ms
+            WHERE ms.rating IS NOT NULL
+            ORDER BY winrate_calc {$orderDir}
+            LIMIT ?
+        ", [$limit], 'i');
+    } else {
+        $players = executeQuery($db, "
+            SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name
+            FROM mgemod_stats ms
+            WHERE ms.rating IS NOT NULL
+            ORDER BY ms.{$orderBy} {$orderDir}
+            LIMIT ?
+        ", [$limit], 'i');
+    }
 
     $cache[$cacheKey] = $players;
     return $players;
 }
 
 // Function to get recent duels with pagination
-function getRecentDuels($db, $limit = 10, $offset = 0) {
-    // Use a UNION query to get recent duels from both tables ordered by endtime
-    // This is more efficient than combining results in PHP
+// Function to get recent duels with pagination (OPTIMIZED VERSION)
+function getRecentDuels($db, $limit = 10, $offset = 0, $orderBy = 'endtime', $orderDir = 'DESC') {
+    // Validate order by field to prevent SQL injection
+    $allowedFields = ['endtime', 'id', 'winnerscore', 'loserscore'];
+    if (!in_array($orderBy, $allowedFields)) {
+        $orderBy = 'endtime';
+    }
 
-    $sql = "
-        (
-            SELECT
-                '1v1' as type,
-                id, endtime, winner, loser, winnerclass, loserclass,
-                winnerscore, loserscore, mapname, arenaname,
-                winner_new_elo, winner_previous_elo, loser_new_elo, loser_previous_elo
-            FROM mgemod_duels
-        )
-        UNION ALL
-        (
-            SELECT
-                '2v2' as type,
-                id, endtime, winner, loser, winnerclass, loserclass,
-                winnerscore, loserscore, mapname, arenaname,
-                winner_new_elo, winner_previous_elo, loser_new_elo, loser_previous_elo
-            FROM mgemod_duels_2v2
-        )
-        ORDER BY endtime DESC
-        LIMIT ? OFFSET ?
+    // Validate order direction
+    $orderDir = strtoupper($orderDir) === 'ASC' ? 'ASC' : 'DESC';
+    
+    // Calculate how many records to fetch from each table
+    // We fetch more than needed to account for data distribution
+    $fetchLimit = $limit + $offset + 10; // Add buffer
+    
+    // First, try to get from 1v1 table
+    $sql1v1 = "
+        SELECT
+            '1v1' as type,
+            id, endtime, winner, loser, winnerclass, loserclass,
+            winnerscore, loserscore, mapname, arenaname,
+            winner_new_elo, winner_previous_elo, loser_new_elo, loser_previous_elo,
+            NULL as winner2, NULL as winner2class, NULL as loser2, NULL as loser2class
+        FROM mgemod_duels
+        ORDER BY {$orderBy} {$orderDir}
+        LIMIT ?
     ";
-
-    $duels = executeQuery($db, $sql, [$limit, $offset], 'ii');
-
-    return $duels;
+    
+    $duels1v1 = executeQuery($db, $sql1v1, [$fetchLimit], 'i');
+    
+    // Then get from 2v2 table
+    $sql2v2 = "
+        SELECT
+            '2v2' as type,
+            id, endtime, winner, loser, winnerclass, loserclass,
+            winnerscore, loserscore, mapname, arenaname,
+            winner_new_elo, winner_previous_elo, loser_new_elo, loser_previous_elo,
+            winner2, winner2class, loser2, loser2class
+        FROM mgemod_duels_2v2
+        ORDER BY {$orderBy} {$orderDir}
+        LIMIT ?
+    ";
+    
+    $duels2v2 = executeQuery($db, $sql2v2, [$fetchLimit], 'i');
+    
+    // Merge and sort all results in PHP
+    $allDuels = array_merge($duels1v1, $duels2v2);
+    
+    // Sort the combined array
+    usort($allDuels, function($a, $b) use ($orderBy, $orderDir) {
+        $valA = $a[$orderBy];
+        $valB = $b[$orderBy];
+        
+        if ($orderDir === 'ASC') {
+            return $valA <=> $valB;
+        } else {
+            return $valB <=> $valA;
+        }
+    });
+    
+    // Apply offset and limit
+    $result = array_slice($allDuels, $offset, $limit);
+    
+    return $result;
 }
 
 // Function to get total duels count for pagination
@@ -491,30 +592,96 @@ function getMGEDuelsCount($db, $steamId) {
 
 // Function to get the most recent duel for a player
 function getLastDuelForPlayer($db, $steamId) {
-    $duel = executeQuerySingle($db, "
-        SELECT * FROM (
-            SELECT
-                '1v1' as type,
-                id, endtime, winner, loser, winnerclass, loserclass,
-                winnerscore, loserscore, mapname, arenaname,
-                winner_new_elo, winner_previous_elo, loser_new_elo, loser_previous_elo
-            FROM mgemod_duels
-            WHERE (winner = ? OR loser = ?) AND winner IS NOT NULL AND loser IS NOT NULL
-            UNION ALL
-            SELECT
-                '2v2' as type,
-                id, endtime, winner, loser, winnerclass, loserclass,
-                winnerscore, loserscore, mapname, arenaname,
-                winner_new_elo, winner_previous_elo, loser_new_elo, loser_previous_elo
-            FROM mgemod_duels_2v2
-            WHERE (winner = ? OR (winner2 IS NOT NULL AND winner2 = ?) OR loser = ? OR (loser2 IS NOT NULL AND loser2 = ?))
-              AND winner IS NOT NULL AND loser IS NOT NULL
-        ) AS combined
+    // Optimized: Get max endtime from both tables separately, then get the duel
+    // This is faster than UNION with subquery and ORDER BY
+    
+    // Get most recent duel from 1v1
+    $duel1v1 = executeQuerySingle($db, "
+        SELECT
+            '1v1' as type,
+            id, endtime, winner, loser, winnerclass, loserclass,
+            winnerscore, loserscore, mapname, arenaname,
+            winner_new_elo, winner_previous_elo, loser_new_elo, loser_previous_elo
+        FROM mgemod_duels
+        WHERE (winner = ? OR loser = ?) AND winner IS NOT NULL AND loser IS NOT NULL
         ORDER BY endtime DESC
         LIMIT 1
-    ", [$steamId, $steamId, $steamId, $steamId, $steamId, $steamId], 'ssssss');
+    ", [$steamId, $steamId], 'ss');
+    
+    // Get most recent duel from 2v2
+    $duel2v2 = executeQuerySingle($db, "
+        SELECT
+            '2v2' as type,
+            id, endtime, winner, loser, winnerclass, loserclass,
+            winnerscore, loserscore, mapname, arenaname,
+            winner_new_elo, winner_previous_elo, loser_new_elo, loser_previous_elo
+        FROM mgemod_duels_2v2
+        WHERE (winner = ? OR winner2 = ? OR loser = ? OR loser2 = ?)
+          AND winner IS NOT NULL AND loser IS NOT NULL
+        ORDER BY endtime DESC
+        LIMIT 1
+    ", [$steamId, $steamId, $steamId, $steamId], 'ssss');
+    
+    // Return the more recent duel
+    if (!$duel1v1) return $duel2v2;
+    if (!$duel2v2) return $duel1v1;
+    
+    return ($duel1v1['endtime'] >= $duel2v2['endtime']) ? $duel1v1 : $duel2v2;
+}
 
-    return $duel;
+function getClassIcon($className) {
+    $iconMap = [
+        'scout' => 'Scout_emblem_RED_beta.png',
+        'soldier' => 'Soldier_emblem_RED.png',
+        'pyro' => 'Pyro_emblem_RED.png',
+        'demoman' => 'Demoman_emblem_RED.png',
+        'heavy' => '145px-Heavy_emblem_RED.png',
+        'engineer' => 'Engineer_emblem_RED.png',
+        'medic' => 'Medic_emblem_RED.png',
+        'sniper' => 'Sniper_emblem_RED.png',
+        'spy' => 'Spy_emblem_RED.png'
+    ];
+
+    // Проверяем, содержит ли строка несколько классов, разделенных запятой
+    if (strpos($className, ',') !== false) {
+        // Разбиваем строку на отдельные классы
+        $classes = explode(',', $className);
+        $icons = [];
+
+        foreach ($classes as $class) {
+            $class = strtolower(trim($class));
+            if (isset($iconMap[$class])) {
+                $icons[] = $iconMap[$class];
+            }
+        }
+
+        return $icons;
+    } else {
+        // Приводим к нижнему регистру для надежности
+        $className = strtolower(trim($className));
+
+        return isset($iconMap[$className]) ? $iconMap[$className] : 'default.png';
+    }
+}
+
+// Function to get class icons for multiple classes
+function getClassIconsHtml($classNamesStr, $size = "32") {
+    $icons = getClassIcon($classNamesStr);
+
+    if (is_array($icons)) {
+        // Это строка с несколькими классами
+        $html = '';
+        foreach ($icons as $icon) {
+            $html .= '<img src="tf_logo/' . $icon . '" class="class-icon" width="' . $size . '" height="' . $size . '" style="margin-right: 2px;">';
+        }
+        error_log("DEBUG getClassIconsHtml: Input: $classNamesStr, Output: $html"); // Отладка
+        return $html;
+    } else {
+        // Это одиночный класс
+        $html = '<img src="tf_logo/' . $icons . '" class="class-icon" width="' . $size . '" height="' . $size . '">';
+        error_log("DEBUG getClassIconsHtml: Input: $classNamesStr, Output: $html"); // Отладка
+        return $html;
+    }
 }
 
 // Function to get rating history for the last month
@@ -669,6 +836,8 @@ if (isset($_GET['logout'])) {
     exit;
 }
 
+
+
 // Handle AJAX requests
 if (isset($_GET['ajax'])) {
     header('Content-Type: application/json');
@@ -678,7 +847,18 @@ if (isset($_GET['ajax'])) {
         $limit = 10;
         $offset = ($page - 1) * $limit;
 
-        $duels = getRecentDuels($db, $limit, $offset);
+        // Get sort parameters
+        $duelOrderBy = trim(strtolower($_GET['duel_sort_by'] ?? 'endtime'));
+        $duelOrderDir = trim(strtoupper($_GET['duel_sort_dir'] ?? 'DESC'));
+
+        // Validate duel sort parameters
+        $allowedDuelFields = ['endtime', 'id', 'winnerscore', 'loserscore'];
+        if (!in_array($duelOrderBy, $allowedDuelFields)) {
+            $duelOrderBy = 'endtime';
+        }
+        $duelOrderDir = $duelOrderDir === 'ASC' ? 'ASC' : 'DESC';
+
+        $duels = getRecentDuels($db, $limit, $offset, $duelOrderBy, $duelOrderDir);
         $totalDuels = getTotalDuelsCount($db);
         $totalPages = ceil($totalDuels / $limit);
 
@@ -688,13 +868,24 @@ if (isset($_GET['ajax'])) {
             $duel['winner_nick'] = $winnerNick;
             $duel['loser_nick'] = $loserNick;
 
+            // Добавляем также данные о классах для AJAX-ответа (увеличенный размер для лучшей видимости)
+            $duel['winner_class_html'] = !empty($duel['winnerclass']) ? getClassIconsHtml($duel['winnerclass'], "38") : '<span class="no-class">—</span>';
+            $duel['loser_class_html'] = !empty($duel['loserclass']) ? getClassIconsHtml($duel['loserclass'], "38") : '<span class="no-class">—</span>';
+
             if (isset($duel['winner2']) && $duel['winner2']) {
                 $winner2Nick = getPlayerNickname($db, $duel['winner2']);
                 $loser2Nick = getPlayerNickname($db, $duel['loser2']);
                 $duel['winner2_nick'] = $winner2Nick;
                 $duel['loser2_nick'] = $loser2Nick;
+
+                // Добавляем также данные о классах для вторых игроков в 2v2
+                $duel['winner2_class_html'] = !empty($duel['winner2class']) ? getClassIconsHtml($duel['winner2class'], "38") : '<span class="no-class">—</span>';
+                $duel['loser2_class_html'] = !empty($duel['loser2class']) ? getClassIconsHtml($duel['loser2class'], "38") : '<span class="no-class">—</span>';
             }
         }
+
+        // Отладочный вывод для проверки данных
+        error_log("DEBUG AJAX: Sending duels data: " . json_encode(array_slice($duels, 0, 2))); // Только первые 2 записи для отладки
 
         echo json_encode([
             'duels' => $duels,
@@ -828,99 +1019,111 @@ if (isset($_GET['ajax'])) {
     }
 
     if ($_GET['ajax'] === 'get_players_page') {
-        $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
-        $orderBy = trim(strtolower($_GET['sort_by'] ?? 'rating'));
-        $orderDir = trim(strtoupper($_GET['sort_dir'] ?? 'DESC'));
-        $limit = 25;
-        $offset = ($page - 1) * $limit;
+    $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+    $orderBy = trim(strtolower($_GET['sort_by'] ?? 'rating'));
+    $orderDir = trim(strtoupper($_GET['sort_dir'] ?? 'DESC'));
+    $limit = 25;
+    $offset = ($page - 1) * $limit;
 
-        // Validate sort parameters to prevent SQL injection
-        list($orderBy, $orderDir) = validateSortParams($orderBy, $orderDir);
+    // Validate sort parameters to prevent SQL injection
+    list($orderBy, $orderDir) = validateSortParams($orderBy, $orderDir);
 
-        // Get total count for pagination
-        $totalCount = executeCountQuery($db, "SELECT COUNT(*) as total FROM mgemod_stats ms WHERE ms.rating IS NOT NULL");
+    // Get total count for pagination
+    $totalCount = executeCountQuery($db, "SELECT COUNT(*) as total FROM mgemod_stats ms WHERE ms.rating IS NOT NULL");
 
-        // Special handling for 'last_duel' sort
-        if ($orderBy === 'last_duel') {
-            // For last_duel sorting, we need to join with duel data
-            $stmt = $db->prepare("
-                SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name,
+    // Special handling for 'last_duel' sort
+    if ($orderBy === 'last_duel') {
+        // Оптимизированный запрос для сортировки по последней дуэли
+        $sql = "
+            SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name,
+                   COALESCE(
                        GREATEST(
-                           COALESCE((SELECT MAX(endtime) FROM mgemod_duels WHERE winner = ms.steamid OR loser = ms.steamid), 0),
-                           COALESCE((SELECT MAX(endtime) FROM mgemod_duels_2v2 WHERE winner = ms.steamid OR winner2 = ms.steamid OR loser = ms.steamid OR loser2 = ms.steamid), 0)
-                       ) AS last_duel_time_val
-                FROM mgemod_stats ms
-                WHERE ms.rating IS NOT NULL
-                ORDER BY last_duel_time_val {$orderDir}
-                LIMIT ? OFFSET ?
-            ");
-        }
-        // Special handling for 'winrate' sort
-        else if ($orderBy === 'winrate') {
-            // For winrate sorting, we need to calculate winrate in the query
-            $stmt = $db->prepare("
-                SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name,
-                       CASE
-                           WHEN (ms.wins + ms.losses) > 0 THEN ROUND((ms.wins / (ms.wins + ms.losses)) * 100, 2)
-                           ELSE 0
-                       END as winrate_calc
-                FROM mgemod_stats ms
-                WHERE ms.rating IS NOT NULL
-                ORDER BY winrate_calc {$orderDir}
-                LIMIT ? OFFSET ?
-            ");
-        } else {
-            $stmt = $db->prepare("
-                SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name
-                FROM mgemod_stats ms
-                WHERE ms.rating IS NOT NULL
-                ORDER BY ms.{$orderBy} {$orderDir}
-                LIMIT ? OFFSET ?
-            ");
-        }
+                           (SELECT MAX(endtime) FROM mgemod_duels WHERE winner = ms.steamid OR loser = ms.steamid),
+                           (SELECT MAX(endtime) FROM mgemod_duels_2v2 WHERE winner = ms.steamid OR winner2 = ms.steamid OR loser = ms.steamid OR loser2 = ms.steamid)
+                       ), 0
+                   ) as last_duel_time_val
+            FROM mgemod_stats ms
+            WHERE ms.rating IS NOT NULL
+            ORDER BY last_duel_time_val {$orderDir}
+            LIMIT ? OFFSET ?
+        ";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->bind_param('ii', $limit, $offset);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $players = $result->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+    }
+    // Special handling for 'winrate' sort
+    else if ($orderBy === 'winrate') {
+        // For winrate sorting, we need to calculate winrate in the query
+        $stmt = $db->prepare("
+            SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name,
+                   CASE
+                       WHEN (ms.wins + ms.losses) > 0 THEN ROUND((ms.wins / (ms.wins + ms.losses)) * 100, 2)
+                       ELSE 0
+                   END as winrate_calc
+            FROM mgemod_stats ms
+            WHERE ms.rating IS NOT NULL
+            ORDER BY winrate_calc {$orderDir}
+            LIMIT ? OFFSET ?
+        ");
+    } else {
+        $stmt = $db->prepare("
+            SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name
+            FROM mgemod_stats ms
+            WHERE ms.rating IS NOT NULL
+            ORDER BY ms.{$orderBy} {$orderDir}
+            LIMIT ? OFFSET ?
+        ");
+    }
 
-        $players = [];
+    // Обработка результатов (не изменялась)
+    $players = [];
+    if ($orderBy !== 'last_duel') { // Для last_duel уже получили данные выше
         if ($stmt) {
             $stmt->bind_param('ii', $limit, $offset);
             $stmt->execute();
             $result = $stmt->get_result();
             $players = $result->fetch_all(MYSQLI_ASSOC);
             $stmt->close();
+        }
+    }
 
-            $totalPages = ceil($totalCount / $limit);
+    $totalPages = ceil($totalCount / $limit);
 
-            foreach ($players as &$player) {
-                $player['nick'] = $player['name'] ?: $player['steamid'];
+    foreach ($players as &$player) {
+        $player['nick'] = $player['name'] ?: $player['steamid'];
 
-                // If we're sorting by winrate, use the calculated value from the query
-                if ($orderBy === 'winrate' && isset($player['winrate_calc'])) {
-                    $player['winrate'] = $player['winrate_calc'];
-                } else {
-                    // Otherwise calculate winrate as before
-                    $winrate = ($player['wins'] + $player['losses']) > 0 ?
-                        round(($player['wins'] / ($player['wins'] + $player['losses'])) * 100, 2) : 0;
-                    $player['winrate'] = $winrate;
-                }
-
-                // Get the most recent duel for this player
-                $lastDuel = getLastDuelForPlayer($db, $player['steamid']);
-                $player['last_duel_time'] = $lastDuel ? date('d.m.Y H:i', $lastDuel['endtime']) : 'Нет данных';
-
-                // Add last duel time value for sorting if needed
-                if ($orderBy === 'last_duel') {
-                    $player['last_duel_time_val'] = $lastDuel ? $lastDuel['endtime'] : 0;
-                }
-            }
+        // If we're sorting by winrate, use the calculated value from the query
+        if ($orderBy === 'winrate' && isset($player['winrate_calc'])) {
+            $player['winrate'] = $player['winrate_calc'];
+        } else {
+            // Otherwise calculate winrate as before
+            $winrate = ($player['wins'] + $player['losses']) > 0 ?
+                round(($player['wins'] / ($player['wins'] + $player['losses'])) * 100, 2) : 0;
+            $player['winrate'] = $winrate;
         }
 
-        echo json_encode([
-            'players' => $players,
-            'current_page' => $page,
-            'total_pages' => $totalPages,
-            'total_players' => $totalCount
-        ]);
-        exit;
+        // Get the most recent duel for this player
+        $lastDuel = getLastDuelForPlayer($db, $player['steamid']);
+        $player['last_duel_time'] = $lastDuel ? date('d.m.Y H:i', $lastDuel['endtime']) : 'Нет данных';
+
+        // Add last duel time value for sorting if needed
+        if ($orderBy === 'last_duel') {
+            $player['last_duel_time_val'] = $player['last_duel_time_val'] ?? 0;
+        }
     }
+
+    echo json_encode([
+        'players' => $players,
+        'current_page' => $page,
+        'total_pages' => $totalPages,
+        'total_players' => $totalCount
+    ]);
+    exit;
+}
 
     if ($_GET['ajax'] === 'get_profile_duels_page') {
         $steamId = sanitizeInput($_GET['steam_id'] ?? '');
@@ -944,11 +1147,19 @@ if (isset($_GET['ajax'])) {
             $duel['winner_nick'] = $winnerNick;
             $duel['loser_nick'] = $loserNick;
 
+            // Добавляем также данные о классах для AJAX-ответа
+            $duel['winnerclass_html'] = !empty($duel['winnerclass']) ? getClassIconsHtml($duel['winnerclass'], "32") : '<span class="no-class">—</span>';
+            $duel['loserclass_html'] = !empty($duel['loserclass']) ? getClassIconsHtml($duel['loserclass'], "32") : '<span class="no-class">—</span>';
+
             if (isset($duel['winner2']) && $duel['winner2']) {
                 $winner2Nick = getPlayerNickname($db, $duel['winner2']);
                 $loser2Nick = getPlayerNickname($db, $duel['loser2']);
                 $duel['winner2_nick'] = $winner2Nick;
                 $duel['loser2_nick'] = $loser2Nick;
+
+                // Добавляем также данные о классах для вторых игроков в 2v2
+                $duel['winner2class_html'] = !empty($duel['winner2class']) ? getClassIconsHtml($duel['winner2class'], "32") : '<span class="no-class">—</span>';
+                $duel['loser2class_html'] = !empty($duel['loser2class']) ? getClassIconsHtml($duel['loser2class'], "32") : '<span class="no-class">—</span>';
             }
         }
 
@@ -964,6 +1175,20 @@ if (isset($_GET['ajax'])) {
             'total_pages' => $totalPages,
             'total_duels' => $totalDuels
         ]);
+        exit;
+    }
+
+    if ($_GET['ajax'] === 'get_player_nickname') {
+        $steamId = sanitizeInput($_GET['steam_id'] ?? '');
+
+        if (empty($steamId)) {
+            http_response_code(400);
+            echo "Invalid Steam ID";
+            exit;
+        }
+
+        $nickname = getPlayerNickname($db, $steamId);
+        echo htmlspecialchars($nickname, ENT_QUOTES, 'UTF-8');
         exit;
     }
 
@@ -1555,8 +1780,15 @@ $duelType = isset($_GET['type']) ? $_GET['type'] : '1v1';
 $orderBy = trim(strtolower($_GET['sort_by'] ?? 'rating'));
 $orderDir = trim(strtoupper($_GET['sort_dir'] ?? 'DESC'));
 
+// DEBUG: Show raw values in HTML
+echo "<!-- DEBUG PHP RAW: orderBy=$orderBy, orderDir=$orderDir, REQUEST_URI=" . $_SERVER['REQUEST_URI'] . " -->\n";
+
 // Validate sort parameters to prevent SQL injection
-list($orderBy, $orderDir) = validateSortParams($orderBy, $orderDir);
+$allowedFields = ['rating', 'wins', 'losses', 'winrate', 'last_duel'];
+if (!in_array($orderBy, $allowedFields)) {
+    $orderBy = 'rating';
+}
+$orderDir = strtoupper($orderDir) === 'ASC' ? 'ASC' : 'DESC';
 
 // Handle profile view
 $viewProfile = isset($_GET['profile']) ? $_GET['profile'] : null;
@@ -1651,7 +1883,7 @@ if ($searchQuery) {
         $searchResults = $result->fetch_all(MYSQLI_ASSOC);
         $stmt->close();
 
-        // Update nick field for search results
+        // Update nick field for search results - используем имя из таблицы
         foreach ($searchResults as &$player) {
             $player['nick'] = $player['name'] ?: $player['steamid'];
             $winrate = ($player['wins'] + $player['losses']) > 0 ?
@@ -1730,7 +1962,6 @@ if ($searchQuery) {
                         if (isset($_GET['debug']) && $_GET['debug'] === 'true') {
                             echo "<!-- Duel query results count: " . count($searchResults) . " -->";
                             foreach ($searchResults as $idx => $player) {
-                                echo "<!-- Duel result $idx: " . $player['name'] . " (" . $player['steamid'] . ") -->";
                             }
                         }
                     }
@@ -1781,6 +2012,7 @@ if ($isAuthenticated) {
 }
 
 // Pagination for players
+// Пагинация для игроков
 $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
 $limit = 25; // Using 25 players per page
 $offset = ($page - 1) * $limit;
@@ -1788,18 +2020,55 @@ $offset = ($page - 1) * $limit;
 // Get top players with pagination
 // Special handling for 'last_duel' sort
 if ($orderBy === 'last_duel') {
-    // For last_duel sorting, we need to join with duel data
-    $stmt = $db->prepare("
-        SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name,
-               GREATEST(
-                   COALESCE((SELECT MAX(endtime) FROM mgemod_duels WHERE winner = ms.steamid OR loser = ms.steamid), 0),
-                   COALESCE((SELECT MAX(endtime) FROM mgemod_duels_2v2 WHERE winner = ms.steamid OR winner2 = ms.steamid OR loser = ms.steamid OR loser2 = ms.steamid), 0)
-               ) AS last_duel_time_val
+    // Сначала получаем ID игроков с рейтингом
+    $sql = "
+        SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name
         FROM mgemod_stats ms
         WHERE ms.rating IS NOT NULL
-        ORDER BY last_duel_time_val {$orderDir}
+        ORDER BY ms.rating {$orderDir}
         LIMIT ? OFFSET ?
-    ");
+    ";
+    
+    $stmt = $db->prepare($sql);
+    $stmt->bind_param('ii', $limit, $offset);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $topPlayers = $result->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+    
+    // Затем для каждого игрока получаем время последней дуэли (можно оптимизировать)
+    foreach ($topPlayers as &$player) {
+        $steamId = $player['steamid'];
+        
+        // Оптимизированный запрос для одного игрока
+        $lastDuelSql = "
+            SELECT MAX(endtime) as last_duel_time FROM (
+                SELECT MAX(endtime) as endtime FROM mgemod_duels WHERE winner = ? OR loser = ?
+                UNION ALL
+                SELECT MAX(endtime) FROM mgemod_duels_2v2 WHERE winner = ? OR winner2 = ? OR loser = ? OR loser2 = ?
+            ) as t
+        ";
+        
+        $stmt2 = $db->prepare($lastDuelSql);
+        $stmt2->bind_param('ssssss', $steamId, $steamId, $steamId, $steamId, $steamId, $steamId);
+        $stmt2->execute();
+        $result2 = $stmt2->get_result();
+        $row = $result2->fetch_assoc();
+        $player['last_duel_time_val'] = $row['last_duel_time'] ?? 0;
+        $stmt2->close();
+    }
+    
+    // Сортируем в PHP по времени последней дуэли
+    usort($topPlayers, function($a, $b) use ($orderDir) {
+        $aTime = $a['last_duel_time_val'] ?? 0;
+        $bTime = $b['last_duel_time_val'] ?? 0;
+        
+        if ($orderDir === 'ASC') {
+            return $aTime <=> $bTime;
+        } else {
+            return $bTime <=> $aTime;
+        }
+    });
 }
 // Special handling for 'winrate' sort
 else if ($orderBy === 'winrate') {
@@ -1815,6 +2084,16 @@ else if ($orderBy === 'winrate') {
         ORDER BY winrate_calc {$orderDir}
         LIMIT ? OFFSET ?
     ");
+    
+    if ($stmt) {
+        $stmt->bind_param('ii', $limit, $offset);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $topPlayers = $result->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+    } else {
+        $topPlayers = [];
+    }
 } else {
     $stmt = $db->prepare("
         SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name
@@ -1823,30 +2102,16 @@ else if ($orderBy === 'winrate') {
         ORDER BY ms.{$orderBy} {$orderDir}
         LIMIT ? OFFSET ?
     ");
-}
-
-if ($stmt) {
-    $stmt->bind_param('ii', $limit, $offset);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $topPlayers = $result->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
-
-    foreach ($topPlayers as &$player) {
-        $player['nick'] = $player['name'] ?: $player['steamid'];
-
-        // If we're sorting by winrate, use the calculated value from the query
-        if ($orderBy === 'winrate' && isset($player['winrate_calc'])) {
-            $player['winrate'] = $player['winrate_calc'];
-        } else {
-            // Otherwise calculate winrate as before
-            $winrate = ($player['wins'] + $player['losses']) > 0 ?
-                round(($player['wins'] / ($player['wins'] + $player['losses'])) * 100, 2) : 0;
-            $player['winrate'] = $winrate;
-        }
+    
+    if ($stmt) {
+        $stmt->bind_param('ii', $limit, $offset);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $topPlayers = $result->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+    } else {
+        $topPlayers = [];
     }
-} else {
-    $topPlayers = [];
 }
 
 // Get total count for players pagination
@@ -1858,7 +2123,19 @@ $totalStats = getTotalStats($db);
 // Pagination for recent duels
 $duelLimit = 10;
 $duelOffset = ($page - 1) * $duelLimit;
-$recentDuels = getRecentDuels($db, $duelLimit, $duelOffset);
+
+// Get sorting parameters for duels
+$duelOrderBy = trim(strtolower($_GET['duel_sort_by'] ?? 'endtime'));
+$duelOrderDir = trim(strtoupper($_GET['duel_sort_dir'] ?? 'DESC'));
+
+// Validate duel sort parameters
+$allowedDuelFields = ['endtime', 'id', 'winnerscore', 'loserscore'];
+if (!in_array($duelOrderBy, $allowedDuelFields)) {
+    $duelOrderBy = 'endtime';
+}
+$duelOrderDir = $duelOrderDir === 'ASC' ? 'ASC' : 'DESC';
+
+$recentDuels = getRecentDuels($db, $duelLimit, $duelOffset, $duelOrderBy, $duelOrderDir);
 $totalDuels = getTotalDuelsCount($db);
 $totalPages = ceil($totalDuels / $duelLimit);
 
@@ -2240,7 +2517,9 @@ if ($viewDuel) {
                                     <th>Тип</th>
                                     <th>Дата</th>
                                     <th>Результат</th>
-                                    <th>Карта</th>
+                                    <th>Класс</th>
+                                    <th>Противник</th>
+                                    <th>Класс противника</th>
                                     <th>Арена</th>
                                     <th>Счет</th>
                                     <th>Изменение ELO</th>
@@ -2251,17 +2530,26 @@ if ($viewDuel) {
                                     $isWinner = $duel['is_winner'] ?? false;
 
                                     // Calculate ELO change based on whether the player won or lost
+                                    $eloChange = null;
                                     if ($duel['type'] === '1v1') {
                                         if ($duel['winner'] === $profileData['steamid']) {
-                                            $eloChange = ($duel['winner_new_elo'] ?? 0) - ($duel['winner_previous_elo'] ?? 0);
+                                            if (isset($duel['winner_new_elo']) && isset($duel['winner_previous_elo'])) {
+                                                $eloChange = $duel['winner_new_elo'] - $duel['winner_previous_elo'];
+                                            }
                                         } else {
-                                            $eloChange = ($duel['loser_new_elo'] ?? 0) - ($duel['loser_previous_elo'] ?? 0);
+                                            if (isset($duel['loser_new_elo']) && isset($duel['loser_previous_elo'])) {
+                                                $eloChange = $duel['loser_new_elo'] - $duel['loser_previous_elo'];
+                                            }
                                         }
                                     } else { // 2v2
                                         if ($duel['winner'] === $profileData['steamid'] || $duel['winner2'] === $profileData['steamid']) {
-                                            $eloChange = ($duel['winner_new_elo'] ?? 0) - ($duel['winner_previous_elo'] ?? 0);
+                                            if (isset($duel['winner_new_elo']) && isset($duel['winner_previous_elo'])) {
+                                                $eloChange = $duel['winner_new_elo'] - $duel['winner_previous_elo'];
+                                            }
                                         } else {
-                                            $eloChange = ($duel['loser_new_elo'] ?? 0) - ($duel['loser_previous_elo'] ?? 0);
+                                            if (isset($duel['loser_new_elo']) && isset($duel['loser_previous_elo'])) {
+                                                $eloChange = $duel['loser_new_elo'] - $duel['loser_previous_elo'];
+                                            }
                                         }
                                     }
 
@@ -2290,11 +2578,74 @@ if ($viewDuel) {
                                                 <?= $isWinner ? 'ПОБЕДА' : 'ПОРАЖЕНИЕ' ?>
                                             </span>
                                         </td>
-                                        <td><?= htmlspecialchars($duel['mapname']) ?></td>
+                                        <td>
+                                            <?php if ($isWinner): ?>
+                                                <?php if (!empty($duel['winnerclass'])): ?>
+                                                    <?= getClassIconsHtml($duel['winnerclass'], "38") ?>
+                                                <?php else: ?>
+                                                    <span class="no-class">—</span>
+                                                <?php endif; ?>
+                                            <?php else: ?>
+                                                <?php if (!empty($duel['loserclass'])): ?>
+                                                    <?= getClassIconsHtml($duel['loserclass'], "38") ?>
+                                                <?php else: ?>
+                                                    <span class="no-class">—</span>
+                                                <?php endif; ?>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <?php
+                                                // Определяем противника в зависимости от того, выиграл ли текущий игрок
+                                                if ($isWinner) {
+                                                    // Игрок выиграл, значит противник - проигравший
+                                                    if ($duel['type'] === '1v1') {
+                                                        $opponentId = $duel['loser'];
+                                                    } else {
+                                                        // В 2v2 определяем, кто был вторым проигравшим
+                                                        if ($duel['loser'] === $profileData['steamid']) {
+                                                            $opponentId = $duel['loser2'];
+                                                        } else {
+                                                            $opponentId = $duel['loser'];
+                                                        }
+                                                    }
+                                                } else {
+                                                    // Игрок проиграл, значит противник - победитель
+                                                    if ($duel['type'] === '1v1') {
+                                                        $opponentId = $duel['winner'];
+                                                    } else {
+                                                        // В 2v2 определяем, кто был вторым победителем
+                                                        if ($duel['winner'] === $profileData['steamid']) {
+                                                            $opponentId = $duel['winner2'];
+                                                        } else {
+                                                            $opponentId = $duel['winner'];
+                                                        }
+                                                    }
+                                                }
+                                                $opponentNick = getPlayerNickname($db, $opponentId);
+                                            ?>
+                                            <a href="?profile=<?= urlencode($opponentId) ?>" style="color: var(--accent); text-decoration: none;">
+                                                <?= htmlspecialchars($opponentNick) ?>
+                                            </a>
+                                        </td>
+                                        <td>
+                                            <?php if ($isWinner): ?>
+                                                <?php if (!empty($duel['loserclass'])): ?>
+                                                    <?= getClassIconsHtml($duel['loserclass'], "38") ?>
+                                                <?php else: ?>
+                                                    <span class="no-class">—</span>
+                                                <?php endif; ?>
+                                            <?php else: ?>
+                                                <?php if (!empty($duel['winnerclass'])): ?>
+                                                    <?= getClassIconsHtml($duel['winnerclass'], "38") ?>
+                                                <?php else: ?>
+                                                    <span class="no-class">—</span>
+                                                <?php endif; ?>
+                                            <?php endif; ?>
+                                        </td>
                                         <td><?= htmlspecialchars($duel['arenaname']) ?></td>
                                         <td><?= $duel['winnerscore'] ?>:<?= $duel['loserscore'] ?></td>
-                                        <td class="elo-change <?= $eloChange >= 0 ? 'positive' : 'negative' ?>">
-                                            <?= $eloChange >= 0 ? '+' : '' ?><?= $eloChange ?>
+                                        <td class="elo-change <?= $eloChange !== null ? ($eloChange > 0 ? 'positive' : ($eloChange < 0 ? 'negative' : 'neutral')) : 'neutral' ?>">
+                                            <?= $eloChange !== null ? ($eloChange > 0 ? '+' : '') . $eloChange : '-' ?>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -2712,7 +3063,7 @@ if ($viewDuel) {
                                             </td>
                                             <td>
                                                 <a href="?profile=<?= urlencode($player['steamid']) ?>" style="color: var(--accent); text-decoration: none;">
-                                                    <?= htmlspecialchars($player['nick'] ?: $player['steamid']) ?>
+                                                    <?= htmlspecialchars($player['name'] ?: $player['steamid']) ?>
                                                 </a>
                                             </td>
                                             <td><?= $player['rating'] ?></td>
@@ -2777,53 +3128,52 @@ if ($viewDuel) {
                                 <?php if (!empty($topPlayers)): ?>
                                     <div style="overflow-x: auto;">
                                         <table class="top-players-table">
-                                            <thead>
-                                                <tr>
-                                                    <th>Место</th>
-                                                    <th>Игрок</th>
-                                                    <th>
-                                                        <a href="?sort_by=rating&sort_dir=<?= $orderBy === 'rating' && $orderDir === 'DESC' ? 'ASC' : 'DESC' ?><?php if (isset($_GET['page'])) echo '&page=' . $_GET['page']; ?><?php if (isset($_GET['search'])) echo '&search=' . urlencode($_GET['search']); ?>" style="color: inherit; text-decoration: none;">
-                                                            Рейтинг
-                                                            <?php if ($orderBy === 'rating'): ?>
-                                                                <i class="fas fa-sort-<?= $orderDir === 'ASC' ? 'up' : 'down' ?>"></i>
-                                                            <?php endif; ?>
-                                                        </a>
-                                                    </th>
-                                                    <th>
-                                                        <a href="?sort_by=wins&sort_dir=<?= $orderBy === 'wins' && $orderDir === 'DESC' ? 'ASC' : 'DESC' ?><?php if (isset($_GET['page'])) echo '&page=' . $_GET['page']; ?><?php if (isset($_GET['search'])) echo '&search=' . urlencode($_GET['search']); ?>" style="color: inherit; text-decoration: none;">
-                                                            Победы
-                                                            <?php if ($orderBy === 'wins'): ?>
-                                                                <i class="fas fa-sort-<?= $orderDir === 'ASC' ? 'up' : 'down' ?>"></i>
-                                                            <?php endif; ?>
-                                                        </a>
-                                                    </th>
-                                                    <th>
-                                                        <a href="?sort_by=losses&sort_dir=<?= $orderBy === 'losses' && $orderDir === 'DESC' ? 'ASC' : 'DESC' ?><?php if (isset($_GET['page'])) echo '&page=' . $_GET['page']; ?><?php if (isset($_GET['search'])) echo '&search=' . urlencode($_GET['search']); ?>" style="color: inherit; text-decoration: none;">
-                                                            Поражения
-                                                            <?php if ($orderBy === 'losses'): ?>
-                                                                <i class="fas fa-sort-<?= $orderDir === 'ASC' ? 'up' : 'down' ?>"></i>
-                                                            <?php endif; ?>
-                                                        </a>
-                                                    </th>
-                                                    <th>
-                                                        <a href="?sort_by=winrate&sort_dir=<?= $orderBy === 'winrate' && $orderDir === 'DESC' ? 'ASC' : 'DESC' ?><?php if (isset($_GET['page'])) echo '&page=' . $_GET['page']; ?><?php if (isset($_GET['search'])) echo '&search=' . urlencode($_GET['search']); ?>" style="color: inherit; text-decoration: none;">
-                                                            Винрейт
-                                                            <?php if ($orderBy === 'winrate'): ?>
-                                                                <i class="fas fa-sort-<?= $orderDir === 'ASC' ? 'up' : 'down' ?>"></i>
-                                                            <?php endif; ?>
-                                                        </a>
-                                                    </th>
-                                                    <th>
-    <!-- DEBUG: orderBy=<?=$orderBy?>, orderDir=<?=$orderDir?> -->
-    <a href="?sort_by=last_duel&sort_dir=<?= $orderBy === 'last_duel' && $orderDir === 'DESC' ? 'ASC' : 'DESC' ?><?php if (isset($_GET['page'])) echo '&page=' . $_GET['page']; ?><?php if (isset($_GET['search'])) echo '&search=' . urlencode($_GET['search']); ?>" style="color: inherit; text-decoration: none;">
-        Последняя дуэль
-        <?php if ($orderBy === 'last_duel'): ?>
-            <i class="fas fa-sort-<?= $orderDir === 'ASC' ? 'up' : 'down' ?>"></i>
-        <?php endif; ?>
-    </a>
-</th>
-                                                </tr>
-                                            </thead>
+                                                <thead>
+                                                    <tr>
+                                                        <th>Место</th>
+                                                        <th>Игрок</th>
+                                                        <th>
+                                                            <a href="?sort_by=rating&sort_dir=<?= $orderBy === 'rating' && $orderDir === 'DESC' ? 'ASC' : 'DESC' ?><?php if (isset($_GET['page'])) echo '&page=' . $_GET['page']; ?><?php if (isset($_GET['search'])) echo '&search=' . urlencode($_GET['search']); ?>" style="color: inherit; text-decoration: none;">
+                                                                Рейтинг
+                                                                <?php if ($orderBy === 'rating'): ?>
+                                                                    <i class="fas fa-sort-<?= $orderDir === 'ASC' ? 'up' : 'down' ?>"></i>
+                                                                <?php endif; ?>
+                                                            </a>
+                                                        </th>
+                                                        <th>
+                                                            <a href="?sort_by=wins&sort_dir=<?= $orderBy === 'wins' && $orderDir === 'DESC' ? 'ASC' : 'DESC' ?><?php if (isset($_GET['page'])) echo '&page=' . $_GET['page']; ?><?php if (isset($_GET['search'])) echo '&search=' . urlencode($_GET['search']); ?>" style="color: inherit; text-decoration: none;">
+                                                                Победы
+                                                                <?php if ($orderBy === 'wins'): ?>
+                                                                    <i class="fas fa-sort-<?= $orderDir === 'ASC' ? 'up' : 'down' ?>"></i>
+                                                                <?php endif; ?>
+                                                            </a>
+                                                        </th>
+                                                        <th>
+                                                            <a href="?sort_by=losses&sort_dir=<?= $orderBy === 'losses' && $orderDir === 'DESC' ? 'ASC' : 'DESC' ?><?php if (isset($_GET['page'])) echo '&page=' . $_GET['page']; ?><?php if (isset($_GET['search'])) echo '&search=' . urlencode($_GET['search']); ?>" style="color: inherit; text-decoration: none;">
+                                                                Поражения
+                                                                <?php if ($orderBy === 'losses'): ?>
+                                                                    <i class="fas fa-sort-<?= $orderDir === 'ASC' ? 'up' : 'down' ?>"></i>
+                                                                <?php endif; ?>
+                                                            </a>
+                                                        </th>
+                                                        <th>
+                                                            <a href="?sort_by=winrate&sort_dir=<?= $orderBy === 'winrate' && $orderDir === 'DESC' ? 'ASC' : 'DESC' ?><?php if (isset($_GET['page'])) echo '&page=' . $_GET['page']; ?><?php if (isset($_GET['search'])) echo '&search=' . urlencode($_GET['search']); ?>" style="color: inherit; text-decoration: none;">
+                                                                Винрейт
+                                                                <?php if ($orderBy === 'winrate'): ?>
+                                                                    <i class="fas fa-sort-<?= $orderDir === 'ASC' ? 'up' : 'down' ?>"></i>
+                                                                <?php endif; ?>
+                                                            </a>
+                                                        </th>
+                                                        <th>
+                                                            <a href="?sort_by=last_duel&sort_dir=<?= ($orderBy === 'last_duel' && $orderDir === 'DESC') ? 'ASC' : 'DESC' ?><?php if (isset($_GET['page'])) echo '&page=' . $_GET['page']; ?><?php if (isset($_GET['search'])) echo '&search=' . urlencode($_GET['search']); ?>" style="color: inherit; text-decoration: none;">
+                                                                Последняя дуэль
+                                                                <?php if ($orderBy === 'last_duel'): ?>
+                                                                    <i class="fas fa-sort-<?= $orderDir === 'ASC' ? 'up' : 'down' ?>"></i>
+                                                                <?php endif; ?>
+                                                            </a>
+                                                        </th>
+                                                    </tr>
+                                                </thead>
                                             <tbody id="players-tbody">
                                                 <?php foreach ($topPlayers as $index => $player):
                                                     $winrate = ($player['wins'] + $player['losses']) > 0 ?
@@ -2831,6 +3181,9 @@ if ($viewDuel) {
 
                                                     // Get the most recent duel for this player
                                                     $lastDuel = getLastDuelForPlayer($db, $player['steamid']);
+                                                    
+                                                    // Get player name - use name from mgemod_stats or fallback to steamid
+                                                    $playerName = !empty($player['name']) ? $player['name'] : $player['steamid'];
                                                 ?>
                                                     <tr class="rank-<?= $index + 1 ?>">
                                                         <td>
@@ -2838,7 +3191,7 @@ if ($viewDuel) {
                                                         </td>
                                                         <td>
                                                             <a href="?profile=<?= urlencode($player['steamid']) ?>" style="color: var(--accent); text-decoration: none;">
-                                                                <?= htmlspecialchars($player['nick'] ?: $player['steamid']) ?>
+                                                                <?= htmlspecialchars($playerName) ?>
                                                             </a>
                                                         </td>
                                                         <td><?= $player['rating'] ?></td>
@@ -2888,90 +3241,145 @@ if ($viewDuel) {
 
 
                 <div class="tab-content" id="recent-duels-tab">
-                    <div class="card">
-                        <div class="card-header">
-                            <h2 class="card-title"><i class="fas fa-history"></i> Последние дуэли</h2>
-                        </div>
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title"><i class="fas fa-history"></i> Последние дуэли</h2>
+        </div>
 
-                        <div id="duels-container-2" class="refreshable-content">
-                            <div class="refresh-indicator" id="duels-refresh-indicator-2">
-                                <div class="refresh-spinner"></div>
-                            </div>
-                            <div style="overflow-x: auto;">
-                                <table class="duels-table">
-                                    <thead>
-                                        <tr>
-                                            <th>ID</th>
-                                            <th>Тип</th>
-                                            <th>Дата</th>
-                                            <th>Победитель</th>
-                                            <th>Проигравший</th>
-                                            <th>Карта</th>
-                                            <th>Арена</th>
-                                            <th>Счет</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="duels-tbody-2">
-                                        <?php foreach ($recentDuels as $duel):
-                                            $winnerNick = getPlayerNickname($db, $duel['winner']);
-                                            $loserNick = getPlayerNickname($db, $duel['loser']);
-                                        ?>
-                                            <tr>
-                                                <td>
-                                                    <a href="?duel=<?= $duel['id'] ?>&type=<?= $duel['type'] ?>" class="duel-id-link">
-                                                        <?= $duel['id'] ?>
-                                                    </a>
-                                                </td>
-                                                <td><?= $duel['type'] ?></td>
-                                                <td><?= date('d.m.Y H:i', $duel['endtime']) ?></td>
-                                                <td>
-                                                    <a href="?profile=<?= urlencode($duel['winner']) ?>" style="color: var(--success); text-decoration: none;">
-                                                        <?= htmlspecialchars($winnerNick) ?>
-                                                    </a>
-                                                </td>
-                                                <td>
-                                                    <a href="?profile=<?= urlencode($duel['loser']) ?>" style="color: var(--danger); text-decoration: none;">
-                                                        <?= htmlspecialchars($loserNick) ?>
-                                                    </a>
-                                                </td>
-                                                <td><?= htmlspecialchars($duel['mapname']) ?></td>
-                                                <td><?= htmlspecialchars($duel['arenaname']) ?></td>
-                                                <td><?= $duel['winnerscore'] ?>:<?= $duel['loserscore'] ?></td>
-                                            </tr>
-                                        <?php endforeach; ?>
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            <!-- Pagination -->
-                            <div class="pagination" id="pagination-2">
-                                <?php if ($totalPages > 1 || ($totalPages == 1 && $totalDuels > 0)): ?>
-                                    <?php if ($page > 1): ?>
-                                        <a href="?page=<?= $page - 1 ?>"><i class="fas fa-chevron-left"></i> Назад</a>
+        <div id="duels-container-2" class="refreshable-content">
+            <div class="refresh-indicator" id="duels-refresh-indicator-2">
+                <div class="refresh-spinner"></div>
+            </div>
+            <div style="overflow-x: auto;">
+                <table class="duels-table">
+                    <thead>
+                        <tr>
+                            <th>
+                                <a href="?duel_sort_by=id&duel_sort_dir=<?= $duelOrderBy === 'id' ? ($duelOrderDir === 'DESC' ? 'ASC' : 'DESC') : 'DESC' ?><?php if (isset($_GET['page'])) echo '&page=' . $_GET['page']; ?><?php if (isset($_GET['search'])) echo '&search=' . urlencode($_GET['search']); ?>" style="color: inherit; text-decoration: none;">
+                                    ID
+                                    <?php if ($duelOrderBy === 'id'): ?>
+                                        <i class="fas fa-sort-<?= $duelOrderDir === 'ASC' ? 'up' : 'down' ?>"></i>
                                     <?php endif; ?>
-
-                                    <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
-                                        <?php if ($i == $page): ?>
-                                            <span class="current"><?= $i ?></span>
-                                        <?php else: ?>
-                                            <a href="?page=<?= $i ?>"><?= $i ?></a>
-                                        <?php endif; ?>
-                                    <?php endfor; ?>
-
-                                    <?php if ($page < $totalPages): ?>
-                                        <a href="?page=<?= $page + 1 ?>">Вперед <i class="fas fa-chevron-right"></i></a>
+                                </a>
+                            </th>
+                            <th>Тип</th>
+                            <th>
+                                <a href="?duel_sort_by=endtime&duel_sort_dir=<?= $duelOrderBy === 'endtime' ? ($duelOrderDir === 'DESC' ? 'ASC' : 'DESC') : 'DESC' ?><?php if (isset($_GET['page'])) echo '&page=' . $_GET['page']; ?><?php if (isset($_GET['search'])) echo '&search=' . urlencode($_GET['search']); ?>" style="color: inherit; text-decoration: none;">
+                                    Дата
+                                    <?php if ($duelOrderBy === 'endtime'): ?>
+                                        <i class="fas fa-sort-<?= $duelOrderDir === 'ASC' ? 'up' : 'down' ?>"></i>
                                     <?php endif; ?>
-                                <?php elseif ($totalPages == 1 && $totalDuels > 0): ?>
-                                    <!-- Show single page indicator -->
-                                    <span class="current">1</span>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            <?php endif; ?>
-        <?php endif; ?>
+                                </a>
+                            </th>
+                            <th>Победитель</th>
+                            <th>Класс</th>
+                            <th>Проигравший</th>
+                            <th>Класс</th>
+                            <th>ELO</th>
+                            <th>Арена</th>
+                            <th>
+                                <a href="?duel_sort_by=winnerscore&duel_sort_dir=<?= $duelOrderBy === 'winnerscore' ? ($duelOrderDir === 'DESC' ? 'ASC' : 'DESC') : 'DESC' ?><?php if (isset($_GET['page'])) echo '&page=' . $_GET['page']; ?><?php if (isset($_GET['search'])) echo '&search=' . urlencode($_GET['search']); ?>" style="color: inherit; text-decoration: none;">
+                                    Счет
+                                    <?php if ($duelOrderBy === 'winnerscore'): ?>
+                                        <i class="fas fa-sort-<?= $duelOrderDir === 'ASC' ? 'up' : 'down' ?>"></i>
+                                    <?php endif; ?>
+                                </a>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody id="duels-tbody-2">
+                        <?php 
+
+                        
+                        foreach ($recentDuels as $duel):
+                            $winnerNick = getPlayerNickname($db, $duel['winner']);
+                            $loserNick = getPlayerNickname($db, $duel['loser']);
+                        ?>
+                            <tr>
+                                <td>
+                                    <a href="?duel=<?= $duel['id'] ?>&type=<?= $duel['type'] ?>" class="duel-id-link">
+                                        <?= $duel['id'] ?>
+                                    </a>
+                                </td>
+                                <td><?= $duel['type'] ?></td>
+                                <td><?= date('d.m.Y H:i', $duel['endtime']) ?></td>
+                                <td>
+                                    <a href="?profile=<?= urlencode($duel['winner']) ?>" style="color: var(--success); text-decoration: none;">
+                                        <?= htmlspecialchars($winnerNick) ?>
+                                    </a>
+                                </td>
+                                <td>
+                                    <?php if (!empty($duel['winnerclass'])): ?>
+                                        <?= getClassIconsHtml($duel['winnerclass'], "32") ?>
+                                    <?php else: ?>
+                                        <span class="no-class">—</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <a href="?profile=<?= urlencode($duel['loser']) ?>" style="color: var(--danger); text-decoration: none;">
+                                        <?= htmlspecialchars($loserNick) ?>
+                                    </a>
+                                </td>
+                                <td>
+                                    <?php if (!empty($duel['loserclass'])): ?>
+                                        <?= getClassIconsHtml($duel['loserclass'], "32") ?>
+                                    <?php else: ?>
+                                        <span class="no-class">—</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <?php
+                                        // Рассчитываем изменение ELO победителя
+                                        $eloChange = null;
+                                        if (isset($duel['winner_new_elo']) && isset($duel['winner_previous_elo'])) {
+                                            $eloChange = $duel['winner_new_elo'] - $duel['winner_previous_elo'];
+                                        }
+
+                                        if ($eloChange !== null) {
+                                            $eloChangeClass = $eloChange > 0 ? 'positive' : ($eloChange < 0 ? 'negative' : 'neutral');
+                                            echo '<span class="elo-change ' . $eloChangeClass . '">' . ($eloChange > 0 ? '+' : '') . $eloChange . '</span>';
+                                        } else {
+                                            echo '<span class="elo-change neutral">-</span>';
+                                        }
+                                    ?>
+                                </td>
+                                <td><?= htmlspecialchars($duel['arenaname']) ?></td>
+                                <td><?= $duel['winnerscore'] ?>:<?= $duel['loserscore'] ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+            <div class="pagination" id="pagination-2">
+                <?php if ($totalPages > 1 || ($totalPages == 1 && $totalDuels > 0)): ?>
+                    <?php if ($page > 1): ?>
+                        <a href="?page=<?= $page - 1 ?>&duel_sort_by=<?= $duelOrderBy ?>&duel_sort_dir=<?= $duelOrderDir ?>"><i class="fas fa-chevron-left"></i> Назад</a>
+                    <?php endif; ?>
+
+                    <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
+                        <?php if ($i == $page): ?>
+                            <span class="current"><?= $i ?></span>
+                        <?php else: ?>
+                            <a href="?page=<?= $i ?>&duel_sort_by=<?= $duelOrderBy ?>&duel_sort_dir=<?= $duelOrderDir ?>"><?= $i ?></a>
+                        <?php endif; ?>
+                    <?php endfor; ?>
+
+                    <?php if ($page < $totalPages): ?>
+                        <a href="?page=<?= $page + 1 ?>&duel_sort_by=<?= $duelOrderBy ?>&duel_sort_dir=<?= $duelOrderDir ?>">Вперед <i class="fas fa-chevron-right"></i></a>
+                    <?php endif; ?>
+                <?php elseif ($totalPages == 1 && $totalDuels > 0): ?>
+                    <!-- Show single page indicator -->
+                    <span class="current">1</span>
+                <?php endif; ?>
+            </div>
+        </div>
     </div>
+</div>
+<?php endif; ?>
+<?php endif; ?>
+</div>
 
     <script src="js/script.js"></script>
     <script>
@@ -3298,4 +3706,3 @@ if ($viewDuel) {
         <span>Запросов: <?php echo $queryCount; ?></span>
     </div>
 </body>
-</html>

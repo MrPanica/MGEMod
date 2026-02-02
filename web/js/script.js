@@ -109,24 +109,86 @@ document.addEventListener('DOMContentLoaded', function() {
         refreshIndicator.classList.add('active');
         container.classList.add('refreshing');
 
-        fetch(`?ajax=get_duels_page&page=${page}`)
+        // Get sort parameters from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const duelOrderBy = urlParams.get('duel_sort_by') || 'endtime';
+        const duelOrderDir = urlParams.get('duel_sort_dir') || 'DESC';
+
+        fetch(`?ajax=get_duels_page&page=${page}&duel_sort_by=${duelOrderBy}&duel_sort_dir=${duelOrderDir}`)
             .then(response => response.json())
             .then(data => {
+                console.log('AJAX Response Data:', data); // Отладка
+                
                 const tbody = document.getElementById(tbodyId);
                 tbody.innerHTML = '';
 
                 data.duels.forEach(duel => {
+                    console.log('Processing duel:', duel); // Отладка
+                    
                     const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td><a href="?duel=${duel.id}&type=${duel.type}" class="duel-id-link">${duel.id}</a></td>
-                        <td>${duel.type}</td>
-                        <td>${new Date(duel.endtime * 1000).toLocaleString('ru-RU')}</td>
-                        <td><a href="?profile=${encodeURIComponent(duel.winner)}" style="color: var(--success); text-decoration: none;">${duel.winner_nick}</a></td>
-                        <td><a href="?profile=${encodeURIComponent(duel.loser)}" style="color: var(--danger); text-decoration: none;">${duel.loser_nick}</a></td>
-                        <td>${duel.mapname}</td>
-                        <td>${duel.arenaname}</td>
-                        <td>${duel.winnerscore}:${duel.loserscore}</td>
-                    `;
+                    
+                    // Create all cells first
+                    const idCell = document.createElement('td');
+                    idCell.innerHTML = `<a href="?duel=${duel.id}&type=${duel.type}" class="duel-id-link">${duel.id}</a>`;
+                    
+                    const typeCell = document.createElement('td');
+                    typeCell.textContent = duel.type;
+                    
+                    const dateCell = document.createElement('td');
+                    dateCell.textContent = new Date(duel.endtime * 1000).toLocaleString('ru-RU');
+                    
+                    const winnerCell = document.createElement('td');
+                    winnerCell.innerHTML = `<a href="?profile=${encodeURIComponent(duel.winner)}" style="color: var(--success); text-decoration: none;">${duel.winner_nick}</a>`;
+                    
+                    const winnerClassCell = document.createElement('td');
+                    console.log('Raw winner_class_html:', duel.winner_class_html); // Отладка
+                    // Удаляем лишние экранирования, если они есть
+                    const processedWinnerClassHtml = duel.winner_class_html.replace(/\\"/g, '"');
+                    console.log('Processed winner_class_html:', processedWinnerClassHtml); // Отладка
+                    winnerClassCell.innerHTML = processedWinnerClassHtml;
+                    
+                    const loserCell = document.createElement('td');
+                    loserCell.innerHTML = `<a href="?profile=${encodeURIComponent(duel.loser)}" style="color: var(--danger); text-decoration: none;">${duel.loser_nick}</a>`;
+                    
+                    const loserClassCell = document.createElement('td');
+                    console.log('Raw loser_class_html:', duel.loser_class_html); // Отладка
+                    // Удаляем лишние экранирования, если они есть
+                    const processedLoserClassHtml = duel.loser_class_html.replace(/\\"/g, '"');
+                    console.log('Processed loser_class_html:', processedLoserClassHtml); // Отладка
+                    loserClassCell.innerHTML = processedLoserClassHtml;
+                    
+                    // Calculate ELO change for winner
+                    let eloChange = null;
+                    if (duel.winner_new_elo !== undefined && duel.winner_previous_elo !== undefined) {
+                        eloChange = duel.winner_new_elo - duel.winner_previous_elo;
+                    }
+
+                    const eloChangeCell = document.createElement('td');
+                    if (eloChange !== null) {
+                        const eloChangeClass = eloChange > 0 ? 'positive' : (eloChange < 0 ? 'negative' : 'neutral');
+                        eloChangeCell.innerHTML = `<span class="elo-change ${eloChangeClass}">${eloChange > 0 ? '+' : ''}${eloChange}</span>`;
+                    } else {
+                        eloChangeCell.innerHTML = '<span class="elo-change neutral">-</span>';
+                    }
+
+                    const arenaCell = document.createElement('td');
+                    arenaCell.textContent = duel.arenaname;
+
+                    const scoreCell = document.createElement('td');
+                    scoreCell.textContent = `${duel.winnerscore}:${duel.loserscore}`;
+
+                    // Append all cells to the row
+                    row.appendChild(idCell);
+                    row.appendChild(typeCell);
+                    row.appendChild(dateCell);
+                    row.appendChild(winnerCell);
+                    row.appendChild(winnerClassCell);
+                    row.appendChild(loserCell);
+                    row.appendChild(loserClassCell);
+                    row.appendChild(eloChangeCell);
+                    row.appendChild(arenaCell);
+                    row.appendChild(scoreCell);
+                    
                     tbody.appendChild(row);
                 });
 
@@ -134,9 +196,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 const pagination = document.getElementById(paginationId);
                 pagination.innerHTML = '';
 
+                // Get sort parameters from URL
+                const urlParams = new URLSearchParams(window.location.search);
+                const duelOrderBy = urlParams.get('duel_sort_by') || 'endtime';
+                const duelOrderDir = urlParams.get('duel_sort_dir') || 'DESC';
+
                 if (data.current_page > 1) {
                     const prevLink = document.createElement('a');
-                    prevLink.href = `?page=${data.current_page - 1}`;
+                    prevLink.href = `?page=${data.current_page - 1}&duel_sort_by=${duelOrderBy}&duel_sort_dir=${duelOrderDir}`;
                     prevLink.innerHTML = '<i class="fas fa-chevron-left"></i> Назад';
                     prevLink.addEventListener('click', function(e) {
                         e.preventDefault();
@@ -162,7 +229,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 if (data.current_page < data.total_pages) {
                     const nextLink = document.createElement('a');
-                    nextLink.href = `?page=${data.current_page + 1}`;
+                    nextLink.href = `?page=${data.current_page + 1}&duel_sort_by=${duelOrderBy}&duel_sort_dir=${duelOrderDir}`;
                     nextLink.innerHTML = 'Вперед <i class="fas fa-chevron-right"></i>';
                     nextLink.addEventListener('click', function(e) {
                         e.preventDefault();
@@ -210,6 +277,32 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
         });
+    });
+
+    // Handle sort links in table headers - allow them to navigate normally
+    document.querySelectorAll('.duels-table thead th a').forEach(link => {
+        link.addEventListener('click', function(e) {
+            // Allow default navigation for sort links
+            // They will reload the page with new sort parameters
+            showLoading();
+        });
+    });
+
+    // Handle sort links in players table headers - allow them to navigate normally
+    document.querySelectorAll('.top-players-table thead th a').forEach(link => {
+        link.addEventListener('click', function(e) {
+            // Allow default navigation for sort links - show loading overlay
+            showLoading();
+        });
+    });
+
+    // Use event delegation for dynamically added sort links
+    document.addEventListener('click', function(e) {
+        const link = e.target.closest('.top-players-table thead th a');
+        if (link) {
+            // This is a sort link - let it navigate normally
+            showLoading();
+        }
     });
 
     // Function to load players page with pagination
@@ -348,6 +441,26 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // Use event delegation for profile duels pagination links
+    document.addEventListener('click', function(e) {
+        const target = e.target.closest('.profile-duels-pagination a');
+        if (target) {
+            e.preventDefault();
+            
+            const href = target.getAttribute('href');
+            const profileMatch = href.match(/profile=([^&]*)/);
+            const pageMatch = href.match(/duels_page=(\d+)/);
+            
+            if (profileMatch && pageMatch) {
+                const profileId = decodeURIComponent(profileMatch[1]);
+                const page = parseInt(pageMatch[1]);
+                
+                // Load profile duels page via AJAX
+                loadProfileDuelsPage(page, profileId);
+            }
+        }
+    });
+
     // Function to load profile duels page with pagination
     function loadProfileDuelsPage(page, steamId) {
         const tbody = document.querySelector('#profile-duels-table tbody');
@@ -392,7 +505,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 if (data.duels.length === 0) {
                     const emptyRow = document.createElement('tr');
-                    emptyRow.innerHTML = '<td colspan="8" style="text-align: center;">Нет данных о дуэлях</td>';
+                    emptyRow.innerHTML = '<td colspan="10" style="text-align: center;">Нет данных о дуэлях</td>';
                     tbody.appendChild(emptyRow);
                 } else {
                     data.duels.forEach(duel => {
@@ -401,37 +514,108 @@ document.addEventListener('DOMContentLoaded', function() {
                         const resultText = duel.is_winner ? 'ПОБЕДА' : 'ПОРАЖЕНИЕ';
 
                         // Calculate ELO change
-                        let eloChange = 0;
+                        let eloChange = null;
                         if (duel.is_winner) {
                             if (duel.type === '1v1') {
-                                eloChange = duel.winner_new_elo - duel.winner_previous_elo;
+                                if (duel.winner_new_elo !== undefined && duel.winner_previous_elo !== undefined) {
+                                    eloChange = duel.winner_new_elo - duel.winner_previous_elo;
+                                }
                             } else {
                                 // For 2v2, use the first winner's ELO change
-                                eloChange = duel.winner_new_elo - duel.winner_previous_elo;
+                                if (duel.winner_new_elo !== undefined && duel.winner_previous_elo !== undefined) {
+                                    eloChange = duel.winner_new_elo - duel.winner_previous_elo;
+                                }
                             }
                         } else {
                             if (duel.type === '1v1') {
-                                eloChange = duel.loser_new_elo - duel.loser_previous_elo;
+                                if (duel.loser_new_elo !== undefined && duel.loser_previous_elo !== undefined) {
+                                    eloChange = duel.loser_new_elo - duel.loser_previous_elo;
+                                }
                             } else {
                                 // For 2v2, use the first loser's ELO change
-                                eloChange = duel.loser_new_elo - duel.loser_previous_elo;
+                                if (duel.loser_new_elo !== undefined && duel.loser_previous_elo !== undefined) {
+                                    eloChange = duel.loser_new_elo - duel.loser_previous_elo;
+                                }
                             }
                         }
 
-                        const eloChangeClass = eloChange >= 0 ? 'positive' : 'negative';
-                        const eloChangeDisplay = eloChange >= 0 ? `+${eloChange}` : `${eloChange}`;
+                        const eloChangeClass = eloChange !== null ? (eloChange > 0 ? 'positive' : (eloChange < 0 ? 'negative' : 'neutral')) : 'neutral';
+                        const eloChangeDisplay = eloChange !== null ? (eloChange > 0 ? `+${eloChange}` : `${eloChange}`) : '-';
 
-                        row.innerHTML = `
-                            <td><a href="?duel=${duel.id}&type=${duel.type}&profile=${encodeURIComponent(steamId)}" class="duel-id-link">${duel.id}</a></td>
-                            <td>${duel.type}</td>
-                            <td>${new Date(duel.endtime * 1000).toLocaleString('ru-RU')}</td>
-                            <td><span class="duel-result ${resultClass}">${resultText}</span></td>
-                            <td>${duel.mapname}</td>
-                            <td>${duel.arenaname}</td>
-                            <td>${duel.winnerscore}:${duel.loserscore}</td>
-                            <td class="elo-change ${eloChangeClass}">${eloChangeDisplay}</td>
-                        `;
-                        tbody.appendChild(row);
+                        // Determine opponent ID based on whether the current player won or lost
+                        let opponentId, opponentNick, playerClass, opponentClass;
+                        
+                        if (duel.is_winner) {
+                            // Player won, so opponent is the loser
+                            if (duel.type === '1v1') {
+                                opponentId = duel.loser;
+                            } else {
+                                // In 2v2, determine who was the second loser
+                                if (duel.loser === steamId) {
+                                    opponentId = duel.loser2;
+                                } else {
+                                    opponentId = duel.loser;
+                                }
+                            }
+                            
+                            // Player's class is winner's class, opponent's class is loser's class
+                            playerClass = duel.winnerclass ? duel.winnerclass : '';
+                            opponentClass = duel.loserclass ? duel.loserclass : '';
+                        } else {
+                            // Player lost, so opponent is the winner
+                            if (duel.type === '1v1') {
+                                opponentId = duel.winner;
+                            } else {
+                                // In 2v2, determine who was the second winner
+                                if (duel.winner === steamId) {
+                                    opponentId = duel.winner2;
+                                } else {
+                                    opponentId = duel.winner;
+                                }
+                            }
+                            
+                            // Player's class is loser's class, opponent's class is winner's class
+                            playerClass = duel.loserclass ? duel.loserclass : '';
+                            opponentClass = duel.winnerclass ? duel.winnerclass : '';
+                        }
+                        
+                        // Get opponent nickname
+                        fetch(`?ajax=get_player_nickname&steam_id=${encodeURIComponent(opponentId)}`)
+                            .then(response => response.text())
+                            .then(nick => {
+                                opponentNick = nick;
+                                
+                                row.innerHTML = `
+                                    <td><a href="?duel=${duel.id}&type=${duel.type}&profile=${encodeURIComponent(steamId)}" class="duel-id-link">${duel.id}</a></td>
+                                    <td>${duel.type}</td>
+                                    <td>${new Date(duel.endtime * 1000).toLocaleString('ru-RU')}</td>
+                                    <td><span class="duel-result ${resultClass}">${resultText}</span></td>
+                                    <td>${duel.is_winner ? duel.winnerclass_html : duel.loserclass_html}</td>
+                                    <td><a href="?profile=${encodeURIComponent(opponentId)}" style="color: var(--accent); text-decoration: none;">${opponentNick}</a></td>
+                                    <td>${duel.is_winner ? duel.loserclass_html : duel.winnerclass_html}</td>
+                                    <td>${duel.arenaname}</td>
+                                    <td>${duel.winnerscore}:${duel.loserscore}</td>
+                                    <td class="elo-change ${eloChangeClass}">${eloChangeDisplay}</td>
+                                `;
+                                tbody.appendChild(row);
+                            })
+                            .catch(error => {
+                                console.error('Error getting opponent nickname:', error);
+                                
+                                row.innerHTML = `
+                                    <td><a href="?duel=${duel.id}&type=${duel.type}&profile=${encodeURIComponent(steamId)}" class="duel-id-link">${duel.id}</a></td>
+                                    <td>${duel.type}</td>
+                                    <td>${new Date(duel.endtime * 1000).toLocaleString('ru-RU')}</td>
+                                    <td><span class="duel-result ${resultClass}">${resultText}</span></td>
+                                    <td>${duel.is_winner ? duel.winnerclass_html : duel.loserclass_html}</td>
+                                    <td><a href="?profile=${encodeURIComponent(opponentId)}" style="color: var(--accent); text-decoration: none;">${opponentId}</a></td>
+                                    <td>${duel.is_winner ? duel.loserclass_html : duel.winnerclass_html}</td>
+                                    <td>${duel.arenaname}</td>
+                                    <td>${duel.winnerscore}:${duel.loserscore}</td>
+                                    <td class="elo-change ${eloChangeClass}">${eloChangeDisplay}</td>
+                                `;
+                                tbody.appendChild(row);
+                            });
                     });
                 }
 
@@ -486,43 +670,22 @@ document.addEventListener('DOMContentLoaded', function() {
                         container.classList.remove('refreshing');
                     }
                 }
-
-                tbody.innerHTML = '';
-                const errorRow = document.createElement('tr');
-                errorRow.innerHTML = '<td colspan="8" style="text-align: center; color: red;">Ошибка загрузки данных</td>';
-                tbody.appendChild(errorRow);
             });
     }
-    // Add click handlers for profile duels pagination if on profile page
-    if (document.querySelector('#profile-duels-table')) {
-        const profileSteamId = new URLSearchParams(window.location.search).get('profile');
-        if (profileSteamId) {
-            // Add event listeners to profile duels pagination links
-            document.querySelectorAll('.profile-duels-pagination a').forEach(link => {
-                link.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation(); // Prevent other event handlers from firing
 
-                    // Extract page number from href attribute
-                    const href = this.getAttribute('href');
-                    const url = new URL(href, window.location.origin + window.location.pathname);
-                    const pageParam = url.searchParams.get('duels_page');
-
-                    if (pageParam) {
-                        const page = parseInt(pageParam);
-                        if (!isNaN(page)) {
-                            loadProfileDuelsPage(page, profileSteamId);
-                        }
-                    }
-                });
-            });
+    // Helper function to escape HTML
+    function htmlspecialchars(text) {
+        if (typeof text !== 'string') {
+            text = String(text);
         }
+        return text
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
     }
 
-    // Auto-refresh duels periodically if authenticated
-    // Note: The PHP condition for this would need to be handled in the HTML template
-    // setInterval(function() {
-    //     // In a real app, you would fetch updated data here
-    //     console.log('Checking for new duel data...');
-    // }, 30000); // Every 30 seconds
+    // Removed AJAX pagination for sort links to allow normal navigation
+
 });
