@@ -134,3 +134,4 @@ Added commands:
 - !q - switches the queue display mode.
 - !invite - allows inviting a player to your arena.
 
+<img width="514" height="216" alt="image" src="https://github.com/user-attachments/assets/9e2a4f6f-d9a0-44cf-bbe3-734a453fc82c" />

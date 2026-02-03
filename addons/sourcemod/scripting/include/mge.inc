@@ -120,13 +120,15 @@ forward void MGE_OnDuelStart(int arena_index, int player1, int player2, int play
 /**
  * Called when a 1v1 match ends
  *
+ * @param duel_id        Duel ID
  * @param arena_index    Arena index
  * @param winner         Winner client index
  * @param loser          Loser client index
  * @param winner_score   Winner's final score (frags)
  * @param loser_score    Loser's final score (frags)
+ * @param duration       Duration of the match in seconds
  */
-forward void MGE_On1v1MatchEnd(int duel_id, int arena_index, int winner, int loser, int winner_score, int loser_score);
+forward void MGE_On1v1MatchEnd(int duel_id, int arena_index, int winner, int loser, int winner_score, int loser_score, int duration);
 
 /**
  * Called when a 2v2 match starts
@@ -142,6 +144,7 @@ forward void MGE_On2v2MatchStart(int arena_index, int team1_player1, int team1_p
 /**
  * Called when a 2v2 match ends
  *
+ * @param duel_id            Duel ID
  * @param arena_index        Arena index
  * @param winning_team       Winning team (TEAM_RED or TEAM_BLU)
  * @param winning_score      Winning team's final score (frags)
@@ -150,8 +153,9 @@ forward void MGE_On2v2MatchStart(int arena_index, int team1_player1, int team1_p
  * @param team1_player2      Team 1 second player
  * @param team2_player1      Team 2 first player
  * @param team2_player2      Team 2 second player
+ * @param duration           Duration of the match in seconds
  */
-forward void MGE_On2v2MatchEnd(int duel_id, int arena_index, int winning_team, int winning_score, int losing_score, int team1_player1, int team1_player2, int team2_player1, int team2_player2);
+forward void MGE_On2v2MatchEnd(int duel_id, int arena_index, int winning_team, int winning_score, int losing_score, int team1_player1, int team1_player2, int team2_player1, int team2_player2, int duration);
 
 /**
  * Called when a player dies in an arena
