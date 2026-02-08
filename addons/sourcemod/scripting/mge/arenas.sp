@@ -985,9 +985,8 @@ int StartCountDown(int arena_index)
     int red_f1 = g_iArenaQueue[arena_index][SLOT_ONE]; /* Red (slot one) player. */
     int blu_f1 = g_iArenaQueue[arena_index][SLOT_TWO]; /* Blu (slot two) player. */
 
-    // Remove all projectiles from previous round
-    if (g_bClearProjectiles && g_iArenaStatus[arena_index] == AS_FIGHT && !g_bArenaBBall[arena_index])
-        RemoveArenaProjectiles(arena_index);
+    // Remove player entities from previous round
+    ClearArenaEntitiesForRoundReset(arena_index);
 
     if (g_bFourPersonArena[arena_index])
     {
@@ -2210,6 +2209,37 @@ stock bool CanConvertArenaTo1v1(int arena_index, int client, char[] reason, int 
         {
             Format(reason, reason_size, "arena not empty");
             return false;
+        }
+    }
+}
+
+// Remove player entities between rounds (projectiles and buildings)
+void ClearArenaEntitiesForRoundReset(int arena_index)
+{
+    if (!arena_index || g_bArenaBBall[arena_index])
+        return;
+
+    if (g_bClearPlayerEntities)
+        RemoveArenaPlayerEntities(arena_index);
+    else if (g_bClearProjectiles)
+        RemoveArenaProjectiles(arena_index);
+}
+
+// Removes all player-owned entities in the specified arena
+void RemoveArenaPlayerEntities(int arena_index)
+{
+    if (!arena_index)
+        return;
+
+    RemoveArenaProjectiles(arena_index);
+
+    int max_active_slot = g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO;
+    for (int slot = SLOT_ONE; slot <= max_active_slot; slot++)
+    {
+        int client = g_iArenaQueue[arena_index][slot];
+        if (IsValidClient(client))
+        {
+            RemoveEngineerBuildings(client);
         }
     }
 }

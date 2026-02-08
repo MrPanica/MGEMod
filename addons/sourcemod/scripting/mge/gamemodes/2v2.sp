@@ -1002,9 +1002,8 @@ Action Timer_New2v2Round(Handle timer, any arena_index) {
     int red_f2 = g_iArenaQueue[arena_index][SLOT_THREE]; /* 2nd Red (slot three) player. */
     int blu_f2 = g_iArenaQueue[arena_index][SLOT_FOUR]; /* 2nd Blu (slot four) player. */
 
-    // Remove all projectiles from previous round
-    if (g_bClearProjectiles && g_iArenaStatus[arena_index] == AS_FIGHT && !g_bArenaBBall[arena_index])
-        RemoveArenaProjectiles(arena_index);
+    // Remove player entities from previous round
+    ClearArenaEntitiesForRoundReset(arena_index);
 
     if (red_f1) ResetPlayer(red_f1);
     if (blu_f1) ResetPlayer(blu_f1);

@@ -280,8 +280,8 @@ int ResetPlayer(int client)
         return 0;
     }
 
-    // Remove projectiles when resetting a player
-    if (g_bClearProjectiles && g_iArenaStatus[arena_index] == AS_FIGHT && !g_bArenaBBall[arena_index])
+    // Remove projectiles when resetting a player (keep player entities for round reset only)
+    if (!g_bClearPlayerEntities && g_bClearProjectiles && g_iArenaStatus[arena_index] == AS_FIGHT && !g_bArenaBBall[arena_index])
         RemoveArenaProjectiles(arena_index);
 
     g_iPlayerSpecTarget[client] = 0;

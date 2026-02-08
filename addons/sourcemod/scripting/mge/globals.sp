@@ -44,6 +44,7 @@ bool g_bBlockFallDamage,
      g_b2v2SkipCountdown,
      g_b2v2Elo,
      g_bClearProjectiles,
+     g_bClearPlayerEntities,
      g_bAllowUnverifiedPlayers,
      g_bVipQueuePriority;
 
@@ -79,6 +80,7 @@ Convar
     gcvar_2v2SkipCountdown,
     gcvar_2v2Elo,
     gcvar_clearProjectiles,
+    gcvar_clearPlayerEntities,
     gcvar_allowUnverifiedPlayers,
     gcvar_vipQueuePriority,
     g_cvarPlayArenaSound;

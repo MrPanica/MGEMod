@@ -113,6 +113,7 @@ public void OnPluginStart()
     gcvar_2v2SkipCountdown = new Convar("mgemod_2v2_skip_countdown", "0", "Skip countdown between 2v2 rounds? (0 = Normal countdown, 1 = Skip countdown)", FCVAR_NONE, true, 0.0, true, 1.0);
     gcvar_2v2Elo = new Convar("mgemod_2v2_elo", "1", "Enable ELO calculation and display for 2v2 matches? (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
     gcvar_clearProjectiles = new Convar("mgemod_clear_projectiles", "0", "Clear projectiles when a new round starts? (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
+    gcvar_clearPlayerEntities = new Convar("mgemod_clear_player_entities", "0", "Clear player entities (projectiles and buildings) between duels? (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
     gcvar_allowUnverifiedPlayers = new Convar("mgemod_allow_unverified_players", "0", "Allow players with unverified ELO to play? ELO calculations will be skipped for them. (0 = Block unverified, 1 = Allow but skip ELO)", FCVAR_NONE, true, 0.0, true, 1.0);
     gcvar_vipQueuePriority = new Convar("mgemod_vip_queue_priority", "0", "Enable VIP queue priority? Players with 'a' or 'z' admin flags will be placed at the front of the queue. (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
 
@@ -130,6 +131,7 @@ public void OnPluginStart()
     g_b2v2SkipCountdown = gcvar_2v2SkipCountdown.IntValue ? true : false;
     g_b2v2Elo = gcvar_2v2Elo.IntValue ? true : false;
     g_bClearProjectiles = gcvar_clearProjectiles.IntValue ? true : false;
+    g_bClearPlayerEntities = gcvar_clearPlayerEntities.IntValue ? true : false;
     g_bAllowUnverifiedPlayers = gcvar_allowUnverifiedPlayers.IntValue ? true : false;
     g_bVipQueuePriority = gcvar_vipQueuePriority.IntValue ? true : false;
 
@@ -175,6 +177,7 @@ public void OnPluginStart()
     gcvar_2v2SkipCountdown.AddChangeHook(handler_ConVarChange);
     gcvar_2v2Elo.AddChangeHook(handler_ConVarChange);
     gcvar_clearProjectiles.AddChangeHook(handler_ConVarChange);
+    gcvar_clearPlayerEntities.AddChangeHook(handler_ConVarChange);
     gcvar_allowUnverifiedPlayers.AddChangeHook(handler_ConVarChange);
     gcvar_vipQueuePriority.AddChangeHook(handler_ConVarChange);
 
@@ -584,6 +587,8 @@ void handler_ConVarChange(Handle convar, const char[] oldValue, const char[] new
         g_b2v2Elo = boolValue;
     else if (convar == gcvar_clearProjectiles)
         g_bClearProjectiles = boolValue;
+    else if (convar == gcvar_clearPlayerEntities)
+        g_bClearPlayerEntities = boolValue;
     else if (convar == gcvar_allowUnverifiedPlayers)
         g_bAllowUnverifiedPlayers = boolValue;
     else if (convar == gcvar_vipQueuePriority)
