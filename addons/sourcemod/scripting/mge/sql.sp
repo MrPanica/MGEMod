@@ -623,7 +623,12 @@ void SQL_OnDuelInserted(Database db, DBResultSet results, const char[] error, Da
             if (results != null && results.FetchRow())
             {
                 int duelId = results.FetchInt(0);
-                CallForward_On2v2MatchEnd(duelId, arena_index, winning_team, winnerScore, loserScore, team1_player1, team1_player2, team2_player1, team2_player2);
+                int duration = 0;
+                if (g_iArenaDuelStartTime[arena_index] > 0)
+                {
+                    duration = GetTime() - g_iArenaDuelStartTime[arena_index];
+                }
+                CallForward_On2v2MatchEnd(duelId, arena_index, winning_team, winnerScore, loserScore, team1_player1, team1_player2, team2_player1, team2_player2, duration);
                 InsertClassRatingRows(duelId, classEntries, is2v2);
             }
             else
@@ -663,7 +668,12 @@ void SQL_OnDuelInserted(Database db, DBResultSet results, const char[] error, Da
             if (results != null && results.FetchRow())
             {
                 int duelId = results.FetchInt(0);
-                CallForward_On1v1MatchEnd(duelId, arena_index, winner, loser, winnerScore, loserScore);
+                int duration = 0;
+                if (g_iArenaDuelStartTime[arena_index] > 0)
+                {
+                    duration = GetTime() - g_iArenaDuelStartTime[arena_index];
+                }
+                CallForward_On1v1MatchEnd(duelId, arena_index, winner, loser, winnerScore, loserScore, duration);
                 InsertClassRatingRows(duelId, classEntries, is2v2);
             }
             else
@@ -736,7 +746,12 @@ void SQL_OnDuelIdReceived(Database db, DBResultSet results, const char[] error, 
         int team1_player2 = pack.ReadCell();
         int team2_player1 = pack.ReadCell();
         int team2_player2 = pack.ReadCell();
-        CallForward_On2v2MatchEnd(duelId, arena_index, winning_team, winnerScore, loserScore, team1_player1, team1_player2, team2_player1, team2_player2);
+        int duration = 0;
+        if (g_iArenaDuelStartTime[arena_index] > 0)
+        {
+            duration = GetTime() - g_iArenaDuelStartTime[arena_index];
+        }
+        CallForward_On2v2MatchEnd(duelId, arena_index, winning_team, winnerScore, loserScore, team1_player1, team1_player2, team2_player1, team2_player2, duration);
     }
     else // 1v1 case
     {
@@ -744,7 +759,12 @@ void SQL_OnDuelIdReceived(Database db, DBResultSet results, const char[] error, 
         int loser = pack.ReadCell();
         int winnerScore = pack.ReadCell();
         int loserScore = pack.ReadCell();
-        CallForward_On1v1MatchEnd(duelId, arena_index, winner, loser, winnerScore, loserScore);
+        int duration = 0;
+        if (g_iArenaDuelStartTime[arena_index] > 0)
+        {
+            duration = GetTime() - g_iArenaDuelStartTime[arena_index];
+        }
+        CallForward_On1v1MatchEnd(duelId, arena_index, winner, loser, winnerScore, loserScore, duration);
     }
 
     InsertClassRatingRows(duelId, classEntries, is2v2);

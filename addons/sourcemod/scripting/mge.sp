@@ -21,6 +21,10 @@
 #define MAXSPAWNS 15
 #define HUDFADEOUTTIME 120.0
 
+#if !defined(IN_SCORE)
+#define IN_SCORE (1 << 16)
+#endif
+
 #pragma newdecls required
 
 // Globals
@@ -113,6 +117,8 @@ public void OnPluginStart()
     gcvar_2v2SkipCountdown = new Convar("mgemod_2v2_skip_countdown", "0", "Skip countdown between 2v2 rounds? (0 = Normal countdown, 1 = Skip countdown)", FCVAR_NONE, true, 0.0, true, 1.0);
     gcvar_2v2Elo = new Convar("mgemod_2v2_elo", "1", "Enable ELO calculation and display for 2v2 matches? (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
     gcvar_clearProjectiles = new Convar("mgemod_clear_projectiles", "0", "Clear projectiles when a new round starts? (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
+    gcvar_clearPlayerEntities = new Convar("mgemod_clear_player_entities", "0", "Clear player entities (projectiles and buildings) between duels? (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
+    gcvar_debugWadd = new Convar("mgemod_debug_wadd", "0", "Debug wadd logic to mgemod.log? (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
     gcvar_allowUnverifiedPlayers = new Convar("mgemod_allow_unverified_players", "0", "Allow players with unverified ELO to play? ELO calculations will be skipped for them. (0 = Block unverified, 1 = Allow but skip ELO)", FCVAR_NONE, true, 0.0, true, 1.0);
     gcvar_vipQueuePriority = new Convar("mgemod_vip_queue_priority", "0", "Enable VIP queue priority? Players with 'a' or 'z' admin flags will be placed at the front of the queue. (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
 
@@ -130,6 +136,8 @@ public void OnPluginStart()
     g_b2v2SkipCountdown = gcvar_2v2SkipCountdown.IntValue ? true : false;
     g_b2v2Elo = gcvar_2v2Elo.IntValue ? true : false;
     g_bClearProjectiles = gcvar_clearProjectiles.IntValue ? true : false;
+    g_bClearPlayerEntities = gcvar_clearPlayerEntities.IntValue ? true : false;
+    g_bDebugWadd = gcvar_debugWadd.IntValue ? true : false;
     g_bAllowUnverifiedPlayers = gcvar_allowUnverifiedPlayers.IntValue ? true : false;
     g_bVipQueuePriority = gcvar_vipQueuePriority.IntValue ? true : false;
 
@@ -175,6 +183,8 @@ public void OnPluginStart()
     gcvar_2v2SkipCountdown.AddChangeHook(handler_ConVarChange);
     gcvar_2v2Elo.AddChangeHook(handler_ConVarChange);
     gcvar_clearProjectiles.AddChangeHook(handler_ConVarChange);
+    gcvar_clearPlayerEntities.AddChangeHook(handler_ConVarChange);
+    gcvar_debugWadd.AddChangeHook(handler_ConVarChange);
     gcvar_allowUnverifiedPlayers.AddChangeHook(handler_ConVarChange);
     gcvar_vipQueuePriority.AddChangeHook(handler_ConVarChange);
 
@@ -244,6 +254,7 @@ public void OnPluginStart()
 
     // Set up the log file for debug logging
     BuildPath(Path_SM, g_sLogFile, sizeof(g_sLogFile), "logs/mgemod.log");
+    BuildPath(Path_SM, g_sStateFile, sizeof(g_sStateFile), "data/mgemod_state.cfg");
 }
 
 // Execute configuration after all configs are loaded
@@ -259,6 +270,13 @@ public void OnConfigsExecuted()
 void HandleHotReload()
 {
     MC_PrintToChatAll("%t", "PluginReloaded");
+
+    if (RestoreHotReloadState())
+    {
+        EnsureHudTimers();
+        g_bLate = false;
+        return;
+    }
 
     for (int i = 1; i <= MaxClients; i++)
     {
@@ -301,6 +319,314 @@ void HandleHotReload()
     g_bLate = false;
 }
 
+// Ensure HUD and queue timers are running
+void EnsureHudTimers()
+{
+    if (g_hSpecHudTimer == null)
+        g_hSpecHudTimer = CreateTimer(1.0, Timer_SpecHudToAllArenas, _, TIMER_FLAG_NO_MAPCHANGE | TIMER_REPEAT);
+    if (g_hQueueKeyHintTimer == null)
+        g_hQueueKeyHintTimer = CreateTimer(0.1, Timer_UpdateQueueKeyHint, _, TIMER_FLAG_NO_MAPCHANGE | TIMER_REPEAT);
+    if (g_hQueueDisplayTimer == null)
+        g_hQueueDisplayTimer = CreateTimer(10.0, Timer_UpdateQueueDisplay, _, TIMER_FLAG_NO_MAPCHANGE | TIMER_REPEAT);
+}
+
+// Save arena and queue state for hot reload
+void SaveHotReloadState()
+{
+    if (g_iArenaCount <= 0)
+        return;
+
+    KeyValues kv = new KeyValues("mgemod_state");
+    kv.SetNum("arena_count", g_iArenaCount);
+
+    kv.JumpToKey("arenas", true);
+    for (int arena_index = 1; arena_index <= g_iArenaCount; arena_index++)
+    {
+        char arena_key[8];
+        IntToString(arena_index, arena_key, sizeof(arena_key));
+        kv.JumpToKey(arena_key, true);
+
+        kv.SetNum("status", g_iArenaStatus[arena_index]);
+        kv.SetNum("score_red", g_iArenaScore[arena_index][SLOT_ONE]);
+        kv.SetNum("score_blu", g_iArenaScore[arena_index][SLOT_TWO]);
+        kv.SetNum("duel_start", g_iArenaDuelStartTime[arena_index]);
+
+        for (int slot = 1; slot < MAXPLAYERS; slot++)
+        {
+            int client = g_iArenaQueue[arena_index][slot];
+            if (client > 0 && IsValidClient(client))
+            {
+                char slot_key[16];
+                Format(slot_key, sizeof(slot_key), "slot_%d", slot);
+                kv.SetNum(slot_key, GetClientUserId(client));
+            }
+        }
+
+        kv.GoBack();
+    }
+    kv.GoBack();
+
+    kv.JumpToKey("waiting", true);
+    for (int arena_index = 1; arena_index <= g_iArenaCount; arena_index++)
+    {
+        char arena_key[8];
+        IntToString(arena_index, arena_key, sizeof(arena_key));
+        kv.JumpToKey(arena_key, true);
+
+        int waiting_count = 0;
+        if (g_alArenaWaitingList[arena_index] != null)
+            waiting_count = g_alArenaWaitingList[arena_index].Length;
+
+        kv.SetNum("count", waiting_count);
+        for (int i = 0; i < waiting_count; i++)
+        {
+            int client = g_alArenaWaitingList[arena_index].Get(i);
+            if (client > 0 && IsValidClient(client))
+            {
+                char wait_key[16];
+                Format(wait_key, sizeof(wait_key), "w%d", i + 1);
+                kv.SetNum(wait_key, GetClientUserId(client));
+            }
+        }
+
+        kv.GoBack();
+    }
+    kv.GoBack();
+
+    kv.JumpToKey("clients", true);
+    for (int client = 1; client <= MaxClients; client++)
+    {
+        if (!IsValidClient(client))
+            continue;
+
+        char client_key[16];
+        IntToString(GetClientUserId(client), client_key, sizeof(client_key));
+        kv.JumpToKey(client_key, true);
+        kv.SetNum("waiting", g_iPlayerWaiting[client] ? 1 : 0);
+        kv.SetNum("class", view_as<int>(g_tfctPlayerClass[client]));
+        kv.SetNum("wadd", g_bPlayerAddedViaWadd[client] ? 1 : 0);
+        kv.SetNum("elo_verified", g_bPlayerEloVerified[client] ? 1 : 0);
+        kv.SetNum("rating", g_iPlayerRating[client]);
+        kv.SetNum("wins", g_iPlayerWins[client]);
+        kv.SetNum("losses", g_iPlayerLosses[client]);
+        kv.SetNum("arena", g_iPlayerArena[client]);
+        kv.SetNum("slot", g_iPlayerSlot[client]);
+        kv.SetNum("team", GetClientTeam(client));
+        kv.SetNum("alive", IsPlayerAlive(client) ? 1 : 0);
+        kv.SetNum("hp", GetClientHealth(client));
+        kv.SetNum("mge_hp", g_iPlayerHP[client]);
+        kv.SetNum("max_hp", g_iPlayerMaxHP[client]);
+
+        float origin[3];
+        float angles[3];
+        GetClientAbsOrigin(client, origin);
+        GetClientEyeAngles(client, angles);
+        kv.SetFloat("pos_x", origin[0]);
+        kv.SetFloat("pos_y", origin[1]);
+        kv.SetFloat("pos_z", origin[2]);
+        kv.SetFloat("ang_x", angles[0]);
+        kv.SetFloat("ang_y", angles[1]);
+        kv.SetFloat("ang_z", angles[2]);
+        kv.GoBack();
+    }
+    kv.GoBack();
+
+    kv.ExportToFile(g_sStateFile);
+    delete kv;
+}
+
+// Restore arena and queue state after hot reload
+bool RestoreHotReloadState()
+{
+    if (!FileExists(g_sStateFile))
+        return false;
+
+    KeyValues kv = new KeyValues("mgemod_state");
+    if (!kv.ImportFromFile(g_sStateFile))
+    {
+        delete kv;
+        return false;
+    }
+
+    if (g_iArenaCount <= 0)
+    {
+        delete kv;
+        return false;
+    }
+
+    for (int i = 1; i <= g_iArenaCount; i++)
+    {
+        if (g_alArenaWaitingList[i] == null)
+            g_alArenaWaitingList[i] = new ArrayList();
+        else
+            g_alArenaWaitingList[i].Clear();
+
+        for (int slot = 1; slot < MAXPLAYERS; slot++)
+            g_iArenaQueue[i][slot] = 0;
+    }
+
+    for (int client = 1; client <= MaxClients; client++)
+    {
+        g_iPlayerArena[client] = 0;
+        g_iPlayerSlot[client] = 0;
+        g_iPlayerWaiting[client] = false;
+        g_bPlayerAddedViaWadd[client] = false;
+    }
+
+    if (kv.JumpToKey("arenas", false))
+    {
+        for (int arena_index = 1; arena_index <= g_iArenaCount; arena_index++)
+        {
+            char arena_key[8];
+            IntToString(arena_index, arena_key, sizeof(arena_key));
+            if (!kv.JumpToKey(arena_key, false))
+                continue;
+
+            g_iArenaStatus[arena_index] = kv.GetNum("status", g_iArenaStatus[arena_index]);
+            g_iArenaScore[arena_index][SLOT_ONE] = kv.GetNum("score_red", 0);
+            g_iArenaScore[arena_index][SLOT_TWO] = kv.GetNum("score_blu", 0);
+            g_iArenaDuelStartTime[arena_index] = kv.GetNum("duel_start", 0);
+
+            for (int slot = 1; slot < MAXPLAYERS; slot++)
+            {
+                char slot_key[16];
+                Format(slot_key, sizeof(slot_key), "slot_%d", slot);
+                int userid = kv.GetNum(slot_key, 0);
+                if (userid <= 0)
+                    continue;
+
+                int client = GetClientOfUserId(userid);
+                if (!IsValidClient(client))
+                    continue;
+
+                g_iArenaQueue[arena_index][slot] = client;
+                g_iPlayerArena[client] = arena_index;
+                g_iPlayerSlot[client] = slot;
+            }
+
+            kv.GoBack();
+        }
+        kv.GoBack();
+    }
+
+    if (kv.JumpToKey("waiting", false))
+    {
+        for (int arena_index = 1; arena_index <= g_iArenaCount; arena_index++)
+        {
+            char arena_key[8];
+            IntToString(arena_index, arena_key, sizeof(arena_key));
+            if (!kv.JumpToKey(arena_key, false))
+                continue;
+
+            int waiting_count = kv.GetNum("count", 0);
+            for (int i = 0; i < waiting_count; i++)
+            {
+                char wait_key[16];
+                Format(wait_key, sizeof(wait_key), "w%d", i + 1);
+                int userid = kv.GetNum(wait_key, 0);
+                if (userid <= 0)
+                    continue;
+
+                int client = GetClientOfUserId(userid);
+                if (!IsValidClient(client))
+                    continue;
+
+                g_alArenaWaitingList[arena_index].Push(client);
+            }
+
+            kv.GoBack();
+        }
+        kv.GoBack();
+    }
+
+    if (kv.JumpToKey("clients", false))
+    {
+        for (int client = 1; client <= MaxClients; client++)
+        {
+            if (!IsValidClient(client))
+                continue;
+
+            char client_key[16];
+            IntToString(GetClientUserId(client), client_key, sizeof(client_key));
+            if (!kv.JumpToKey(client_key, false))
+                continue;
+
+            g_iPlayerWaiting[client] = kv.GetNum("waiting", 0) != 0;
+            int class_value = kv.GetNum("class", 0);
+            if (class_value > 0)
+                g_tfctPlayerClass[client] = view_as<TFClassType>(class_value);
+            g_bPlayerAddedViaWadd[client] = kv.GetNum("wadd", 0) != 0;
+            g_bPlayerEloVerified[client] = kv.GetNum("elo_verified", 0) != 0;
+            g_iPlayerRating[client] = kv.GetNum("rating", g_iPlayerRating[client]);
+            g_iPlayerWins[client] = kv.GetNum("wins", g_iPlayerWins[client]);
+            g_iPlayerLosses[client] = kv.GetNum("losses", g_iPlayerLosses[client]);
+
+            int saved_arena = kv.GetNum("arena", 0);
+            int saved_slot = kv.GetNum("slot", 0);
+            int saved_hp = kv.GetNum("hp", 0);
+            int saved_mge_hp = kv.GetNum("mge_hp", 0);
+            int saved_max_hp = kv.GetNum("max_hp", 0);
+            bool saved_alive = kv.GetNum("alive", 0) != 0;
+            float origin[3];
+            float angles[3];
+            origin[0] = kv.GetFloat("pos_x", 0.0);
+            origin[1] = kv.GetFloat("pos_y", 0.0);
+            origin[2] = kv.GetFloat("pos_z", 0.0);
+            angles[0] = kv.GetFloat("ang_x", 0.0);
+            angles[1] = kv.GetFloat("ang_y", 0.0);
+            angles[2] = kv.GetFloat("ang_z", 0.0);
+
+            if (saved_arena > 0 && saved_slot > 0 && g_iPlayerArena[client] == saved_arena && g_iPlayerSlot[client] == saved_slot)
+            {
+                int max_active_slot = g_bFourPersonArena[saved_arena] ? SLOT_FOUR : SLOT_TWO;
+                if (saved_slot <= max_active_slot && !g_iPlayerWaiting[client])
+                {
+                    int target_team = (saved_slot == SLOT_ONE || saved_slot == SLOT_THREE) ? TEAM_RED : TEAM_BLU;
+
+                    if (GetClientTeam(client) != target_team)
+                        ChangeClientTeam(client, target_team);
+
+                    if (class_value > 0)
+                        TF2_SetPlayerClass(client, view_as<TFClassType>(class_value));
+
+                    if (!IsPlayerAlive(client) || !saved_alive)
+                        TF2_RespawnPlayer(client);
+
+                    TeleportEntity(client, origin, angles, NULL_VECTOR);
+
+                    if (saved_max_hp > 0)
+                        g_iPlayerMaxHP[client] = saved_max_hp;
+
+                    if (saved_mge_hp > 0)
+                        g_iPlayerHP[client] = saved_mge_hp;
+
+                    if (saved_hp > 0)
+                        SetEntProp(client, Prop_Data, "m_iHealth", saved_hp);
+                }
+            }
+
+            kv.GoBack();
+        }
+        kv.GoBack();
+    }
+
+    delete kv;
+    DeleteFile(g_sStateFile);
+
+    UpdateHudForAll();
+    for (int arena_index = 1; arena_index <= g_iArenaCount; arena_index++)
+    {
+        UpdateQueueKeyHintText(arena_index);
+    }
+
+    return true;
+}
+
+public void OnPluginEnd()
+{
+    SaveHotReloadState();
+}
+
 // Initialize map-specific systems, precache models, hook events, and set up arenas
 public void OnMapStart()
 {
@@ -334,14 +660,14 @@ public void OnMapStart()
             }
         }
 
-        CreateTimer(1.0, Timer_SpecHudToAllArenas, _, TIMER_FLAG_NO_MAPCHANGE | TIMER_REPEAT);
-        CreateTimer(0.1, Timer_UpdateQueueKeyHint, _, TIMER_FLAG_NO_MAPCHANGE | TIMER_REPEAT);
+        EnsureHudTimers();
 
         // Create timer to show top rated online player every 5 minutes
         g_hTopRatingTimer = CreateTimer(300.0, Timer_ShowTopRatedPlayer, _, TIMER_FLAG_NO_MAPCHANGE | TIMER_REPEAT);
 
         // Create timer to update queue display every 10 seconds
-        CreateTimer(10.0, Timer_UpdateQueueDisplay, _, TIMER_FLAG_NO_MAPCHANGE | TIMER_REPEAT);
+        if (g_hQueueDisplayTimer == null)
+            g_hQueueDisplayTimer = CreateTimer(10.0, Timer_UpdateQueueDisplay, _, TIMER_FLAG_NO_MAPCHANGE | TIMER_REPEAT);
 
         if (g_bAutoCvar)
         {
@@ -520,6 +846,16 @@ Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, in
 // Process infinite ammo restoration for ammomod arenas
 public Action OnPlayerRunCmd(int client, int& buttons, int& impulse, float vel[3], float angles[3], int& weapon, int& subtype, int& cmdnum, int& tickcount, int& seed, int mouse[2])
 {
+    bool is_scoreboard_open = (buttons & IN_SCORE) != 0;
+    if (is_scoreboard_open != g_bScoreboardOpen[client])
+    {
+        g_bScoreboardOpen[client] = is_scoreboard_open;
+        if (!is_scoreboard_open)
+        {
+            UpdateHud(client);
+        }
+    }
+
     int arena_index = g_iPlayerArena[client];
     if (g_bArenaInfAmmo[arena_index])
     {
@@ -584,6 +920,10 @@ void handler_ConVarChange(Handle convar, const char[] oldValue, const char[] new
         g_b2v2Elo = boolValue;
     else if (convar == gcvar_clearProjectiles)
         g_bClearProjectiles = boolValue;
+    else if (convar == gcvar_clearPlayerEntities)
+        g_bClearPlayerEntities = boolValue;
+    else if (convar == gcvar_debugWadd)
+        g_bDebugWadd = boolValue;
     else if (convar == gcvar_allowUnverifiedPlayers)
         g_bAllowUnverifiedPlayers = boolValue;
     else if (convar == gcvar_vipQueuePriority)

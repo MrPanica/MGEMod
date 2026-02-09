@@ -7,10 +7,10 @@ void RegisterForwards()
     g_hOnPlayerArenaRemove = new GlobalForward("MGE_OnPlayerArenaRemove", ET_Hook, Param_Cell, Param_Cell);
     g_hOnPlayerArenaRemoved = new GlobalForward("MGE_OnPlayerArenaRemoved", ET_Ignore, Param_Cell, Param_Cell);
     g_hOn1v1MatchStart = new GlobalForward("MGE_On1v1MatchStart", ET_Ignore, Param_Cell, Param_Cell, Param_Cell);
-    g_hOn1v1MatchEnd = new GlobalForward("MGE_On1v1MatchEnd", ET_Ignore, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell);
+    g_hOn1v1MatchEnd = new GlobalForward("MGE_On1v1MatchEnd", ET_Ignore, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell);
     g_hOn2v2MatchStart = new GlobalForward("MGE_On2v2MatchStart", ET_Ignore, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell);
     g_hOnDuelStart = new GlobalForward("MGE_OnDuelStart", ET_Ignore, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell);
-    g_hOn2v2MatchEnd = new GlobalForward("MGE_On2v2MatchEnd", ET_Ignore, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell);
+    g_hOn2v2MatchEnd = new GlobalForward("MGE_On2v2MatchEnd", ET_Ignore, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell);
     g_hOnArenaPlayerDeath = new GlobalForward("MGE_OnArenaPlayerDeath", ET_Ignore, Param_Cell, Param_Cell, Param_Cell);
     g_hOnPlayerELOChange = new GlobalForward("MGE_OnPlayerELOChange", ET_Ignore, Param_Cell, Param_Cell, Param_Cell, Param_Cell);
     g_hOn2v2ReadyStart = new GlobalForward("MGE_On2v2ReadyStart", ET_Ignore, Param_Cell);
@@ -76,7 +76,7 @@ void CallForward_On1v1MatchStart(int arena_index, int player1, int player2)
 }
 
 // Call the On1v1MatchEnd forward
-void CallForward_On1v1MatchEnd(int duel_id, int arena_index, int winner, int loser, int winner_score, int loser_score)
+void CallForward_On1v1MatchEnd(int duel_id, int arena_index, int winner, int loser, int winner_score, int loser_score, int duration)
 {
     Call_StartForward(g_hOn1v1MatchEnd);
     Call_PushCell(duel_id);
@@ -85,6 +85,7 @@ void CallForward_On1v1MatchEnd(int duel_id, int arena_index, int winner, int los
     Call_PushCell(loser);
     Call_PushCell(winner_score);
     Call_PushCell(loser_score);
+    Call_PushCell(duration);
     Call_Finish();
 }
 
@@ -113,7 +114,7 @@ void CallForward_OnDuelStart(int arena_index, int player1, int player2, int play
 }
 
 // Call the On2v2MatchEnd forward
-void CallForward_On2v2MatchEnd(int duel_id, int arena_index, int winning_team, int winning_score, int losing_score, int team1_player1, int team1_player2, int team2_player1, int team2_player2)
+void CallForward_On2v2MatchEnd(int duel_id, int arena_index, int winning_team, int winning_score, int losing_score, int team1_player1, int team1_player2, int team2_player1, int team2_player2, int duration)
 {
     Call_StartForward(g_hOn2v2MatchEnd);
     Call_PushCell(duel_id);
@@ -125,6 +126,7 @@ void CallForward_On2v2MatchEnd(int duel_id, int arena_index, int winning_team, i
     Call_PushCell(team1_player2);
     Call_PushCell(team2_player1);
     Call_PushCell(team2_player2);
+    Call_PushCell(duration);
     Call_Finish();
 }
 

@@ -12,6 +12,8 @@ void HandleClientConnection(int client)
     g_bPlayerRestoringAmmo[client] = false;
     g_bPlayerEloVerified[client] = false;
     g_bPlayerAddedViaWadd[client] = false;
+    g_bScoreboardOpen[client] = false;
+    g_bWaddMenu[client] = false;
     
     // Clear any inherited statistics data immediately (but preserve if already properly loaded)
     // This prevents stats from being inherited from previous client in the same slot
@@ -92,6 +94,8 @@ void HandleClientDisconnection(int client)
     
     // Reset wadd flag
     g_bPlayerAddedViaWadd[client] = false;
+    g_bScoreboardOpen[client] = false;
+    g_bWaddMenu[client] = false;
     
     // Remove from waiting lists
     for (int i = 1; i <= g_iArenaCount; i++)
@@ -280,8 +284,8 @@ int ResetPlayer(int client)
         return 0;
     }
 
-    // Remove projectiles when resetting a player
-    if (g_bClearProjectiles && g_iArenaStatus[arena_index] == AS_FIGHT && !g_bArenaBBall[arena_index])
+    // Remove projectiles when resetting a player (keep player entities for round reset only)
+    if (!g_bClearPlayerEntities && g_bClearProjectiles && g_iArenaStatus[arena_index] == AS_FIGHT && !g_bArenaBBall[arena_index])
         RemoveArenaProjectiles(arena_index);
 
     g_iPlayerSpecTarget[client] = 0;

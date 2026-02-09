@@ -6,6 +6,9 @@ void UpdateHud(int client)
 {
     if (!IsValidClient(client))
         return;
+
+    if (g_bScoreboardOpen[client])
+        return;
     
     int arena_index = 0;
     bool is_spectator = false;
@@ -490,6 +493,9 @@ Action Command_ToggleHud(int client, int args)
 // Shows arena queue in KeyHintText for players in arena
 void ShowQueueInKeyHintText(int client, int arena_index)
 {
+    if (g_bScoreboardOpen[client])
+        return;
+
     // Check if player wants to see queue
     if (!g_bShowQueue[client])
     {
@@ -571,6 +577,8 @@ void UpdateQueueKeyHintText(int arena_index)
         int player = g_iArenaQueue[arena_index][i];
         if (player != 0 && IsValidClient(player))
         {
+            if (g_bScoreboardOpen[player])
+                continue;
             if (g_bShowQueue[player])
                 ShowQueueInKeyHintText(player, arena_index);
             else
@@ -585,6 +593,8 @@ void UpdateQueueKeyHintText(int arena_index)
         int player = g_iArenaQueue[arena_index][i];
         if (player != 0 && IsValidClient(player))
         {
+            if (g_bScoreboardOpen[player])
+                continue;
             if (g_bShowQueue[player])
                 ShowQueueInKeyHintText(player, arena_index);
             else
@@ -596,6 +606,9 @@ void UpdateQueueKeyHintText(int arena_index)
 // Clears KeyHintText queue display for a player
 void ClearQueueKeyHintText(int client)
 {
+    if (g_bScoreboardOpen[client])
+        return;
+
     // Send empty KeyHintText to clear it
     Client_PrintKeyHintText(client, "");
 }
