@@ -41,11 +41,11 @@ void ProcessMatchCompletion(int arena_index, int winner1, int winner2, int loser
         int elapsedTime = currentTime - g_iArenaDuelStartTime[arena_index];
         int minutes = elapsedTime / 60;
         int seconds = elapsedTime % 60;
-        Format(duel_time, sizeof(duel_time), "%02dм %02dс", minutes, seconds);
+        Format(duel_time, sizeof(duel_time), "%02d:%02d", minutes, seconds);
     }
     else
     {
-        Format(duel_time, sizeof(duel_time), "00м 00с");
+        Format(duel_time, sizeof(duel_time), "00:00");
     }
 
     // Announce match result with duel time

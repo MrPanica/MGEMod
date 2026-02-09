@@ -45,6 +45,7 @@ bool g_bBlockFallDamage,
      g_b2v2Elo,
      g_bClearProjectiles,
      g_bClearPlayerEntities,
+     g_bDebugWadd,
      g_bAllowUnverifiedPlayers,
      g_bVipQueuePriority;
 
@@ -56,6 +57,9 @@ int
 Database g_DB; // Connection to SQL database.
 Handle g_hDBReconnectTimer;
 Handle g_hTopRatingTimer; // Timer for displaying top online player rating
+Handle g_hSpecHudTimer;
+Handle g_hQueueKeyHintTimer;
+Handle g_hQueueDisplayTimer;
 
 char g_sDBConfig[256];
 int g_iReconnectInterval;
@@ -81,6 +85,7 @@ Convar
     gcvar_2v2Elo,
     gcvar_clearProjectiles,
     gcvar_clearPlayerEntities,
+    gcvar_debugWadd,
     gcvar_allowUnverifiedPlayers,
     gcvar_vipQueuePriority,
     g_cvarPlayArenaSound;
@@ -182,6 +187,8 @@ bool
     g_bPlayerTakenDirectHit [MAXPLAYERS + 1],// Player was hit directly
     g_bPlayerRestoringAmmo  [MAXPLAYERS + 1],// Player is awaiting full ammo restore
     g_bPlayerHasIntel       [MAXPLAYERS + 1],
+    g_bScoreboardOpen       [MAXPLAYERS + 1],
+    g_bWaddMenu             [MAXPLAYERS + 1],
     g_bShowHud              [MAXPLAYERS + 1] = { true, ... },
     g_bShowElo              [MAXPLAYERS + 1] = { true, ... },
     g_bShowQueue            [MAXPLAYERS + 1] = { true, ... }, // Show queue in keyhint (default: enabled)
@@ -245,6 +252,7 @@ int g_iMidairHP;
 
 // Debug log
 char g_sLogFile[PLATFORM_MAX_PATH];
+char g_sStateFile[PLATFORM_MAX_PATH];
 
 // Endif
 float

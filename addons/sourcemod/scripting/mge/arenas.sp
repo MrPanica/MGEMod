@@ -540,7 +540,7 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
                             int elapsedTime = currentTime - g_iArenaDuelStartTime[arena_index];
                             int minutes = elapsedTime / 60;
                             int seconds = elapsedTime % 60;
-                            Format(duel_time, sizeof(duel_time), "%02dм %02dс", minutes, seconds);
+                            Format(duel_time, sizeof(duel_time), "%02d:%02d", minutes, seconds);
                         }
 
                         MC_PrintToChatAll("%t", "XdefeatsYearly", foe_name, g_iArenaScore[arena_index][foe_team_slot], player_name, g_iArenaScore[arena_index][player_team_slot], g_sArenaName[arena_index], duel_time);
@@ -640,7 +640,7 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
                             int elapsedTime = currentTime - g_iArenaDuelStartTime[arena_index];
                             int minutes = elapsedTime / 60;
                             int seconds = elapsedTime % 60;
-                            Format(duel_time, sizeof(duel_time), "%02dм %02dс", minutes, seconds);
+                            Format(duel_time, sizeof(duel_time), "%02d:%02d", minutes, seconds);
                         }
 
                         MC_PrintToChatAll("%t", "XdefeatsYearly", foe_name, g_iArenaScore[arena_index][foe_slot], player_name, g_iArenaScore[arena_index][player_slot], g_sArenaName[arena_index], duel_time);
@@ -713,23 +713,7 @@ void CheckWaitingList(int arena_index)
         return;
 
     // Add players from waiting list when arena has at least one player
-    int player_count = 0;
-    int slot_one = g_iArenaQueue[arena_index][SLOT_ONE];
-    int slot_two = g_iArenaQueue[arena_index][SLOT_TWO];
-    
-    if (slot_one) player_count++;
-    if (slot_two) player_count++;
-    
-    if (g_bFourPersonArena[arena_index])
-    {
-        int slot_three = g_iArenaQueue[arena_index][SLOT_THREE];
-        int slot_four = g_iArenaQueue[arena_index][SLOT_FOUR];
-        if (slot_three) player_count++;
-        if (slot_four) player_count++;
-    }
-    
-    // Add all players from waiting list when arena has at least one player
-    bool should_add_players = (player_count >= 1) && (g_alArenaWaitingList[arena_index].Length > 0);
+    bool should_add_players = HasArenaActivePlayer(arena_index) && (g_alArenaWaitingList[arena_index].Length > 0);
 
     while (should_add_players && g_alArenaWaitingList[arena_index].Length > 0)
     {
@@ -763,6 +747,49 @@ void CheckWaitingList(int arena_index)
     }
 }
 
+// Check if arena has any active players in main slots
+bool HasArenaActivePlayer(int arena_index, int exclude_client = 0)
+{
+    int max_active_slot = g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO;
+    for (int slot = SLOT_ONE; slot <= max_active_slot; slot++)
+    {
+        int player = g_iArenaQueue[arena_index][slot];
+        if (player != 0 && player != exclude_client && IsValidClient(player) && !IsFakeClient(player) && g_iPlayerArena[player] == arena_index)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Remove client from any waiting lists
+void RemoveClientFromWaitingLists(int client, int exclude_arena = 0, bool notify = false)
+{
+    if (!IsValidClient(client))
+        return;
+
+    bool removed = false;
+    for (int i = 1; i <= g_iArenaCount; i++)
+    {
+        if (i == exclude_arena || g_alArenaWaitingList[i] == null)
+            continue;
+
+        int index = g_alArenaWaitingList[i].FindValue(client);
+        if (index != -1)
+        {
+            g_alArenaWaitingList[i].Erase(index);
+            removed = true;
+        }
+    }
+
+    if (removed)
+    {
+        g_bPlayerAddedViaWadd[client] = false;
+        if (notify)
+            MC_PrintToChat(client, "%t", "RemovedFromWaitingList");
+    }
+}
+
 // Play sound for player joining arena automatically
 void PlayArenaSound(int client)
 {
@@ -782,6 +809,9 @@ void AddInQueue(int client, int arena_index, bool showmsg = true, int playerPref
 {
     if (!IsValidClient(client))
         return;
+
+    // Leave any waiting lists when joining an arena
+    RemoveClientFromWaitingLists(client, 0, false);
 
     // Handle case where player is already in an arena
     if (g_iPlayerArena[client])
@@ -1304,6 +1334,23 @@ int Menu_Main(Menu menu, MenuAction action, int param1, int param2)
             menu.GetItem(param2, sanum, sizeof(sanum), _, capt, sizeof(capt));
             int arena_index = StringToInt(sanum);
 
+            if (g_bDebugWadd)
+                LogToFileEx(g_sLogFile, "[wadd] menu select client=%N item=%d data=\"%s\" arena=%d wadd=%d", client, param2, sanum, arena_index, g_bWaddMenu[client]);
+
+            if (g_bWaddMenu[client])
+            {
+                g_bWaddMenu[client] = false;
+                if (arena_index > 0 && arena_index <= g_iArenaCount)
+                {
+                    WaddToArena(client, arena_index, false);
+                }
+                else
+                {
+                    RemoveFromQueue(client, true);
+                }
+                return 0;
+            }
+
             if (arena_index > 0 && arena_index <= g_iArenaCount)
             {
                 char reason[128];
@@ -1340,6 +1387,11 @@ int Menu_Main(Menu menu, MenuAction action, int param1, int param2)
         }
         case MenuAction_Cancel:
         {
+            int client = param1;
+            if (client)
+                g_bWaddMenu[client] = false;
+            if (client && g_bDebugWadd)
+                LogToFileEx(g_sLogFile, "[wadd] menu cancel client=%N", client);
         }
         case MenuAction_End:
         {
@@ -1515,15 +1567,26 @@ Action Command_Wadd(int client, int args)
     if (!IsValidClient(client))
         return Plugin_Continue;
 
+    if (g_bDebugWadd)
+    {
+        LogToFileEx(g_sLogFile, "[wadd] start client=%N args=%d", client, args);
+    }
+
     // If no arguments, show menu
     if (args == 0)
     {
+        if (g_bDebugWadd)
+            LogToFileEx(g_sLogFile, "[wadd] no args -> menu client=%N", client);
+        g_bWaddMenu[client] = true;
         ShowMainMenu(client);
         return Plugin_Handled;
     }
 
     char sArg[32];
     GetCmdArg(1, sArg, sizeof(sArg));
+
+    if (g_bDebugWadd)
+        LogToFileEx(g_sLogFile, "[wadd] arg client=%N arg=\"%s\"", client, sArg);
 
     int arena_index = -1;
 
@@ -1540,60 +1603,119 @@ Action Command_Wadd(int client, int args)
         {
             if(StrContains(g_sArenaName[i], sArg, false) >= 0)
             {
-                if (g_iArenaStatus[i] == AS_IDLE) {
-                    arena_index = i;
-                    break;
-                }
+                arena_index = i;
+                break;
             }
         }
     }
 
     if (arena_index <= 0 || arena_index > g_iArenaCount)
     {
+        if (g_bDebugWadd)
+            LogToFileEx(g_sLogFile, "[wadd] arena not found client=%N arg=\"%s\"", client, sArg);
         MC_PrintToChat(client, "%t", "ArenaNotFound");
         ShowMainMenu(client);
         return Plugin_Handled;
     }
 
+    WaddToArena(client, arena_index, true);
+    return Plugin_Handled;
+}
+
+// Wadd logic for selecting an arena
+void WaddToArena(int client, int arena_index, bool show_menu)
+{
+    if (g_bDebugWadd)
+        LogToFileEx(g_sLogFile, "[wadd] select client=%N arena=%d show_menu=%d", client, arena_index, show_menu);
+
+    char reason[128];
+    if (!IsPlayerEloValid(client, reason, sizeof(reason)))
+    {
+        if (g_bDebugWadd)
+            LogToFileEx(g_sLogFile, "[wadd] blocked elo client=%N arena=%d", client, arena_index);
+        MC_PrintToChat(client, "%t", "CannotJoinArena", reason);
+        if (show_menu)
+            ShowMainMenu(client, false);
+        return;
+    }
+
+    if (arena_index != g_iPlayerArena[client])
+    {
+        int playerrating = g_iPlayerRating[client];
+        int minrating = g_iArenaMinRating[arena_index];
+        int maxrating = g_iArenaMaxRating[arena_index];
+
+        if (minrating > 0 && playerrating < minrating)
+        {
+            if (g_bDebugWadd)
+                LogToFileEx(g_sLogFile, "[wadd] blocked low rating client=%N arena=%d rating=%d min=%d", client, arena_index, playerrating, minrating);
+            MC_PrintToChat(client, "%t", "LowRating", playerrating, minrating);
+            if (show_menu)
+                ShowMainMenu(client, false);
+            return;
+        }
+        else if (maxrating > 0 && playerrating > maxrating)
+        {
+            if (g_bDebugWadd)
+                LogToFileEx(g_sLogFile, "[wadd] blocked high rating client=%N arena=%d rating=%d max=%d", client, arena_index, playerrating, maxrating);
+            MC_PrintToChat(client, "%t", "HighRating", playerrating, maxrating);
+            if (show_menu)
+                ShowMainMenu(client, false);
+            return;
+        }
+    }
+
+    // Remove from other waiting lists before processing target arena
+    RemoveClientFromWaitingLists(client, arena_index, false);
+
     // Check if player is already in waiting list for this arena
     if (g_alArenaWaitingList[arena_index].FindValue(client) != -1)
     {
+        if (g_bDebugWadd)
+            LogToFileEx(g_sLogFile, "[wadd] already waiting client=%N arena=%d", client, arena_index);
         MC_PrintToChat(client, "%t", "AlreadyInWaitingList", g_sArenaName[arena_index]);
-        return Plugin_Handled;
+        return;
     }
 
     // Check if player is already in an arena
     if (g_iPlayerArena[client])
     {
+        if (g_bDebugWadd)
+            LogToFileEx(g_sLogFile, "[wadd] already in arena client=%N arena=%d", client, g_iPlayerArena[client]);
         MC_PrintToChat(client, "%t", "AlreadyInArena");
-        return Plugin_Handled;
+        return;
     }
 
-    // Count current players on arena
-    int player_count = 0;
-    if (g_iArenaQueue[arena_index][SLOT_ONE]) player_count++;
-    if (g_iArenaQueue[arena_index][SLOT_TWO]) player_count++;
-
-    if (g_bFourPersonArena[arena_index])
+    bool has_active_player = HasArenaActivePlayer(arena_index, client);
+    if (g_bDebugWadd)
     {
-        if (g_iArenaQueue[arena_index][SLOT_THREE]) player_count++;
-        if (g_iArenaQueue[arena_index][SLOT_FOUR]) player_count++;
+        int slot_one = g_iArenaQueue[arena_index][SLOT_ONE];
+        int slot_two = g_iArenaQueue[arena_index][SLOT_TWO];
+        int slot_three = g_iArenaQueue[arena_index][SLOT_THREE];
+        int slot_four = g_iArenaQueue[arena_index][SLOT_FOUR];
+        int waiting_len = (g_alArenaWaitingList[arena_index] != null) ? g_alArenaWaitingList[arena_index].Length : 0;
+        LogToFileEx(g_sLogFile, "[wadd] client=%N arena=%d status=%d active=%d slots=[%d,%d,%d,%d] waiting=%d player_arena=%d",
+            client, arena_index, g_iArenaStatus[arena_index], has_active_player, slot_one, slot_two, slot_three, slot_four, waiting_len, g_iPlayerArena[client]);
     }
 
-    // If arena is empty, add to waiting list
-    if (player_count == 0)
+    // If arena has no other players, add to waiting list
+    if (!has_active_player)
     {
+        if (g_bDebugWadd)
+            LogToFileEx(g_sLogFile, "[wadd] waiting list client=%N arena=%d", client, arena_index);
         g_alArenaWaitingList[arena_index].Push(client);
         g_bPlayerAddedViaWadd[client] = true;
         MC_PrintToChat(client, "%t", "AddedToWaitingList");
-        ShowMainMenu(client);
-        return Plugin_Handled;
+        if (show_menu)
+            ShowMainMenu(client);
+        return;
     }
 
     // If arena has players, add directly like normal add command
     CloseClientMenu(client);
     AddInQueue(client, arena_index, true);
-    return Plugin_Handled;
+    if (g_bDebugWadd)
+        LogToFileEx(g_sLogFile, "[wadd] addinqueue client=%N arena=%d", client, arena_index);
 }
 
 // Remove player from current arena queue or waiting list

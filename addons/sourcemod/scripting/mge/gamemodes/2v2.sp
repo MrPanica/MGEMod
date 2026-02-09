@@ -325,7 +325,7 @@ void Update2v2ReadyStatus(int arena_index)
     // Show progress to all players in arena
     if (total_players == 4)
     {
-        Show2v2ReadyHud(arena_index, ready_count);
+        Show2v2ReadyHud(arena_index);
 
         // Show console output to all players in arena
         Show2v2ReadyConsole(arena_index);
@@ -415,7 +415,7 @@ void Show2v2ReadyConsole(int arena_index)
 // ===== HUD DISPLAY SYSTEM =====
 
 // Shows personalized ready status HUD text to each player in the arena
-void Show2v2ReadyHud(int arena_index, int ready_count_unused)
+void Show2v2ReadyHud(int arena_index)
 {
     // Count ready players per team once for all clients
     int red_ready = 0, red_total = 0;
@@ -448,6 +448,9 @@ void Show2v2ReadyHud(int arena_index, int ready_count_unused)
         int client = g_iArenaQueue[arena_index][i];
         if (client && IsValidClient(client))
         {
+            if (g_bScoreboardOpen[client])
+                continue;
+
             char hudtext[1024]; // Increased size to accommodate all players and teams
             char red_players_list[64]; // Increased size for the list
             char blu_players_list[64]; // Increased size for the list
@@ -930,7 +933,7 @@ Action Timer_Refresh2v2Hud(Handle timer, any arena_index)
 
         if (valid_players == 4)
         {
-            Show2v2ReadyHud(arena_index, ready_count);
+            Show2v2ReadyHud(arena_index);
         }
         else
         {
