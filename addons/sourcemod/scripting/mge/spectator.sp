@@ -49,14 +49,30 @@ Action Timer_SpecHudToAllArenas(Handle timer, int userid)
 }
 
 // Changes dead player to spectator team after delay
-Action Timer_ChangePlayerSpec(Handle timer, any player)
+Action Timer_ChangePlayerSpec(Handle timer, any userid)
 {
-    if (IsValidClient(player) && !IsPlayerAlive(player))
+    int player = GetClientOfUserId(userid);
+    if (!IsValidClient(player))
+        return Plugin_Stop;
+
+    if (g_hPlayerWaitingSpecTimer[player] != timer)
+        return Plugin_Stop;
+
+    g_hPlayerWaitingSpecTimer[player] = null;
+
+    if (!g_iPlayerWaiting[player])
+        return Plugin_Stop;
+
+    int arena_index = g_iPlayerArena[player];
+    if (!arena_index || !g_bFourPersonArena[arena_index])
+        return Plugin_Stop;
+
+    if (!IsPlayerAlive(player) && GetClientTeam(player) != TEAM_SPEC)
     {
         ChangeClientTeam(player, TEAM_SPEC);
     }
     
-    return Plugin_Continue;
+    return Plugin_Stop;
 }
 
 // Updates spectator target and refreshes HUD when target changes

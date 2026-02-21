@@ -46,6 +46,10 @@ bool LoadSpawnPoints()
     for (int j = 0; j <= MAXARENAS; j++)
     {
         g_iArenaSpawns[j] = 0;
+        g_iArenaRedSpawns[j] = 0;
+        g_iArenaBluSpawns[j] = 0;
+        g_bArenaUseTeamSpawns[j] = false;
+        g_bArenaNearSpawn[j] = false;
     }
 
     if (!kv.ImportFromFile(txtfile))
@@ -71,6 +75,10 @@ bool LoadSpawnPoints()
         g_bArenaBBallHoopSpawnSet[g_iArenaCount] = false;
         g_bArenaBBallHoopSpawnRedSet[g_iArenaCount] = false;
         g_bArenaBBallHoopSpawnBluSet[g_iArenaCount] = false;
+        g_iArenaRedSpawns[g_iArenaCount] = 0;
+        g_iArenaBluSpawns[g_iArenaCount] = 0;
+        g_bArenaUseTeamSpawns[g_iArenaCount] = false;
+        g_bArenaNearSpawn[g_iArenaCount] = false;
         kv.GetSectionName(g_sArenaOriginalName[g_iArenaCount], 64);
         int id;
         if (kv.GetNameSymbol("1", id))
@@ -107,7 +115,10 @@ bool LoadSpawnPoints()
                 }
             } while (kv.GetNameSymbol(intstr2, id));
         } else {
-            LogError("Could not load spawns on arena %s.", g_sArenaOriginalName[g_iArenaCount]);
+            bool hasRedSection = HasSpawnSection(kv, "RedSpawns") || HasSpawnSection(kv, "redspawns");
+            bool hasBluSection = HasSpawnSection(kv, "BluSpawns") || HasSpawnSection(kv, "bluspawns");
+            if (!hasRedSection && !hasBluSection)
+                LogError("Could not load spawns on arena %s.", g_sArenaOriginalName[g_iArenaCount]);
         }
 
         if (kv.GetNameSymbol("cap", id)) {
@@ -155,12 +166,27 @@ bool LoadSpawnPoints()
         g_bArenaTurris[g_iArenaCount] = kv.GetNum("turris", 0) ? true : false;
         g_bArenaClassChange[g_iArenaCount] = kv.GetNum("classchange", 1) ? true : false;
         g_iDefaultCapTime[g_iArenaCount] = kv.GetNum("timer", 180);
+        g_bArenaNearSpawn[g_iArenaCount] = kv.GetNum("NearSpawn", kv.GetNum("nearspawn", 0)) ? true : false;
         g_bArenaBBallIntelSpawnSet[g_iArenaCount] = ParseVector3Key(kv, "intelspawn", g_fArenaBBallIntelSpawn[g_iArenaCount]);
         g_bArenaBBallIntelSpawnRedSet[g_iArenaCount] = ParseVector3Key(kv, "intelspawn_red", g_fArenaBBallIntelSpawnRed[g_iArenaCount]);
         g_bArenaBBallIntelSpawnBluSet[g_iArenaCount] = ParseVector3Key(kv, "intelspawn_blu", g_fArenaBBallIntelSpawnBlu[g_iArenaCount]);
         g_bArenaBBallHoopSpawnSet[g_iArenaCount] = ParseVector3Key(kv, "hoopspawn", g_fArenaBBallHoopSpawn[g_iArenaCount]);
         g_bArenaBBallHoopSpawnRedSet[g_iArenaCount] = ParseVector3Key(kv, "hoopspawn_red", g_fArenaBBallHoopSpawnRed[g_iArenaCount]);
         g_bArenaBBallHoopSpawnBluSet[g_iArenaCount] = ParseVector3Key(kv, "hoopspawn_blu", g_fArenaBBallHoopSpawnBlu[g_iArenaCount]);
+        bool hasRedSpawns = ParseSpawnSection(kv, "RedSpawns", g_fArenaRedSpawnOrigin[g_iArenaCount], g_fArenaRedSpawnAngles[g_iArenaCount], g_iArenaRedSpawns[g_iArenaCount], g_sArenaOriginalName[g_iArenaCount]);
+        if (!hasRedSpawns)
+            hasRedSpawns = ParseSpawnSection(kv, "redspawns", g_fArenaRedSpawnOrigin[g_iArenaCount], g_fArenaRedSpawnAngles[g_iArenaCount], g_iArenaRedSpawns[g_iArenaCount], g_sArenaOriginalName[g_iArenaCount]);
+
+        bool hasBluSpawns = ParseSpawnSection(kv, "BluSpawns", g_fArenaBluSpawnOrigin[g_iArenaCount], g_fArenaBluSpawnAngles[g_iArenaCount], g_iArenaBluSpawns[g_iArenaCount], g_sArenaOriginalName[g_iArenaCount]);
+        if (!hasBluSpawns)
+            hasBluSpawns = ParseSpawnSection(kv, "bluspawns", g_fArenaBluSpawnOrigin[g_iArenaCount], g_fArenaBluSpawnAngles[g_iArenaCount], g_iArenaBluSpawns[g_iArenaCount], g_sArenaOriginalName[g_iArenaCount]);
+
+        if (hasRedSpawns != hasBluSpawns)
+        {
+            SetFailState("Error in cfg file. Arena <%s> must define both RedSpawns and BluSpawns sections.", g_sArenaOriginalName[g_iArenaCount]);
+        }
+
+        g_bArenaUseTeamSpawns[g_iArenaCount] = (hasRedSpawns && hasBluSpawns);
 
         // Parsing allowed classes for current arena
         char sAllowedClasses[128];
@@ -202,6 +228,69 @@ bool ParseVector3Key(KeyValues kv, const char[] key, float outVec[3])
     outVec[1] = StringToFloat(parts[1]);
     outVec[2] = StringToFloat(parts[2]);
     return true;
+}
+
+bool HasSpawnSection(KeyValues kv, const char[] sectionName)
+{
+    if (!kv.JumpToKey(sectionName, false))
+        return false;
+
+    kv.GoBack();
+    return true;
+}
+
+bool ParseSpawnSection(KeyValues kv, const char[] sectionName, float outOrigin[MAXSPAWNS + 1][3], float outAngles[MAXSPAWNS + 1][3], int &outCount, const char[] arenaName)
+{
+    outCount = 0;
+
+    if (!kv.JumpToKey(sectionName, false))
+        return false;
+
+    char keyName[12];
+    char spawn[64];
+    char spawnCo[6][16];
+    int maxKeyToScan = MAXSPAWNS * 16;
+
+    for (int keyIndex = 1; keyIndex <= maxKeyToScan; keyIndex++)
+    {
+        IntToString(keyIndex, keyName, sizeof(keyName));
+        kv.GetString(keyName, spawn, sizeof(spawn), "");
+        TrimString(spawn);
+        if (spawn[0] == '\0')
+            continue;
+
+        outCount++;
+        if (outCount > MAXSPAWNS)
+        {
+            kv.GoBack();
+            SetFailState("Error in cfg file. Too many spawns in section <%s> for arena <%s> (max: %d).", sectionName, arenaName, MAXSPAWNS);
+        }
+
+        int count = ExplodeString(spawn, " ", spawnCo, 6, 16);
+        if (count == 6)
+        {
+            for (int i = 0; i < 3; i++)
+                outOrigin[outCount][i] = StringToFloat(spawnCo[i]);
+            for (int i = 3; i < 6; i++)
+                outAngles[outCount][i - 3] = StringToFloat(spawnCo[i]);
+        }
+        else if (count == 4)
+        {
+            for (int i = 0; i < 3; i++)
+                outOrigin[outCount][i] = StringToFloat(spawnCo[i]);
+            outAngles[outCount][0] = 0.0;
+            outAngles[outCount][1] = StringToFloat(spawnCo[3]);
+            outAngles[outCount][2] = 0.0;
+        }
+        else
+        {
+            kv.GoBack();
+            SetFailState("Error in cfg file. Wrong number of parameters (%d) in section <%s> on key <%d> in arena <%s>.", count, sectionName, keyIndex, arenaName);
+        }
+    }
+
+    kv.GoBack();
+    return (outCount > 0);
 }
 
 
@@ -1769,6 +1858,601 @@ void WaddToArena(int client, int arena_index, bool show_menu)
         LogToFileEx(g_sLogFile, "[wadd] addinqueue client=%N arena=%d", client, arena_index);
 }
 
+#define SETSPAWN_MODE_NEUTRAL 0
+#define SETSPAWN_MODE_RED 1
+#define SETSPAWN_MODE_BLU 2
+
+void ClearSetSpawnState(int client)
+{
+    g_bSetSpawnAwaitInput[client] = false;
+    g_iSetSpawnArena[client] = 0;
+    g_iSetSpawnMode[client] = SETSPAWN_MODE_NEUTRAL;
+}
+
+bool IsPositiveIntegerToken(const char[] token)
+{
+    int len = strlen(token);
+    if (len <= 0)
+        return false;
+
+    for (int i = 0; i < len; i++)
+    {
+        if (!IsCharNumeric(token[i]))
+            return false;
+    }
+
+    return (StringToInt(token) > 0);
+}
+
+bool ParseSetSpawnInput(const char[] text, int &index, bool &deleteSpawn, char[] error, int errorLen)
+{
+    char rawParts[8][64];
+    int rawCount = ExplodeString(text, " ", rawParts, sizeof(rawParts), sizeof(rawParts[]));
+
+    char parts[8][64];
+    int partCount = 0;
+    for (int i = 0; i < rawCount && partCount < sizeof(parts); i++)
+    {
+        TrimString(rawParts[i]);
+        if (rawParts[i][0] == '\0')
+            continue;
+
+        strcopy(parts[partCount], sizeof(parts[]), rawParts[i]);
+        partCount++;
+    }
+
+    if (partCount <= 0)
+    {
+        strcopy(error, errorLen, "Empty input.");
+        return false;
+    }
+
+    int indexToken = 0;
+    if (StrEqual(parts[0], "-"))
+    {
+        if (partCount < 2)
+        {
+            strcopy(error, errorLen, "Missing spawn number.");
+            return false;
+        }
+        indexToken = 1;
+    }
+
+    if (!IsPositiveIntegerToken(parts[indexToken]))
+    {
+        strcopy(error, errorLen, "Invalid input. Use: <number> OR <number> del/delete.");
+        return false;
+    }
+
+    index = StringToInt(parts[indexToken]);
+    deleteSpawn = false;
+
+    int actionToken = indexToken + 1;
+    if (actionToken < partCount)
+    {
+        if (StrEqual(parts[actionToken], "del", false) || StrEqual(parts[actionToken], "delete", false))
+            deleteSpawn = true;
+        else
+        {
+            Format(error, errorLen, "Unknown action '%s'. Use del or delete.", parts[actionToken]);
+            return false;
+        }
+    }
+
+    if (actionToken + 1 < partCount)
+    {
+        strcopy(error, errorLen, "Too many arguments.");
+        return false;
+    }
+
+    return true;
+}
+
+void GetSetSpawnModeName(int mode, char[] output, int outputLen)
+{
+    switch (mode)
+    {
+        case SETSPAWN_MODE_RED: strcopy(output, outputLen, "RED");
+        case SETSPAWN_MODE_BLU: strcopy(output, outputLen, "BLU");
+        default: strcopy(output, outputLen, "NEUTRAL");
+    }
+}
+
+int GetArenaSpawnCountByMode(int arena_index, int mode)
+{
+    switch (mode)
+    {
+        case SETSPAWN_MODE_RED: return g_iArenaRedSpawns[arena_index];
+        case SETSPAWN_MODE_BLU: return g_iArenaBluSpawns[arena_index];
+    }
+    return g_iArenaSpawns[arena_index];
+}
+
+void GetArenaSpawnByMode(int arena_index, int mode, int index, float origin[3], float angles[3])
+{
+    if (mode == SETSPAWN_MODE_RED)
+    {
+        origin[0] = g_fArenaRedSpawnOrigin[arena_index][index][0];
+        origin[1] = g_fArenaRedSpawnOrigin[arena_index][index][1];
+        origin[2] = g_fArenaRedSpawnOrigin[arena_index][index][2];
+        angles[0] = g_fArenaRedSpawnAngles[arena_index][index][0];
+        angles[1] = g_fArenaRedSpawnAngles[arena_index][index][1];
+        angles[2] = g_fArenaRedSpawnAngles[arena_index][index][2];
+        return;
+    }
+
+    if (mode == SETSPAWN_MODE_BLU)
+    {
+        origin[0] = g_fArenaBluSpawnOrigin[arena_index][index][0];
+        origin[1] = g_fArenaBluSpawnOrigin[arena_index][index][1];
+        origin[2] = g_fArenaBluSpawnOrigin[arena_index][index][2];
+        angles[0] = g_fArenaBluSpawnAngles[arena_index][index][0];
+        angles[1] = g_fArenaBluSpawnAngles[arena_index][index][1];
+        angles[2] = g_fArenaBluSpawnAngles[arena_index][index][2];
+        return;
+    }
+
+    origin[0] = g_fArenaSpawnOrigin[arena_index][index][0];
+    origin[1] = g_fArenaSpawnOrigin[arena_index][index][1];
+    origin[2] = g_fArenaSpawnOrigin[arena_index][index][2];
+    angles[0] = g_fArenaSpawnAngles[arena_index][index][0];
+    angles[1] = g_fArenaSpawnAngles[arena_index][index][1];
+    angles[2] = g_fArenaSpawnAngles[arena_index][index][2];
+}
+
+bool SetArenaSpawnByMode(int arena_index, int mode, int index, const float origin[3], const float angles[3], char[] error, int errorLen)
+{
+    if (index < 1 || index > MAXSPAWNS)
+    {
+        Format(error, errorLen, "Index must be between 1 and %d.", MAXSPAWNS);
+        return false;
+    }
+
+    int count = GetArenaSpawnCountByMode(arena_index, mode);
+    if (index > count + 1)
+    {
+        Format(error, errorLen, "Cannot skip indexes. Next available index is %d.", count + 1);
+        return false;
+    }
+
+    if (mode == SETSPAWN_MODE_RED)
+    {
+        if (index == g_iArenaRedSpawns[arena_index] + 1)
+            g_iArenaRedSpawns[arena_index]++;
+
+        g_fArenaRedSpawnOrigin[arena_index][index][0] = origin[0];
+        g_fArenaRedSpawnOrigin[arena_index][index][1] = origin[1];
+        g_fArenaRedSpawnOrigin[arena_index][index][2] = origin[2];
+        g_fArenaRedSpawnAngles[arena_index][index][0] = angles[0];
+        g_fArenaRedSpawnAngles[arena_index][index][1] = angles[1];
+        g_fArenaRedSpawnAngles[arena_index][index][2] = angles[2];
+    }
+    else if (mode == SETSPAWN_MODE_BLU)
+    {
+        if (index == g_iArenaBluSpawns[arena_index] + 1)
+            g_iArenaBluSpawns[arena_index]++;
+
+        g_fArenaBluSpawnOrigin[arena_index][index][0] = origin[0];
+        g_fArenaBluSpawnOrigin[arena_index][index][1] = origin[1];
+        g_fArenaBluSpawnOrigin[arena_index][index][2] = origin[2];
+        g_fArenaBluSpawnAngles[arena_index][index][0] = angles[0];
+        g_fArenaBluSpawnAngles[arena_index][index][1] = angles[1];
+        g_fArenaBluSpawnAngles[arena_index][index][2] = angles[2];
+    }
+    else
+    {
+        if (index == g_iArenaSpawns[arena_index] + 1)
+            g_iArenaSpawns[arena_index]++;
+
+        g_fArenaSpawnOrigin[arena_index][index][0] = origin[0];
+        g_fArenaSpawnOrigin[arena_index][index][1] = origin[1];
+        g_fArenaSpawnOrigin[arena_index][index][2] = origin[2];
+        g_fArenaSpawnAngles[arena_index][index][0] = angles[0];
+        g_fArenaSpawnAngles[arena_index][index][1] = angles[1];
+        g_fArenaSpawnAngles[arena_index][index][2] = angles[2];
+    }
+
+    g_bArenaUseTeamSpawns[arena_index] = (g_iArenaRedSpawns[arena_index] > 0 && g_iArenaBluSpawns[arena_index] > 0);
+    return true;
+}
+
+bool DeleteArenaSpawnByMode(int arena_index, int mode, int index, char[] error, int errorLen)
+{
+    int count = GetArenaSpawnCountByMode(arena_index, mode);
+    if (index < 1 || index > count)
+    {
+        Format(error, errorLen, "Spawn #%d does not exist.", index);
+        return false;
+    }
+
+    if (mode == SETSPAWN_MODE_RED)
+    {
+        for (int i = index; i < g_iArenaRedSpawns[arena_index]; i++)
+        {
+            g_fArenaRedSpawnOrigin[arena_index][i][0] = g_fArenaRedSpawnOrigin[arena_index][i + 1][0];
+            g_fArenaRedSpawnOrigin[arena_index][i][1] = g_fArenaRedSpawnOrigin[arena_index][i + 1][1];
+            g_fArenaRedSpawnOrigin[arena_index][i][2] = g_fArenaRedSpawnOrigin[arena_index][i + 1][2];
+            g_fArenaRedSpawnAngles[arena_index][i][0] = g_fArenaRedSpawnAngles[arena_index][i + 1][0];
+            g_fArenaRedSpawnAngles[arena_index][i][1] = g_fArenaRedSpawnAngles[arena_index][i + 1][1];
+            g_fArenaRedSpawnAngles[arena_index][i][2] = g_fArenaRedSpawnAngles[arena_index][i + 1][2];
+        }
+        g_iArenaRedSpawns[arena_index]--;
+    }
+    else if (mode == SETSPAWN_MODE_BLU)
+    {
+        for (int i = index; i < g_iArenaBluSpawns[arena_index]; i++)
+        {
+            g_fArenaBluSpawnOrigin[arena_index][i][0] = g_fArenaBluSpawnOrigin[arena_index][i + 1][0];
+            g_fArenaBluSpawnOrigin[arena_index][i][1] = g_fArenaBluSpawnOrigin[arena_index][i + 1][1];
+            g_fArenaBluSpawnOrigin[arena_index][i][2] = g_fArenaBluSpawnOrigin[arena_index][i + 1][2];
+            g_fArenaBluSpawnAngles[arena_index][i][0] = g_fArenaBluSpawnAngles[arena_index][i + 1][0];
+            g_fArenaBluSpawnAngles[arena_index][i][1] = g_fArenaBluSpawnAngles[arena_index][i + 1][1];
+            g_fArenaBluSpawnAngles[arena_index][i][2] = g_fArenaBluSpawnAngles[arena_index][i + 1][2];
+        }
+        g_iArenaBluSpawns[arena_index]--;
+    }
+    else
+    {
+        for (int i = index; i < g_iArenaSpawns[arena_index]; i++)
+        {
+            g_fArenaSpawnOrigin[arena_index][i][0] = g_fArenaSpawnOrigin[arena_index][i + 1][0];
+            g_fArenaSpawnOrigin[arena_index][i][1] = g_fArenaSpawnOrigin[arena_index][i + 1][1];
+            g_fArenaSpawnOrigin[arena_index][i][2] = g_fArenaSpawnOrigin[arena_index][i + 1][2];
+            g_fArenaSpawnAngles[arena_index][i][0] = g_fArenaSpawnAngles[arena_index][i + 1][0];
+            g_fArenaSpawnAngles[arena_index][i][1] = g_fArenaSpawnAngles[arena_index][i + 1][1];
+            g_fArenaSpawnAngles[arena_index][i][2] = g_fArenaSpawnAngles[arena_index][i + 1][2];
+        }
+        g_iArenaSpawns[arena_index]--;
+    }
+
+    g_bArenaUseTeamSpawns[arena_index] = (g_iArenaRedSpawns[arena_index] > 0 && g_iArenaBluSpawns[arena_index] > 0);
+    return true;
+}
+
+void ClearNumericSpawnKeysInCurrentSection(KeyValues kv)
+{
+    char keyName[12];
+    for (int i = 1; i <= MAXSPAWNS * 16; i++)
+    {
+        IntToString(i, keyName, sizeof(keyName));
+        kv.DeleteKey(keyName);
+    }
+}
+
+void WriteSpawnSectionToKv(KeyValues kv, const char[] sectionName, float spawnOrigin[MAXSPAWNS + 1][3], float spawnAngles[MAXSPAWNS + 1][3], int spawnCount)
+{
+    kv.DeleteKey(sectionName);
+    if (spawnCount <= 0)
+        return;
+
+    if (!kv.JumpToKey(sectionName, true))
+        return;
+
+    ClearNumericSpawnKeysInCurrentSection(kv);
+
+    char keyName[12];
+    char value[128];
+    for (int i = 1; i <= spawnCount; i++)
+    {
+        IntToString(i, keyName, sizeof(keyName));
+        Format(value, sizeof(value), "%.6f %.6f %.6f %.6f %.6f %.6f",
+            spawnOrigin[i][0], spawnOrigin[i][1], spawnOrigin[i][2],
+            spawnAngles[i][0], spawnAngles[i][1], spawnAngles[i][2]);
+        kv.SetString(keyName, value);
+    }
+
+    kv.GoBack();
+}
+
+bool SaveArenaSpawnsToConfig(int arena_index, char[] error, int errorLen)
+{
+    if (arena_index <= 0 || arena_index > g_iArenaCount)
+    {
+        Format(error, errorLen, "Invalid arena index.");
+        return false;
+    }
+
+    char txtfile[256];
+    Format(txtfile, sizeof(txtfile), "configs/mge/%s.cfg", g_sMapName);
+    BuildPath(Path_SM, txtfile, sizeof(txtfile), txtfile);
+
+    KeyValues kv = new KeyValues("SpawnConfigs");
+    if (!kv.ImportFromFile(txtfile))
+    {
+        Format(error, errorLen, "Could not open config file: %s", txtfile);
+        delete kv;
+        return false;
+    }
+
+    if (!kv.JumpToKey(g_sArenaOriginalName[arena_index], false))
+    {
+        Format(error, errorLen, "Arena section '%s' not found in config.", g_sArenaOriginalName[arena_index]);
+        delete kv;
+        return false;
+    }
+
+    ClearNumericSpawnKeysInCurrentSection(kv);
+
+    char keyName[12];
+    char value[128];
+    for (int i = 1; i <= g_iArenaSpawns[arena_index]; i++)
+    {
+        IntToString(i, keyName, sizeof(keyName));
+        Format(value, sizeof(value), "%.6f %.6f %.6f %.6f %.6f %.6f",
+            g_fArenaSpawnOrigin[arena_index][i][0], g_fArenaSpawnOrigin[arena_index][i][1], g_fArenaSpawnOrigin[arena_index][i][2],
+            g_fArenaSpawnAngles[arena_index][i][0], g_fArenaSpawnAngles[arena_index][i][1], g_fArenaSpawnAngles[arena_index][i][2]);
+        kv.SetString(keyName, value);
+    }
+
+    kv.DeleteKey("redspawns");
+    kv.DeleteKey("bluspawns");
+    WriteSpawnSectionToKv(kv, "RedSpawns", g_fArenaRedSpawnOrigin[arena_index], g_fArenaRedSpawnAngles[arena_index], g_iArenaRedSpawns[arena_index]);
+    WriteSpawnSectionToKv(kv, "BluSpawns", g_fArenaBluSpawnOrigin[arena_index], g_fArenaBluSpawnAngles[arena_index], g_iArenaBluSpawns[arena_index]);
+
+    kv.GoBack();
+
+    if (!kv.ExportToFile(txtfile))
+    {
+        Format(error, errorLen, "Failed to save config file: %s", txtfile);
+        delete kv;
+        return false;
+    }
+
+    delete kv;
+    return true;
+}
+
+void PrintArenaSpawnsToClient(int client, int arena_index, int mode)
+{
+    char modeName[16];
+    GetSetSpawnModeName(mode, modeName, sizeof(modeName));
+
+    int count = GetArenaSpawnCountByMode(arena_index, mode);
+    char header[192];
+    Format(header, sizeof(header), "[MGE] %s spawns in arena '%s': %d", modeName, g_sArenaOriginalName[arena_index], count);
+    PrintToConsole(client, "%s", header);
+    MC_PrintToChat(client, "%s", header);
+
+    if (count <= 0)
+    {
+        PrintToConsole(client, "[MGE] (none)");
+        MC_PrintToChat(client, "[MGE] (none)");
+        return;
+    }
+
+    for (int i = 1; i <= count; i++)
+    {
+        float origin[3];
+        float angles[3];
+        GetArenaSpawnByMode(arena_index, mode, i, origin, angles);
+
+        char line[256];
+        Format(line, sizeof(line), "%d %.2f %.2f %.2f (%.1f %.1f %.1f)", i, origin[0], origin[1], origin[2], angles[0], angles[1], angles[2]);
+        PrintToConsole(client, "%s", line);
+        MC_PrintToChat(client, "%s", line);
+    }
+}
+
+Action Command_SetSpawn(int client, int args)
+{
+    if (!IsValidClient(client))
+        return Plugin_Handled;
+
+    int arena_index = g_iPlayerArena[client];
+    if (arena_index <= 0 || arena_index > g_iArenaCount)
+    {
+        MC_PrintToChat(client, "%t", "NotInArena");
+        return Plugin_Handled;
+    }
+
+    int mode = SETSPAWN_MODE_NEUTRAL;
+    int inputArgPos = 1;
+
+    if (args >= 1)
+    {
+        char arg1[32];
+        GetCmdArg(1, arg1, sizeof(arg1));
+
+        if (StrEqual(arg1, "red", false))
+        {
+            mode = SETSPAWN_MODE_RED;
+            inputArgPos = 2;
+        }
+        else if (StrEqual(arg1, "blue", false) || StrEqual(arg1, "blu", false))
+        {
+            mode = SETSPAWN_MODE_BLU;
+            inputArgPos = 2;
+        }
+    }
+
+    // Direct mode: sm_setspawn [red|blue] <number> [del|delete]
+    if (args >= inputArgPos)
+    {
+        if (args > inputArgPos + 1)
+        {
+            MC_PrintToChat(client, "[MGE] Usage: sm_setspawn [red|blue] [number] [del|delete]");
+            PrintToConsole(client, "[MGE] Usage: sm_setspawn [red|blue] [number] [del|delete]");
+            return Plugin_Handled;
+        }
+
+        char input[128];
+        char indexArg[32];
+        char actionArg[32];
+        GetCmdArg(inputArgPos, indexArg, sizeof(indexArg));
+        input[0] = '\0';
+        strcopy(input, sizeof(input), indexArg);
+        if (args >= inputArgPos + 1)
+        {
+            GetCmdArg(inputArgPos + 1, actionArg, sizeof(actionArg));
+            Format(input, sizeof(input), "%s %s", indexArg, actionArg);
+        }
+
+        int index;
+        bool deleteSpawn;
+        char error[192];
+        if (!ParseSetSpawnInput(input, index, deleteSpawn, error, sizeof(error)))
+        {
+            MC_PrintToChat(client, "[MGE] %s", error);
+            PrintToConsole(client, "[MGE] %s", error);
+            return Plugin_Handled;
+        }
+
+        bool ok;
+        if (deleteSpawn)
+        {
+            ok = DeleteArenaSpawnByMode(arena_index, mode, index, error, sizeof(error));
+        }
+        else
+        {
+            float origin[3];
+            float angles[3];
+            GetClientAbsOrigin(client, origin);
+            GetClientEyeAngles(client, angles);
+            ok = SetArenaSpawnByMode(arena_index, mode, index, origin, angles, error, sizeof(error));
+        }
+
+        if (!ok)
+        {
+            MC_PrintToChat(client, "[MGE] %s", error);
+            PrintToConsole(client, "[MGE] %s", error);
+
+            if (deleteSpawn)
+            {
+                int nCount = g_iArenaSpawns[arena_index];
+                int rCount = g_iArenaRedSpawns[arena_index];
+                int bCount = g_iArenaBluSpawns[arena_index];
+                MC_PrintToChat(client, "[MGE] Current counts: NEUTRAL=%d RED=%d BLU=%d", nCount, rCount, bCount);
+                PrintToConsole(client, "[MGE] Current counts: NEUTRAL=%d RED=%d BLU=%d", nCount, rCount, bCount);
+            }
+            return Plugin_Handled;
+        }
+
+        if (!SaveArenaSpawnsToConfig(arena_index, error, sizeof(error)))
+        {
+            MC_PrintToChat(client, "[MGE] Save failed: %s", error);
+            PrintToConsole(client, "[MGE] Save failed: %s", error);
+            return Plugin_Handled;
+        }
+
+        if (deleteSpawn)
+        {
+            MC_PrintToChat(client, "[MGE] Spawn #%d deleted.", index);
+            PrintToConsole(client, "[MGE] Spawn #%d deleted.", index);
+        }
+        else
+        {
+            MC_PrintToChat(client, "[MGE] Spawn #%d saved from your current position.", index);
+            PrintToConsole(client, "[MGE] Spawn #%d saved from your current position.", index);
+        }
+
+        PrintArenaSpawnsToClient(client, arena_index, mode);
+        return Plugin_Handled;
+    }
+
+    g_bSetSpawnAwaitInput[client] = true;
+    g_iSetSpawnArena[client] = arena_index;
+    g_iSetSpawnMode[client] = mode;
+
+    PrintArenaSpawnsToClient(client, arena_index, mode);
+
+    char modeName[16];
+    GetSetSpawnModeName(mode, modeName, sizeof(modeName));
+    MC_PrintToChat(client, "[MGE] Editing %s spawns. Enter: <number> to save current position.", modeName);
+    MC_PrintToChat(client, "[MGE] Or: <number> del (or delete) to remove. Type 'cancel' to exit.");
+    PrintToConsole(client, "[MGE] Editing %s spawns. Enter: <number> to save current position.", modeName);
+    PrintToConsole(client, "[MGE] Or: <number> del (or delete) to remove. Type 'cancel' to exit.");
+    return Plugin_Handled;
+}
+
+Action Command_SetSpawnChatInput(int client, const char[] command, int args)
+{
+    if (!IsValidClient(client) || !g_bSetSpawnAwaitInput[client])
+        return Plugin_Continue;
+
+    char text[192];
+    GetCmdArgString(text, sizeof(text));
+    StripQuotes(text);
+    TrimString(text);
+
+    if (text[0] == '\0')
+        return Plugin_Handled;
+
+    if (text[0] == '!' || text[0] == '/')
+        return Plugin_Continue;
+
+    if (StrEqual(text, "cancel", false))
+    {
+        ClearSetSpawnState(client);
+        MC_PrintToChat(client, "[MGE] Spawn editor cancelled.");
+        PrintToConsole(client, "[MGE] Spawn editor cancelled.");
+        return Plugin_Handled;
+    }
+
+    int arena_index = g_iSetSpawnArena[client];
+    int mode = g_iSetSpawnMode[client];
+    if (arena_index <= 0 || arena_index > g_iArenaCount || g_iPlayerArena[client] != arena_index)
+    {
+        ClearSetSpawnState(client);
+        MC_PrintToChat(client, "[MGE] Spawn editor closed: arena context changed.");
+        PrintToConsole(client, "[MGE] Spawn editor closed: arena context changed.");
+        return Plugin_Handled;
+    }
+
+    int index;
+    bool deleteSpawn;
+    char error[192];
+    if (!ParseSetSpawnInput(text, index, deleteSpawn, error, sizeof(error)))
+    {
+        MC_PrintToChat(client, "[MGE] %s", error);
+        PrintToConsole(client, "[MGE] %s", error);
+        return Plugin_Handled;
+    }
+
+    bool ok;
+    if (deleteSpawn)
+    {
+        ok = DeleteArenaSpawnByMode(arena_index, mode, index, error, sizeof(error));
+    }
+    else
+    {
+        float origin[3];
+        float angles[3];
+        GetClientAbsOrigin(client, origin);
+        GetClientEyeAngles(client, angles);
+        ok = SetArenaSpawnByMode(arena_index, mode, index, origin, angles, error, sizeof(error));
+    }
+
+    if (!ok)
+    {
+        MC_PrintToChat(client, "[MGE] %s", error);
+        PrintToConsole(client, "[MGE] %s", error);
+        return Plugin_Handled;
+    }
+
+    if (!SaveArenaSpawnsToConfig(arena_index, error, sizeof(error)))
+    {
+        MC_PrintToChat(client, "[MGE] Save failed: %s", error);
+        PrintToConsole(client, "[MGE] Save failed: %s", error);
+        return Plugin_Handled;
+    }
+
+    if (deleteSpawn)
+    {
+        MC_PrintToChat(client, "[MGE] Spawn #%d deleted.", index);
+        PrintToConsole(client, "[MGE] Spawn #%d deleted.", index);
+    }
+    else
+    {
+        MC_PrintToChat(client, "[MGE] Spawn #%d saved from your current position.", index);
+        PrintToConsole(client, "[MGE] Spawn #%d saved from your current position.", index);
+    }
+
+    PrintArenaSpawnsToClient(client, arena_index, mode);
+    MC_PrintToChat(client, "[MGE] Continue editing or type 'cancel' to exit.");
+    PrintToConsole(client, "[MGE] Continue editing or type 'cancel' to exit.");
+    return Plugin_Handled;
+}
+
 // Remove player from current arena queue or waiting list
 Action Command_Remove(int client, int args)
 {
@@ -1829,6 +2513,62 @@ Action Command_First(int client, int args)
 
     // Couldn't find any empty or half-empty arenas, so display the menu.
     ShowMainMenu(client);
+    return Plugin_Handled;
+}
+
+// Restart current arena duel/round from scratch
+Action Command_ArenaRestart(int client, int args)
+{
+    if (!IsValidClient(client))
+        return Plugin_Handled;
+
+    int arena_index = g_iPlayerArena[client];
+    if (!arena_index)
+    {
+        MC_PrintToChat(client, "%t", "NotInArena");
+        return Plugin_Handled;
+    }
+
+    if (g_bArenaNoFight[arena_index])
+    {
+        g_iArenaStatus[arena_index] = AS_IDLE;
+        g_iArenaDuelStartTime[arena_index] = 0;
+
+        for (int slot = SLOT_ONE; slot <= MAXPLAYERS; slot++)
+        {
+            int player = g_iArenaQueue[arena_index][slot];
+            if (IsValidClient(player))
+            {
+                CreateTimer(0.1, Timer_ResetPlayer, GetClientUserId(player));
+            }
+        }
+
+        UpdateHudForArena(arena_index);
+        PrintToChatArena(arena_index, "[MGE] Arena restarted by %N.", client);
+        return Plugin_Handled;
+    }
+
+    int requiredPlayers = g_bFourPersonArena[arena_index] ? 4 : 2;
+    int activePlayers = 0;
+    int maxActiveSlot = g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO;
+
+    for (int slot = SLOT_ONE; slot <= maxActiveSlot; slot++)
+    {
+        if (IsValidClient(g_iArenaQueue[arena_index][slot]))
+            activePlayers++;
+    }
+
+    if (activePlayers < requiredPlayers)
+    {
+        MC_PrintToChat(client, "[MGE] Not enough players to restart fight (%d/%d).", activePlayers, requiredPlayers);
+        return Plugin_Handled;
+    }
+
+    g_iArenaStatus[arena_index] = AS_IDLE;
+    g_iArenaDuelStartTime[arena_index] = 0;
+    CreateTimer(0.1, Timer_StartDuel, arena_index);
+    PrintToChatArena(arena_index, "[MGE] Arena restarted by %N.", client);
+
     return Plugin_Handled;
 }
 

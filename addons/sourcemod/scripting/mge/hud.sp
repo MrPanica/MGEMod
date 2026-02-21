@@ -102,6 +102,7 @@ void ShowCriticalGameInfo(int client, int arena_index)
     {
         // BBall arenas show intel status instead of regular health display
         char hud_text[128];
+        SetHudTextParams(0.01, 0.80, HUDFADEOUTTIME, 255, 255, 255, 255);
         if (g_bPlayerHasIntel[client])
         {
             Format(hud_text, sizeof(hud_text), "%T", "YouHaveTheIntel", client);

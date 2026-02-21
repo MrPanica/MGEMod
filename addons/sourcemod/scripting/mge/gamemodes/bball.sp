@@ -414,7 +414,17 @@ Action OnTouchHoop(int entity, int other)
                 Format(foe_name, sizeof(foe_name), "%s and %s", foe_name, foe_teammate_name);
             }
 
-            MC_PrintToChatAll("%t", "XdefeatsY", client_name, g_iArenaScore[arena_index][client_team_slot], foe_name, g_iArenaScore[arena_index][foe_team_slot], fraglimit, g_sArenaName[arena_index]);
+            char duel_time[32] = "";
+            if (g_iArenaDuelStartTime[arena_index] > 0)
+            {
+                int currentTime = GetTime();
+                int elapsedTime = currentTime - g_iArenaDuelStartTime[arena_index];
+                int minutes = elapsedTime / 60;
+                int seconds = elapsedTime % 60;
+                Format(duel_time, sizeof(duel_time), "%02d:%02d", minutes, seconds);
+            }
+
+            MC_PrintToChatAll("%t", "XdefeatsY", client_name, g_iArenaScore[arena_index][client_team_slot], foe_name, g_iArenaScore[arena_index][foe_team_slot], fraglimit, g_sArenaName[arena_index], duel_time);
 
             if (!g_bNoStats && !g_bFourPersonArena[arena_index])
                 CalcELO(client, foe);
@@ -429,18 +439,22 @@ Action OnTouchHoop(int entity, int other)
                 g_iBBallIntel[arena_index] = -1;
                 RemoveBBallIntelWorldFx(arena_index);
             }
-            if (g_bFourPersonArena[arena_index] && g_iArenaQueue[arena_index][SLOT_FOUR + 1])
+            if (g_bFourPersonArena[arena_index] && IsValidClient(g_iArenaQueue[arena_index][SLOT_FOUR + 1]))
             {
                 RemoveFromQueue(foe, false);
                 RemoveFromQueue(foe_teammate, false);
                 AddInQueue(foe, arena_index, false, 0, false);
                 AddInQueue(foe_teammate, arena_index, false, 0, false);
             }
-            else if (g_iArenaQueue[arena_index][SLOT_TWO + 1])
+            else if (IsValidClient(g_iArenaQueue[arena_index][SLOT_TWO + 1]))
             {
                 RemoveFromQueue(foe, false);
                 AddInQueue(foe, arena_index, false, 0, false);
             } else {
+                if (!IsValidClient(g_iArenaQueue[arena_index][SLOT_TWO + 1]))
+                    g_iArenaQueue[arena_index][SLOT_TWO + 1] = 0;
+                if (!IsValidClient(g_iArenaQueue[arena_index][SLOT_FOUR + 1]))
+                    g_iArenaQueue[arena_index][SLOT_FOUR + 1] = 0;
                 CreateTimer(3.0, Timer_StartDuel, arena_index);
             }
         } else {

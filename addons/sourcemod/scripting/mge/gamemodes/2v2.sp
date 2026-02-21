@@ -1,5 +1,10 @@
 // ===== ARENA SELECTION MENU SYSTEM =====
 
+void GetTeamDisplayNameSimple(int team, char[] output, int outputLen)
+{
+    strcopy(output, outputLen, (team == TEAM_RED) ? "RED" : "BLU");
+}
+
 // Displays the main 2v2 arena selection menu with team join options and conversion to 1v1
 void Show2v2SelectionMenu(int client, int arena_index)
 {
@@ -18,7 +23,7 @@ void Show2v2SelectionMenu(int client, int arena_index)
     if (already_in_arena)
     {
         char current_team[32];
-        Format(current_team, sizeof(current_team), "%s", (current_slot == SLOT_ONE || current_slot == SLOT_THREE) ? "RED" : "BLU", client);
+        GetTeamDisplayNameSimple((current_slot == SLOT_ONE || current_slot == SLOT_THREE) ? TEAM_RED : TEAM_BLU, current_team, sizeof(current_team));
         Format(title, sizeof(title), "%T", "2v2ArenaManagementTitle", client, current_team);
     }
     else
@@ -559,7 +564,7 @@ void Handle2v2TeamSwitch(int client, int arena_index, int new_team)
     if (new_slot == 0)
     {
         char team_name[32];
-        Format(team_name, sizeof(team_name), "%T", (new_team == TEAM_RED) ? "TeamRed" : "TeamBlu", client);
+        GetTeamDisplayNameSimple(new_team, team_name, sizeof(team_name));
         MC_PrintToChat(client, "%t", "CannotSwitchTeamNoSlots", team_name);
         return;
     }
@@ -581,7 +586,7 @@ void Handle2v2TeamSwitch(int client, int arena_index, int new_team)
     char name[MAX_NAME_LENGTH];
     char team_name[32];
     GetClientName(client, name, sizeof(name));
-    Format(team_name, sizeof(team_name), "%T", (new_team == TEAM_RED) ? "TeamRed" : "TeamBlu", client);
+    GetTeamDisplayNameSimple(new_team, team_name, sizeof(team_name));
     
     PrintToChatArena(arena_index, "%t", "PlayerSwitchedTeam", name, team_name);
     
@@ -607,7 +612,7 @@ void Handle2v2TeamSwitchFromMenu(int client, int arena_index, int target_team)
         {
             // Player is already on the selected team, just show confirmation
             char team_name[32];
-            Format(team_name, sizeof(team_name), "%T", (target_team == TEAM_RED) ? "TeamRed" : "TeamBlu", client);
+            GetTeamDisplayNameSimple(target_team, team_name, sizeof(team_name));
             MC_PrintToChat(client, "%t", "AlreadyOnTeam", team_name);
             return;
         }
@@ -756,6 +761,12 @@ void Restore2v2WaitingSpectators(int arena_index)
         int client = g_iArenaQueue[arena_index][slot];
         if (!IsValidClient(client))
             continue;
+
+        if (g_hPlayerWaitingSpecTimer[client] != null)
+        {
+            delete g_hPlayerWaitingSpecTimer[client];
+            g_hPlayerWaitingSpecTimer[client] = null;
+        }
 
         bool isSpec = (GetClientTeam(client) == TEAM_SPEC);
         if (g_iPlayerWaiting[client] || isSpec)

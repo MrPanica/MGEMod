@@ -14,6 +14,15 @@ void HandleClientConnection(int client)
     g_bPlayerAddedViaWadd[client] = false;
     g_bScoreboardOpen[client] = false;
     g_bWaddMenu[client] = false;
+    g_bSetSpawnAwaitInput[client] = false;
+    g_iSetSpawnArena[client] = 0;
+    g_iSetSpawnMode[client] = 0;
+    g_iPlayerWaiting[client] = false;
+    if (g_hPlayerWaitingSpecTimer[client] != null)
+    {
+        delete g_hPlayerWaitingSpecTimer[client];
+        g_hPlayerWaitingSpecTimer[client] = null;
+    }
     
     // Clear any inherited statistics data immediately (but preserve if already properly loaded)
     // This prevents stats from being inherited from previous client in the same slot
@@ -89,6 +98,17 @@ void HandleClientAuthentication(int client)
 // Handle client disconnection and cleanup
 void HandleClientDisconnection(int client)
 {
+    g_bSetSpawnAwaitInput[client] = false;
+    g_iSetSpawnArena[client] = 0;
+    g_iSetSpawnMode[client] = 0;
+
+    g_iPlayerWaiting[client] = false;
+    if (g_hPlayerWaitingSpecTimer[client] != null)
+    {
+        delete g_hPlayerWaitingSpecTimer[client];
+        g_hPlayerWaitingSpecTimer[client] = null;
+    }
+
     // Clear any invites before removing from queue
     ClearPlayerInvites(client);
     
@@ -204,7 +224,7 @@ void HandleClientDisconnection(int client)
 }
 
 // Attempts to load player statistics from database with Steam ID validation
-void TryLoadPlayerStats(int client, bool isRetry)
+void TryLoadPlayerStats(int client, bool isRetry, bool forceReload = false)
 {
     if (g_bNoStats || !IsValidClient(client))
         return;
@@ -223,7 +243,7 @@ void TryLoadPlayerStats(int client, bool isRetry)
     g_DB.Escape(steamid_dirty, steamid, sizeof(steamid));
     
     // Skip if stats already loaded successfully for this specific Steam ID
-    if (g_bPlayerEloVerified[client] && StrEqual(g_sPlayerSteamID[client], steamid)) {
+    if (!forceReload && g_bPlayerEloVerified[client] && StrEqual(g_sPlayerSteamID[client], steamid)) {
         if (isRetry) {
             LogMessage("Stats already loaded for client %d (%s), skipping retry", client, steamid);
         }
@@ -283,6 +303,14 @@ int ResetPlayer(int client)
     {
         return 0;
     }
+
+    // Any pending "move to spec while waiting" timer is stale once we are resetting this player.
+    if (g_hPlayerWaitingSpecTimer[client] != null)
+    {
+        delete g_hPlayerWaitingSpecTimer[client];
+        g_hPlayerWaitingSpecTimer[client] = null;
+    }
+    g_iPlayerWaiting[client] = false;
 
     // Remove projectiles when resetting a player (keep player entities for round reset only)
     if (!g_bClearPlayerEntities && g_bClearProjectiles && g_iArenaStatus[arena_index] == AS_FIGHT && !g_bArenaBBall[arena_index])
@@ -1286,7 +1314,12 @@ Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
             // Set the player as waiting (same as other 2v2 modes)
             g_iPlayerWaiting[victim] = true;
             // Change the player to spec to keep him from respawning
-            CreateTimer(5.0, Timer_ChangePlayerSpec, victim);
+            if (g_hPlayerWaitingSpecTimer[victim] != null)
+            {
+                delete g_hPlayerWaitingSpecTimer[victim];
+                g_hPlayerWaitingSpecTimer[victim] = null;
+            }
+            g_hPlayerWaitingSpecTimer[victim] = CreateTimer(5.0, Timer_ChangePlayerSpec, GetClientUserId(victim), TIMER_FLAG_NO_MAPCHANGE);
         }
 
     }
@@ -1317,7 +1350,12 @@ Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
             // Set the player as waiting
             g_iPlayerWaiting[victim] = true;
             // Change the player to spec to keep him from respawning
-            CreateTimer(5.0, Timer_ChangePlayerSpec, victim);
+            if (g_hPlayerWaitingSpecTimer[victim] != null)
+            {
+                delete g_hPlayerWaitingSpecTimer[victim];
+                g_hPlayerWaitingSpecTimer[victim] = null;
+            }
+            g_hPlayerWaitingSpecTimer[victim] = CreateTimer(5.0, Timer_ChangePlayerSpec, GetClientUserId(victim), TIMER_FLAG_NO_MAPCHANGE);
         }
         else
             CreateTimer(g_fArenaRespawnTime[arena_index], Timer_ResetPlayer, GetClientUserId(victim));
@@ -1357,6 +1395,90 @@ Action Timer_WelcomePlayer(Handle timer, int userid)
     MC_PrintToChat(client, "%t", "Welcome3");
 
     return Plugin_Continue;
+}
+
+bool IsClientRedSpawnSide(int client, int arena_index)
+{
+    int slot = g_iPlayerSlot[client];
+    if (slot > 0)
+    {
+        if (g_bArenaNoFight[arena_index])
+            return ((slot % 2) == 1);
+
+        return (slot == SLOT_ONE || slot == SLOT_THREE);
+    }
+
+    TFTeam team = TF2_GetClientTeam(client);
+    if (team == TFTeam_Red)
+        return true;
+    if (team == TFTeam_Blue)
+        return false;
+    
+    return false;
+}
+
+int FindAliveTeammateTeamSpawnPoint(int client, int arena_index, bool isRedTeam)
+{
+    int slot = g_iPlayerSlot[client];
+    if (g_bFourPersonArena[arena_index] && slot >= SLOT_ONE && slot <= SLOT_FOUR)
+    {
+        int teammate = GetPlayerTeammate(slot, arena_index);
+        if (IsValidClient(teammate) && IsPlayerAlive(teammate))
+            return GetPlayerCurrentTeamSpawnPoint(teammate, arena_index, isRedTeam);
+    }
+
+    int maxSlot = g_bArenaNoFight[arena_index] ? MaxClients : (g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO);
+    for (int i = SLOT_ONE; i <= maxSlot; i++)
+    {
+        int teammate = g_iArenaQueue[arena_index][i];
+        if (!IsValidClient(teammate) || teammate == client || !IsPlayerAlive(teammate))
+            continue;
+        if (IsClientRedSpawnSide(teammate, arena_index) != isRedTeam)
+            continue;
+
+        int teammateSpawn = GetPlayerCurrentTeamSpawnPoint(teammate, arena_index, isRedTeam);
+        if (teammateSpawn > 0)
+            return teammateSpawn;
+    }
+
+    return -1;
+}
+
+bool TeleportToConfiguredTeamSpawn(int client, int arena_index, float vel[3])
+{
+    if (!g_bArenaUseTeamSpawns[arena_index] || g_iArenaRedSpawns[arena_index] <= 0 || g_iArenaBluSpawns[arena_index] <= 0)
+        return false;
+
+    bool isRedTeam = IsClientRedSpawnSide(client, arena_index);
+    int spawnCount = isRedTeam ? g_iArenaRedSpawns[arena_index] : g_iArenaBluSpawns[arena_index];
+    if (spawnCount <= 0)
+        return false;
+
+    int teammateSpawn = FindAliveTeammateTeamSpawnPoint(client, arena_index, isRedTeam);
+    bool useNearSpawn = g_bArenaNearSpawn[arena_index] && !g_bArenaNoFight[arena_index];
+    int spawnIndex = SelectTeamSpawnForPlayer(arena_index, isRedTeam, useNearSpawn, teammateSpawn);
+    if (spawnIndex <= 0 || spawnIndex > spawnCount)
+        spawnIndex = 1;
+
+    float pos[3];
+    if (isRedTeam)
+    {
+        pos[0] = g_fArenaRedSpawnOrigin[arena_index][spawnIndex][0];
+        pos[1] = g_fArenaRedSpawnOrigin[arena_index][spawnIndex][1];
+        pos[2] = g_fArenaRedSpawnOrigin[arena_index][spawnIndex][2];
+        TeleportEntity(client, g_fArenaRedSpawnOrigin[arena_index][spawnIndex], g_fArenaRedSpawnAngles[arena_index][spawnIndex], vel);
+    }
+    else
+    {
+        pos[0] = g_fArenaBluSpawnOrigin[arena_index][spawnIndex][0];
+        pos[1] = g_fArenaBluSpawnOrigin[arena_index][spawnIndex][1];
+        pos[2] = g_fArenaBluSpawnOrigin[arena_index][spawnIndex][2];
+        TeleportEntity(client, g_fArenaBluSpawnOrigin[arena_index][spawnIndex], g_fArenaBluSpawnAngles[arena_index][spawnIndex], vel);
+    }
+
+    EmitAmbientSound("items/spawn_item.wav", pos, _, SNDLEVEL_NORMAL, _, 1.0);
+    UpdateHud(client);
+    return true;
 }
 
 // Handles player teleportation to appropriate spawn points based on arena type
@@ -1400,6 +1522,10 @@ Action Timer_Tele(Handle timer, int userid)
         }
     }
 
+
+    // If arena defines team-specific spawns, always use them for every spawn cycle.
+    if (TeleportToConfiguredTeamSpawn(client, arena_index, vel))
+        return Plugin_Continue;
 
     // BBall and 2v2 arenas handle spawns differently, each team, has their own spawns.
     if (g_bArenaBBall[arena_index])
@@ -1472,9 +1598,7 @@ Action Timer_Tele(Handle timer, int userid)
     {
         int random_int;
         int offset_high, offset_low;
-        bool is_red_team = (g_iPlayerSlot[client] == SLOT_ONE || g_iPlayerSlot[client] == SLOT_THREE);
-        if (g_bArenaNoFight[arena_index])
-            is_red_team = ((g_iPlayerSlot[client] % 2) == 1);
+        bool is_red_team = IsClientRedSpawnSide(client, arena_index);
 
         if (is_red_team)
         {
@@ -1675,6 +1799,136 @@ int GetPlayerCurrentSpawnPoint(int client, int arena_index)
         return closest_spawn;
     
     return -1;
+}
+
+int GetPlayerCurrentTeamSpawnPoint(int client, int arena_index, bool isRedTeam)
+{
+    if (!IsValidClient(client) || !IsPlayerAlive(client))
+        return -1;
+
+    int spawnCount = isRedTeam ? g_iArenaRedSpawns[arena_index] : g_iArenaBluSpawns[arena_index];
+    if (spawnCount <= 0)
+        return -1;
+
+    float client_pos[3];
+    GetClientAbsOrigin(client, client_pos);
+
+    int closest_spawn = -1;
+    float closest_distance = 999999.0;
+
+    for (int i = 1; i <= spawnCount; i++)
+    {
+        float distance;
+        if (isRedTeam)
+            distance = GetVectorDistance(client_pos, g_fArenaRedSpawnOrigin[arena_index][i]);
+        else
+            distance = GetVectorDistance(client_pos, g_fArenaBluSpawnOrigin[arena_index][i]);
+
+        if (distance < closest_distance)
+        {
+            closest_distance = distance;
+            closest_spawn = i;
+        }
+    }
+
+    if (closest_distance < 100.0)
+        return closest_spawn;
+
+    return -1;
+}
+
+int FindClosestTeamSpawnIndexToPosition(int arena_index, bool isRedTeam, float targetPos[3], int avoidSpawn)
+{
+    int spawnCount = isRedTeam ? g_iArenaRedSpawns[arena_index] : g_iArenaBluSpawns[arena_index];
+    if (spawnCount <= 0)
+        return -1;
+
+    int bestIndex = -1;
+    float bestDistance = 99999999.0;
+
+    for (int i = 1; i <= spawnCount; i++)
+    {
+        if (i == avoidSpawn)
+            continue;
+
+        float distance;
+        if (isRedTeam)
+            distance = GetVectorDistance(targetPos, g_fArenaRedSpawnOrigin[arena_index][i]);
+        else
+            distance = GetVectorDistance(targetPos, g_fArenaBluSpawnOrigin[arena_index][i]);
+
+        if (distance < bestDistance)
+        {
+            bestDistance = distance;
+            bestIndex = i;
+        }
+    }
+
+    if (bestIndex != -1)
+        return bestIndex;
+
+    if (avoidSpawn != -1)
+    {
+        // Fallback: allow teammate spawn if no alternatives exist.
+        for (int i = 1; i <= spawnCount; i++)
+        {
+            float distance;
+            if (isRedTeam)
+                distance = GetVectorDistance(targetPos, g_fArenaRedSpawnOrigin[arena_index][i]);
+            else
+                distance = GetVectorDistance(targetPos, g_fArenaBluSpawnOrigin[arena_index][i]);
+
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                bestIndex = i;
+            }
+        }
+    }
+
+    return bestIndex;
+}
+
+int SelectTeamSpawnForPlayer(int arena_index, bool isRedTeam, bool nearSpawn, int teammateSpawn)
+{
+    int spawnCount = isRedTeam ? g_iArenaRedSpawns[arena_index] : g_iArenaBluSpawns[arena_index];
+    if (spawnCount <= 0)
+        return -1;
+
+    if (nearSpawn)
+    {
+        int opponentPrimary = isRedTeam ? g_iArenaQueue[arena_index][SLOT_TWO] : g_iArenaQueue[arena_index][SLOT_ONE];
+        int opponentSecondary = isRedTeam ? g_iArenaQueue[arena_index][SLOT_FOUR] : g_iArenaQueue[arena_index][SLOT_THREE];
+        int opponent = 0;
+
+        if (IsValidClient(opponentPrimary) && g_iPlayerArena[opponentPrimary] == arena_index)
+            opponent = opponentPrimary;
+        else if (IsValidClient(opponentSecondary) && g_iPlayerArena[opponentSecondary] == arena_index)
+            opponent = opponentSecondary;
+
+        if (opponent != 0)
+        {
+            float opponentPos[3];
+            GetClientAbsOrigin(opponent, opponentPos);
+            int closest = FindClosestTeamSpawnIndexToPosition(arena_index, isRedTeam, opponentPos, teammateSpawn);
+            if (closest != -1)
+                return closest;
+        }
+    }
+
+    if (spawnCount == 1)
+        return 1;
+
+    int randomIndex = 1;
+    int attempts = 0;
+    do
+    {
+        randomIndex = GetRandomInt(1, spawnCount);
+        attempts++;
+    }
+    while (randomIndex == teammateSpawn && attempts < 30);
+
+    return randomIndex;
 }
 
 // Filter function for ray tracing to exclude player entities

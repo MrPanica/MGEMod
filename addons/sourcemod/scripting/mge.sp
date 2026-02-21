@@ -21,6 +21,11 @@
 #define MAXARENAS 63
 #define MAXSPAWNS 15
 #define HUDFADEOUTTIME 120.0
+#define SPAWN_ANNOTATION_LIFETIME 999999.0
+#define MAX_SPAWN_ANNOTATIONS 512
+#define SPAWN_ANN_TYPE_NEUTRAL 0
+#define SPAWN_ANN_TYPE_RED 1
+#define SPAWN_ANN_TYPE_BLU 2
 
 #if !defined(IN_SCORE)
 #define IN_SCORE (1 << 16)
@@ -30,6 +35,13 @@
 
 // Globals
 #include "mge/globals.sp"
+
+Handle g_hSpawnAnnotationRefreshTimer[MAXPLAYERS + 1];
+int g_iSpawnAnnotationCount[MAXPLAYERS + 1];
+int g_iSpawnAnnotationArena[MAXPLAYERS + 1][MAX_SPAWN_ANNOTATIONS];
+int g_iSpawnAnnotationType[MAXPLAYERS + 1][MAX_SPAWN_ANNOTATIONS];
+int g_iSpawnAnnotationNumber[MAXPLAYERS + 1][MAX_SPAWN_ANNOTATIONS];
+float g_fSpawnAnnotationOrigin[MAXPLAYERS + 1][MAX_SPAWN_ANNOTATIONS][3];
 
 // Modules
 #include "mge/elo.sp"
@@ -243,6 +255,10 @@ public void OnPluginStart()
     RegAdminCmd("sm_mge_camera_pov_off", Command_MgeCameraPovOff, ADMFLAG_BAN, "Force exit POV mode and restore arena camera");
     RegAdminCmd("sm_mge_camera_scan_relays", Command_MgeCameraScanRelays, ADMFLAG_BAN, "List sg_sm* logic_relay entities and disabled state");
     RegAdminCmd("sm_mge_camera_trigger_pov", Command_MgeCameraTriggerPov, ADMFLAG_BAN, "Force Trigger on logic_relay sg_sm_camera_pov");
+    RegAdminCmd("sm_mge_show_spawns", Command_MgeShowSpawns, ADMFLAG_BAN, "Show nearby (3000u) arena spawns via show_annotation; persists until re-run");
+    RegAdminCmd("sm_setspawn", Command_SetSpawn, ADMFLAG_BAN, "Edit spawns in your current arena. Usage: sm_setspawn [red|blue]");
+    RegAdminCmd("arena_restart", Command_ArenaRestart, ADMFLAG_BAN, "Restart current arena fight");
+    RegAdminCmd("sm_arena_restart", Command_ArenaRestart, ADMFLAG_BAN, "Restart current arena fight");
     RegAdminCmd("sm_force_remove", Command_ForceRemove, ADMFLAG_BAN, "Force remove a player from their arena. Usage: sm_force_remove <player>");
     RegAdminCmd("sm_force_add", Command_ForceAdd, ADMFLAG_BAN, "Force add a player to admin's arena. Usage: sm_force_add <player>");
     
@@ -254,6 +270,8 @@ public void OnPluginStart()
     AddCommandListener(Command_SpecNavigation, "spec_next");
     AddCommandListener(Command_SpecNavigation, "spec_prev");
     AddCommandListener(Command_BlockSpectate, "spectate");
+    AddCommandListener(Command_SetSpawnChatInput, "say");
+    AddCommandListener(Command_SetSpawnChatInput, "say_team");
     HookEntityOutput("logic_relay", "OnTrigger", OnSgCameraSignal);
     HookEntityOutput("logic_relay", "OnTrigger", OnSgTvTextSignal);
     HookEntityOutput("logic_relay", "OnTrigger", OnSgCameraPovSignal);
@@ -289,6 +307,18 @@ void HandleHotReload()
 
     if (RestoreHotReloadState())
     {
+        if (!g_bNoStats && g_DB != null)
+        {
+            for (int i = 1; i <= MaxClients; i++)
+            {
+                if (!IsValidClient(i) || IsFakeClient(i))
+                    continue;
+
+                // Force stats refresh for all online players after plugin reload.
+                TryLoadPlayerStats(i, true, true);
+            }
+        }
+
         EnsureHudTimers();
         g_bLate = false;
         return;
@@ -562,6 +592,25 @@ bool RestoreHotReloadState()
             if (!IsValidClient(client))
                 continue;
 
+            if (!IsFakeClient(client))
+            {
+                char steamid_dirty[31], steamid[64];
+                if (GetClientAuthId(client, AuthId_Steam2, steamid_dirty, sizeof(steamid_dirty)))
+                {
+                    if (g_DB != null)
+                        g_DB.Escape(steamid_dirty, steamid, sizeof(steamid));
+                    else
+                        strcopy(steamid, sizeof(steamid), steamid_dirty);
+
+                    strcopy(g_sPlayerSteamID[client], sizeof(g_sPlayerSteamID[]), steamid);
+                }
+                else
+                {
+                    g_sPlayerSteamID[client][0] = '\0';
+                    g_bPlayerEloVerified[client] = false;
+                }
+            }
+
             char client_key[16];
             IntToString(GetClientUserId(client), client_key, sizeof(client_key));
             if (!kv.JumpToKey(client_key, false))
@@ -576,6 +625,8 @@ bool RestoreHotReloadState()
             g_iPlayerRating[client] = kv.GetNum("rating", g_iPlayerRating[client]);
             g_iPlayerWins[client] = kv.GetNum("wins", g_iPlayerWins[client]);
             g_iPlayerLosses[client] = kv.GetNum("losses", g_iPlayerLosses[client]);
+            if (!IsFakeClient(client) && strlen(g_sPlayerSteamID[client]) == 0)
+                g_bPlayerEloVerified[client] = false;
 
             int saved_arena = kv.GetNum("arena", 0);
             int saved_slot = kv.GetNum("slot", 0);
@@ -640,6 +691,16 @@ bool RestoreHotReloadState()
 
 public void OnPluginEnd()
 {
+    for (int client = 1; client <= MaxClients; client++)
+    {
+        if (g_hPlayerWaitingSpecTimer[client] != null)
+        {
+            delete g_hPlayerWaitingSpecTimer[client];
+            g_hPlayerWaitingSpecTimer[client] = null;
+        }
+        ClearClientSpawnAnnotations(client, false);
+    }
+
     SaveHotReloadState();
 }
 
@@ -735,6 +796,15 @@ public void OnMapStart()
 
     for (int i = 0; i < MAXPLAYERS; i++)
     {
+        if (g_hPlayerWaitingSpecTimer[i] != null)
+        {
+            delete g_hPlayerWaitingSpecTimer[i];
+            g_hPlayerWaitingSpecTimer[i] = null;
+        }
+        ClearClientSpawnAnnotations(i, false);
+        g_bSetSpawnAwaitInput[i] = false;
+        g_iSetSpawnArena[i] = 0;
+        g_iSetSpawnMode[i] = 0;
         g_iPlayerWaiting[i] = false;
         g_bCanPlayerSwap[i] = true;
         g_bCanPlayerGetIntel[i] = true;
@@ -808,6 +878,17 @@ public void OnMapEnd()
             g_bTimerRunning[arena_index] = false;
         }
     }
+
+    for (int client = 1; client <= MaxClients; client++)
+    {
+        if (g_hPlayerWaitingSpecTimer[client] != null)
+        {
+            delete g_hPlayerWaitingSpecTimer[client];
+            g_hPlayerWaitingSpecTimer[client] = null;
+        }
+        g_iPlayerWaiting[client] = false;
+        ClearClientSpawnAnnotations(client, false);
+    }
 }
 
 
@@ -867,6 +948,7 @@ public void OnClientPostAdminCheck(int client)
 // Clean up client data, handle arena cleanup, and manage bot removal on disconnect
 public void OnClientDisconnect(int client)
 {
+    ClearClientSpawnAnnotations(client, false);
     HandleClientDisconnection(client);
 }
 
@@ -1619,6 +1701,12 @@ void UpdateTvTextForCurrentCamera()
     if (!IsMapWorldTextEnabled())
         return;
 
+    if (ShouldSuppressTvTextForCurrentCamera())
+    {
+        ClearTvTextWorldtext();
+        return;
+    }
+
     int arenaIndex = g_iCurrentCameraArenaIndex;
     if (arenaIndex <= 0 || arenaIndex > g_iArenaCount)
         return;
@@ -1644,6 +1732,59 @@ void UpdateTvTextForCurrentCamera()
     SetMapTextByTargetName("tv_text_score_2", scoreLine2);
 
     ApplyTvTextVisibility();
+}
+
+void ClearTvTextWorldtext()
+{
+    SetMapTextByTargetName("tv_text", "");
+    SetMapTextByTargetName("tv_text_score_1", "");
+    SetMapTextByTargetName("tv_text_score_2", "");
+    g_sLastTvText[0] = '\0';
+    ApplyTvTextVisibility();
+}
+
+bool ShouldSuppressTvTextForCurrentCamera()
+{
+    if (g_sCurrentCameraName[0] == '\0')
+        return false;
+
+    int cameraEnt = FindEntityByTargetName("point_camera", g_sCurrentCameraName);
+    if (cameraEnt == -1 || !IsValidEntity(cameraEnt))
+        return false;
+
+    float cameraOrigin[3];
+    GetEntPropVector(cameraEnt, Prop_Data, "m_vecOrigin", cameraOrigin);
+
+    const float maxDistance = 128.0;
+    if (IsPointNearNamedEntity(cameraOrigin, "spawn_cam_1", maxDistance))
+        return true;
+    if (IsPointNearNamedEntity(cameraOrigin, "spawn_cam_2", maxDistance))
+        return true;
+
+    return false;
+}
+
+bool IsPointNearNamedEntity(float point[3], const char[] targetName, float maxDistance)
+{
+    int maxEntities = GetMaxEntities();
+    char nameBuf[64];
+    float entityOrigin[3];
+
+    for (int entity = MaxClients + 1; entity <= maxEntities; entity++)
+    {
+        if (!IsValidEntity(entity))
+            continue;
+
+        GetEntPropString(entity, Prop_Data, "m_iName", nameBuf, sizeof(nameBuf));
+        if (!StrEqual(nameBuf, targetName, false))
+            continue;
+
+        GetEntPropVector(entity, Prop_Data, "m_vecOrigin", entityOrigin);
+        if (GetVectorDistance(point, entityOrigin) <= maxDistance)
+            return true;
+    }
+
+    return false;
 }
 
 void BuildTvScoreLine(int player, int arenaIndex, int score, char[] output, int outputSize)
@@ -1985,6 +2126,181 @@ char[] TFClassToString(TFClassType class)
 
 // ===== ADMIN COMMANDS =====
 
+int GetSpawnAnnotationId(int client, int index)
+{
+    return 500000 + (client * 1000) + index;
+}
+
+void HideSpawnAnnotationForClient(int client, int annotationId)
+{
+    if (!IsValidClient(client))
+        return;
+
+    Event event = CreateEvent("hide_annotation", true);
+    if (event == null)
+        return;
+
+    event.SetInt("id", annotationId);
+    event.SetInt("visibilityBitfield", 0);
+    event.FireToClient(client);
+    delete event;
+}
+
+void SendSpawnAnnotationToClient(int client, int annotationId, const char[] text, const float origin[3], float lifetime = SPAWN_ANNOTATION_LIFETIME)
+{
+    if (!IsValidClient(client))
+        return;
+
+    Event event = CreateEvent("show_annotation", true);
+    if (event == null)
+        return;
+
+    event.SetInt("id", annotationId);
+    event.SetInt("follow_entindex", 0);
+    event.SetInt("visibilityBitfield", 0);
+    event.SetFloat("lifetime", lifetime);
+    event.SetBool("show_effect", true);
+    event.SetFloat("worldPosX", origin[0]);
+    event.SetFloat("worldPosY", origin[1]);
+    event.SetFloat("worldPosZ", origin[2]);
+    event.SetString("text", text);
+    event.SetString("play_sound", "");
+    event.FireToClient(client);
+    delete event;
+}
+
+void StopSpawnAnnotationRefresh(int client)
+{
+    if (g_hSpawnAnnotationRefreshTimer[client] != null)
+    {
+        delete g_hSpawnAnnotationRefreshTimer[client];
+        g_hSpawnAnnotationRefreshTimer[client] = null;
+    }
+}
+
+void ClearClientSpawnAnnotations(int client, bool hideCurrent)
+{
+    StopSpawnAnnotationRefresh(client);
+
+    if (hideCurrent && IsValidClient(client))
+    {
+        for (int i = 0; i < g_iSpawnAnnotationCount[client]; i++)
+        {
+            HideSpawnAnnotationForClient(client, GetSpawnAnnotationId(client, i));
+        }
+    }
+
+    g_iSpawnAnnotationCount[client] = 0;
+}
+
+bool AddStoredSpawnAnnotation(int client, int arena, int spawnType, int spawnNumber, const float origin[3])
+{
+    int index = g_iSpawnAnnotationCount[client];
+    if (index >= MAX_SPAWN_ANNOTATIONS)
+        return false;
+
+    g_iSpawnAnnotationArena[client][index] = arena;
+    g_iSpawnAnnotationType[client][index] = spawnType;
+    g_iSpawnAnnotationNumber[client][index] = spawnNumber;
+    g_fSpawnAnnotationOrigin[client][index][0] = origin[0];
+    g_fSpawnAnnotationOrigin[client][index][1] = origin[1];
+    g_fSpawnAnnotationOrigin[client][index][2] = origin[2];
+    g_iSpawnAnnotationCount[client] = index + 1;
+    return true;
+}
+
+void BuildStoredSpawnAnnotationText(int client, int index, char[] text, int textLen)
+{
+    int spawnType = g_iSpawnAnnotationType[client][index];
+    int spawnNumber = g_iSpawnAnnotationNumber[client][index];
+
+    char typeName[16];
+    switch (spawnType)
+    {
+        case SPAWN_ANN_TYPE_RED: strcopy(typeName, sizeof(typeName), "RED");
+        case SPAWN_ANN_TYPE_BLU: strcopy(typeName, sizeof(typeName), "BLU");
+        default: strcopy(typeName, sizeof(typeName), "NEUTRAL");
+    }
+
+    Format(text, textLen, "%s #%d", typeName, spawnNumber);
+}
+
+Action Command_MgeShowSpawns(int client, int args)
+{
+    if (!IsValidClient(client))
+    {
+        PrintToServer("[MGE] Command is in-game only: sm_mge_show_spawns");
+        return Plugin_Handled;
+    }
+
+    int arena = g_iPlayerArena[client];
+    if (arena <= 0 || arena > g_iArenaCount)
+    {
+        PrintToConsole(client, "[MGE] Join an arena first, then run sm_mge_show_spawns.");
+        PrintToChat(client, "[MGE] Join an arena first, then run sm_mge_show_spawns.");
+        return Plugin_Handled;
+    }
+
+    ClearClientSpawnAnnotations(client, true);
+
+    int shownNeutral = 0;
+    int shownRed = 0;
+    int shownBlu = 0;
+    int dropped = 0;
+    float pos[3];
+
+    for (int i = 1; i <= g_iArenaSpawns[arena]; i++)
+    {
+        pos[0] = g_fArenaSpawnOrigin[arena][i][0];
+        pos[1] = g_fArenaSpawnOrigin[arena][i][1];
+        pos[2] = g_fArenaSpawnOrigin[arena][i][2];
+        if (!AddStoredSpawnAnnotation(client, arena, SPAWN_ANN_TYPE_NEUTRAL, i, pos))
+        {
+            dropped++;
+            continue;
+        }
+        shownNeutral++;
+    }
+
+    for (int i = 1; i <= g_iArenaRedSpawns[arena]; i++)
+    {
+        pos[0] = g_fArenaRedSpawnOrigin[arena][i][0];
+        pos[1] = g_fArenaRedSpawnOrigin[arena][i][1];
+        pos[2] = g_fArenaRedSpawnOrigin[arena][i][2];
+        if (!AddStoredSpawnAnnotation(client, arena, SPAWN_ANN_TYPE_RED, i, pos))
+        {
+            dropped++;
+            continue;
+        }
+        shownRed++;
+    }
+
+    for (int i = 1; i <= g_iArenaBluSpawns[arena]; i++)
+    {
+        pos[0] = g_fArenaBluSpawnOrigin[arena][i][0];
+        pos[1] = g_fArenaBluSpawnOrigin[arena][i][1];
+        pos[2] = g_fArenaBluSpawnOrigin[arena][i][2];
+        if (!AddStoredSpawnAnnotation(client, arena, SPAWN_ANN_TYPE_BLU, i, pos))
+        {
+            dropped++;
+            continue;
+        }
+        shownBlu++;
+    }
+
+    char text[128];
+    for (int i = 0; i < g_iSpawnAnnotationCount[client]; i++)
+    {
+        BuildStoredSpawnAnnotationText(client, i, text, sizeof(text));
+        SendSpawnAnnotationToClient(client, GetSpawnAnnotationId(client, i), text, g_fSpawnAnnotationOrigin[client][i], SPAWN_ANNOTATION_LIFETIME);
+    }
+
+    int total = shownNeutral + shownRed + shownBlu;
+    PrintToConsole(client, "[MGE] Arena %d (%s) spawns shown: total=%d, neutral=%d, red=%d, blu=%d, dropped=%d", arena, g_sArenaOriginalName[arena], total, shownNeutral, shownRed, shownBlu, dropped);
+    PrintToChat(client, "[MGE] Arena spawns shown: %d (N %d / R %d / B %d). Re-run to refresh/hide previous.", total, shownNeutral, shownRed, shownBlu);
+    return Plugin_Handled;
+}
+
 // Display client's current position and angles for debugging
 Action Command_Loc(int client, int args)
 {
@@ -2232,6 +2548,21 @@ Action Sound_BlockSound(int clients[MAXPLAYERS], int& numClients, char sample[PL
     }
 
     if (StrContains(sample, "regenerate") >= 0)
+    {
+        return Plugin_Handled;
+    }
+
+    if (StrContains(sample, "ambient_mp3/lair/crocs_hiss", false) >= 0)
+    {
+        return Plugin_Handled;
+    }
+
+    if (StrContains(sample, "ambient_mp3/lair/crocs_growl", false) >= 0)
+    {
+        return Plugin_Handled;
+    }
+
+    if (StrContains(sample, "common/null.wav", false) >= 0)
     {
         return Plugin_Handled;
     }

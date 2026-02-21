@@ -63,6 +63,7 @@ Handle g_hQueueDisplayTimer;
 Handle g_hMapWorldTextTimer;
 Handle g_hMapWorldTextApplyTimer;
 Handle g_hBBallIntelSpinTimer[MAXARENAS + 1];
+Handle g_hPlayerWaitingSpecTimer[MAXPLAYERS + 1];
 
 char g_sDBConfig[256];
 int g_iReconnectInterval;
@@ -112,6 +113,10 @@ char
 float
     g_fArenaSpawnOrigin     [MAXARENAS + 1][MAXSPAWNS+1][3],
     g_fArenaSpawnAngles     [MAXARENAS + 1][MAXSPAWNS+1][3],
+    g_fArenaRedSpawnOrigin  [MAXARENAS + 1][MAXSPAWNS+1][3],
+    g_fArenaRedSpawnAngles  [MAXARENAS + 1][MAXSPAWNS+1][3],
+    g_fArenaBluSpawnOrigin  [MAXARENAS + 1][MAXSPAWNS+1][3],
+    g_fArenaBluSpawnAngles  [MAXARENAS + 1][MAXSPAWNS+1][3],
     g_fArenaBBallIntelSpawn [MAXARENAS + 1][3],
     g_fArenaBBallIntelSpawnRed [MAXARENAS + 1][3],
     g_fArenaBBallIntelSpawnBlu [MAXARENAS + 1][3],
@@ -156,6 +161,8 @@ bool g_bArenaBBallIntelSpawnBluSet [MAXARENAS + 1];
 bool g_bArenaBBallHoopSpawnSet [MAXARENAS + 1];
 bool g_bArenaBBallHoopSpawnRedSet [MAXARENAS + 1];
 bool g_bArenaBBallHoopSpawnBluSet [MAXARENAS + 1];
+bool g_bArenaUseTeamSpawns [MAXARENAS + 1];
+bool g_bArenaNearSpawn     [MAXARENAS + 1];
 
 int
     g_iArenaCount,
@@ -180,6 +187,8 @@ int
     g_iArenaMaxRating       [MAXARENAS + 1],
     g_iArenaCdTime          [MAXARENAS + 1],
     g_iArenaSpawns          [MAXARENAS + 1],
+    g_iArenaRedSpawns       [MAXARENAS + 1],
+    g_iArenaBluSpawns       [MAXARENAS + 1],
     //                      [What arena the hoop is in][Hoop 1 or Hoop 2]
     g_iBBallHoop            [MAXARENAS + 1][3],
     g_iBBallIntel           [MAXARENAS + 1],
@@ -216,6 +225,10 @@ bool
     g_bCanPlayerSwap        [MAXPLAYERS + 1],
     g_bCanPlayerGetIntel    [MAXPLAYERS + 1],
     g_bPlayerEloVerified    [MAXPLAYERS + 1]; // ELO loaded from authenticated Steam account
+
+bool g_bSetSpawnAwaitInput [MAXPLAYERS + 1];
+int g_iSetSpawnArena       [MAXPLAYERS + 1];
+int g_iSetSpawnMode        [MAXPLAYERS + 1];
 
 int
     g_iPlayerArena          [MAXPLAYERS + 1],
