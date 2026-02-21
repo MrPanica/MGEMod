@@ -65,6 +65,12 @@ bool LoadSpawnPoints()
     do
     {
         g_iArenaCount++;
+        g_bArenaBBallIntelSpawnSet[g_iArenaCount] = false;
+        g_bArenaBBallIntelSpawnRedSet[g_iArenaCount] = false;
+        g_bArenaBBallIntelSpawnBluSet[g_iArenaCount] = false;
+        g_bArenaBBallHoopSpawnSet[g_iArenaCount] = false;
+        g_bArenaBBallHoopSpawnRedSet[g_iArenaCount] = false;
+        g_bArenaBBallHoopSpawnBluSet[g_iArenaCount] = false;
         kv.GetSectionName(g_sArenaOriginalName[g_iArenaCount], 64);
         int id;
         if (kv.GetNameSymbol("1", id))
@@ -125,6 +131,9 @@ bool LoadSpawnPoints()
         g_iArenaCdTime[g_iArenaCount] = kv.GetNum("cdtime", DEFAULT_COUNTDOWN_TIME);
         g_bArenaMGE[g_iArenaCount] = kv.GetNum("mge", 0) ? true : false;
         g_fArenaHPRatio[g_iArenaCount] = kv.GetFloat("hpratio", 1.5);
+        for (int classId = 1; classId <= 9; classId++)
+            g_fArenaClassHPRatio[g_iArenaCount][classId] = g_fArenaHPRatio[g_iArenaCount];
+        ApplyClassHpRatioOverridesFromConfig(kv, g_iArenaCount);
         g_bArenaEndif[g_iArenaCount] = kv.GetNum("endif", 0) ? true : false;
         g_iArenaAirshotHeight[g_iArenaCount] = kv.GetNum("airshotheight", 250);
         g_bArenaBoostVectors[g_iArenaCount] = kv.GetNum("boostvectors", 0) ? true : false;
@@ -140,11 +149,18 @@ bool LoadSpawnPoints()
         g_bArenaKothTeamSpawn[g_iArenaCount] = kv.GetNum("kothteamspawn", 0) ? true : false;
         g_fArenaRespawnTime[g_iArenaCount] = kv.GetFloat("respawntime", 0.1);
         g_bArenaAmmomod[g_iArenaCount] = kv.GetNum("ammomod", 0) ? true : false;
+        g_bArenaNoFight[g_iArenaCount] = kv.GetNum("nofight", kv.GetNum("free_arena", 0)) ? true : false;
         g_bArenaUltiduo[g_iArenaCount] = kv.GetNum("ultiduo", 0) ? true : false;
         g_bArenaKoth[g_iArenaCount] = kv.GetNum("koth", 0) ? true : false;
         g_bArenaTurris[g_iArenaCount] = kv.GetNum("turris", 0) ? true : false;
         g_bArenaClassChange[g_iArenaCount] = kv.GetNum("classchange", 1) ? true : false;
         g_iDefaultCapTime[g_iArenaCount] = kv.GetNum("timer", 180);
+        g_bArenaBBallIntelSpawnSet[g_iArenaCount] = ParseVector3Key(kv, "intelspawn", g_fArenaBBallIntelSpawn[g_iArenaCount]);
+        g_bArenaBBallIntelSpawnRedSet[g_iArenaCount] = ParseVector3Key(kv, "intelspawn_red", g_fArenaBBallIntelSpawnRed[g_iArenaCount]);
+        g_bArenaBBallIntelSpawnBluSet[g_iArenaCount] = ParseVector3Key(kv, "intelspawn_blu", g_fArenaBBallIntelSpawnBlu[g_iArenaCount]);
+        g_bArenaBBallHoopSpawnSet[g_iArenaCount] = ParseVector3Key(kv, "hoopspawn", g_fArenaBBallHoopSpawn[g_iArenaCount]);
+        g_bArenaBBallHoopSpawnRedSet[g_iArenaCount] = ParseVector3Key(kv, "hoopspawn_red", g_fArenaBBallHoopSpawnRed[g_iArenaCount]);
+        g_bArenaBBallHoopSpawnBluSet[g_iArenaCount] = ParseVector3Key(kv, "hoopspawn_blu", g_fArenaBBallHoopSpawnBlu[g_iArenaCount]);
 
         // Parsing allowed classes for current arena
         char sAllowedClasses[128];
@@ -164,6 +180,28 @@ bool LoadSpawnPoints()
         delete kv;
         return false;
     }
+}
+
+bool ParseVector3Key(KeyValues kv, const char[] key, float outVec[3])
+{
+    char value[96];
+    kv.GetString(key, value, sizeof(value), "");
+    TrimString(value);
+    if (value[0] == '\0')
+        return false;
+
+    char parts[3][24];
+    int count = ExplodeString(value, " ", parts, 3, 24);
+    if (count != 3)
+    {
+        LogError("Invalid vector for key '%s': '%s' (expected: x y z)", key, value);
+        return false;
+    }
+
+    outVec[0] = StringToFloat(parts[0]);
+    outVec[1] = StringToFloat(parts[1]);
+    outVec[2] = StringToFloat(parts[2]);
+    return true;
 }
 
 
@@ -819,7 +857,7 @@ void AddInQueue(int client, int arena_index, bool showmsg = true, int playerPref
         if (g_iPlayerArena[client] == arena_index)
         {
             // Player is re-selecting the same arena
-            if (g_bFourPersonArena[arena_index] && playerPrefTeam == 0 && show2v2Menu)
+            if (g_bFourPersonArena[arena_index] && playerPrefTeam == 0 && show2v2Menu && !g_bArenaNoFight[arena_index])
             {
                 Show2v2SelectionMenu(client, arena_index);
                 return;
@@ -839,7 +877,7 @@ void AddInQueue(int client, int arena_index, bool showmsg = true, int playerPref
 
     // Show 2v2 selection menu if this is a 2v2 arena and no team preference is set
     // Only show menu if there are available main slots (not all 4 slots filled)
-    if (g_bFourPersonArena[arena_index] && playerPrefTeam == 0 && show2v2Menu)
+    if (g_bFourPersonArena[arena_index] && playerPrefTeam == 0 && show2v2Menu && !g_bArenaNoFight[arena_index])
     {
         // Check if all main slots are filled
         bool allSlotsFilled = g_iArenaQueue[arena_index][SLOT_ONE] && 
@@ -920,7 +958,7 @@ void AddInQueue(int client, int arena_index, bool showmsg = true, int playerPref
     }
     if (g_bFourPersonArena[arena_index])
     {
-        if (player_slot <= SLOT_FOUR)
+        if (player_slot <= SLOT_FOUR || g_bArenaNoFight[arena_index])
         {
             char name[MAX_NAME_LENGTH];
             GetClientName(client, name, sizeof(name));
@@ -948,14 +986,20 @@ void AddInQueue(int client, int arena_index, bool showmsg = true, int playerPref
                 }
             }
             
-            if (red_count == 2 && blu_count == 2)
+            if (red_count == 2 && blu_count == 2 && !g_bArenaNoFight[arena_index])
             {
                 // Transition to ready waiting state instead of immediately starting
                 Start2v2ReadySystem(arena_index);
             }
             else
+            {
+                g_iArenaStatus[arena_index] = AS_IDLE;
+                g_iArenaDuelStartTime[arena_index] = 0;
                 CreateTimer(0.1, Timer_ResetPlayer, GetClientUserId(client));
-        } else {
+            }
+        }
+        else
+        {
             if (GetClientTeam(client) != TEAM_SPEC)
                 ChangeClientTeam(client, TEAM_SPEC);
             if (player_slot == SLOT_FOUR + 1)
@@ -966,7 +1010,7 @@ void AddInQueue(int client, int arena_index, bool showmsg = true, int playerPref
     }
     else
     {
-        if (player_slot <= SLOT_TWO)
+        if (player_slot <= SLOT_TWO || g_bArenaNoFight[arena_index])
         {
             char name[MAX_NAME_LENGTH];
             GetClientName(client, name, sizeof(name));
@@ -980,12 +1024,19 @@ void AddInQueue(int client, int arena_index, bool showmsg = true, int playerPref
                 g_bPlayerAddedViaWadd[client] = false;
             }
 
-            if (g_iArenaQueue[arena_index][SLOT_ONE] && g_iArenaQueue[arena_index][SLOT_TWO])
+            if (!g_bArenaNoFight[arena_index] && g_iArenaQueue[arena_index][SLOT_ONE] && g_iArenaQueue[arena_index][SLOT_TWO])
             {
                 CreateTimer(1.5, Timer_StartDuel, arena_index);
-            } else
+            }
+            else
+            {
+                g_iArenaStatus[arena_index] = AS_IDLE;
+                g_iArenaDuelStartTime[arena_index] = 0;
                 CreateTimer(0.1, Timer_ResetPlayer, GetClientUserId(client));
-        } else {
+            }
+        }
+        else
+        {
             if (GetClientTeam(client) != TEAM_SPEC)
                 ChangeClientTeam(client, TEAM_SPEC);
             if (player_slot == SLOT_TWO + 1)
@@ -999,7 +1050,7 @@ void AddInQueue(int client, int arena_index, bool showmsg = true, int playerPref
 
     // Check if we should add players from waiting list after successful join
     // Only check if the joining player was added to main slots (not waiting queue)
-    if (player_slot <= SLOT_TWO || (g_bFourPersonArena[arena_index] && player_slot <= SLOT_FOUR))
+    if (g_bArenaNoFight[arena_index] || player_slot <= SLOT_TWO || (g_bFourPersonArena[arena_index] && player_slot <= SLOT_FOUR))
     {
         CheckWaitingList(arena_index);
     }
@@ -1699,7 +1750,7 @@ void WaddToArena(int client, int arena_index, bool show_menu)
     }
 
     // If arena has no other players, add to waiting list
-    if (!has_active_player)
+    if (!has_active_player && !g_bArenaNoFight[arena_index])
     {
         if (g_bDebugWadd)
             LogToFileEx(g_sLogFile, "[wadd] waiting list client=%N arena=%d", client, arena_index);
@@ -2120,6 +2171,22 @@ Action Timer_CountDown(Handle timer, any arena_index)
 // Initialize duel start sequence and player setup
 Action Timer_StartDuel(Handle timer, any arena_index)
 {
+    if (g_bArenaNoFight[arena_index])
+    {
+        g_iArenaStatus[arena_index] = AS_IDLE;
+        g_iArenaDuelStartTime[arena_index] = 0;
+
+        int max_slot = g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO;
+        for (int slot = SLOT_ONE; slot <= max_slot; slot++)
+        {
+            int player = g_iArenaQueue[arena_index][slot];
+            if (IsValidClient(player))
+                CreateTimer(0.1, Timer_ResetPlayer, GetClientUserId(player));
+        }
+        UpdateHudForArena(arena_index);
+        return Plugin_Stop;
+    }
+
     // Clear any pending invites when match starts
     for (int i = SLOT_ONE; i <= (g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO); i++)
     {
@@ -2187,7 +2254,7 @@ Action Timer_RegenArena(Handle timer, any arena_index)
     if (IsPlayerAlive(client))
     {
         TF2_RegeneratePlayer(client);
-        int raised_hp = RoundToNearest(float(g_iPlayerMaxHP[client]) * g_fArenaHPRatio[arena_index]);
+        int raised_hp = GetArenaTargetHPForClient(client, arena_index, g_iPlayerMaxHP[client]);
         g_iPlayerHP[client] = raised_hp;
         SetEntProp(client, Prop_Data, "m_iHealth", raised_hp);
     }
@@ -2195,7 +2262,7 @@ Action Timer_RegenArena(Handle timer, any arena_index)
     if (IsPlayerAlive(client2))
     {
         TF2_RegeneratePlayer(client2);
-        int raised_hp2 = RoundToNearest(float(g_iPlayerMaxHP[client2]) * g_fArenaHPRatio[arena_index]);
+        int raised_hp2 = GetArenaTargetHPForClient(client2, arena_index, g_iPlayerMaxHP[client2]);
         g_iPlayerHP[client2] = raised_hp2;
         SetEntProp(client2, Prop_Data, "m_iHealth", raised_hp2);
     }
@@ -2207,14 +2274,14 @@ Action Timer_RegenArena(Handle timer, any arena_index)
         if (IsPlayerAlive(client3))
         {
             TF2_RegeneratePlayer(client3);
-            int raised_hp3 = RoundToNearest(float(g_iPlayerMaxHP[client3]) * g_fArenaHPRatio[arena_index]);
+            int raised_hp3 = GetArenaTargetHPForClient(client3, arena_index, g_iPlayerMaxHP[client3]);
             g_iPlayerHP[client3] = raised_hp3;
             SetEntProp(client3, Prop_Data, "m_iHealth", raised_hp3);
         }
         if (IsPlayerAlive(client4))
         {
             TF2_RegeneratePlayer(client4);
-            int raised_hp4 = RoundToNearest(float(g_iPlayerMaxHP[client4]) * g_fArenaHPRatio[arena_index]);
+            int raised_hp4 = GetArenaTargetHPForClient(client4, arena_index, g_iPlayerMaxHP[client4]);
             g_iPlayerHP[client4] = raised_hp4;
             SetEntProp(client4, Prop_Data, "m_iHealth", raised_hp4);
         }
@@ -2243,6 +2310,57 @@ Action Timer_AddBotInQueue(Handle timer, DataPack pack)
 }
 
 // ===== UTILITIES =====
+
+TFClassType TFClassFromConfigName(const char[] className)
+{
+    if (StrEqual(className, "scout", false)) return TFClass_Scout;
+    if (StrEqual(className, "sniper", false)) return TFClass_Sniper;
+    if (StrEqual(className, "soldier", false)) return TFClass_Soldier;
+    if (StrEqual(className, "demoman", false) || StrEqual(className, "demo", false)) return TFClass_DemoMan;
+    if (StrEqual(className, "medic", false)) return TFClass_Medic;
+    if (StrEqual(className, "heavy", false)) return TFClass_Heavy;
+    if (StrEqual(className, "pyro", false)) return TFClass_Pyro;
+    if (StrEqual(className, "spy", false)) return TFClass_Spy;
+    if (StrEqual(className, "engineer", false) || StrEqual(className, "engie", false)) return TFClass_Engineer;
+    return TFClass_Unknown;
+}
+
+void ApplyClassHpRatioOverridesFromSection(KeyValues kv, int arena_index, const char[] sectionName)
+{
+    if (!kv.JumpToKey(sectionName, false))
+        return;
+
+    char classKeys[][] =
+    {
+        "scout",
+        "sniper",
+        "soldier",
+        "demoman",
+        "medic",
+        "heavy",
+        "pyro",
+        "spy",
+        "engineer"
+    };
+
+    for (int i = 0; i < sizeof(classKeys); i++)
+    {
+        TFClassType classType = TFClassFromConfigName(classKeys[i]);
+        if (classType == TFClass_Unknown)
+            continue;
+
+        g_fArenaClassHPRatio[arena_index][classType] = kv.GetFloat(classKeys[i], g_fArenaClassHPRatio[arena_index][classType]);
+    }
+
+    kv.GoBack();
+}
+
+void ApplyClassHpRatioOverridesFromConfig(KeyValues kv, int arena_index)
+{
+    // Keep user's requested key spelling, plus a correctly-spelled alias for convenience.
+    ApplyClassHpRatioOverridesFromSection(kv, arena_index, "hpratio_by_clasees");
+    ApplyClassHpRatioOverridesFromSection(kv, arena_index, "hpratio_by_classes");
+}
 
 // Parse comma-separated class list into boolean array for validation
 void ParseAllowedClasses(const char[] sList, bool[] output)

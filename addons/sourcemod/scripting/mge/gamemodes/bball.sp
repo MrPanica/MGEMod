@@ -1,5 +1,112 @@
 // ===== ENTITY MANAGEMENT =====
 
+void RemoveEntityByRef(int &entityRef)
+{
+    int entity = EntRefToEntIndex(entityRef);
+    if (entity > 0 && IsValidEntity(entity))
+        RemoveEdict(entity);
+    entityRef = 0;
+}
+
+int ResolveCarryAttachment(int client)
+{
+    static const char attachments[][] = { "flag", "backpack", "back_lower", "spine_2", "weapon_bone", "head" };
+    for (int i = 0; i < sizeof(attachments); i++)
+    {
+        if (LookupEntityAttachment(client, attachments[i]) > 0)
+            return i;
+    }
+    return -1;
+}
+
+void RemoveBBallBackModel(int client)
+{
+    RemoveEntityByRef(g_iBBallBackModel[client]);
+}
+
+void AttachBBallBackModel(int client)
+{
+    RemoveBBallBackModel(client);
+
+    if (!IsValidClient(client))
+        return;
+
+    int attachIdx = ResolveCarryAttachment(client);
+    if (attachIdx == -1)
+        return;
+
+    static const char attachments[][] = { "flag", "backpack", "back_lower", "spine_2", "weapon_bone", "head" };
+    int model = CreateEntityByName("prop_dynamic_override");
+    if (model == -1)
+        return;
+
+    DispatchKeyValue(model, "model", MODEL_BRIEFCASE);
+    DispatchKeyValue(model, "solid", "0");
+    DispatchSpawn(model);
+    SetEntPropFloat(model, Prop_Send, "m_flModelScale", 0.9);
+    SetEntPropEnt(model, Prop_Send, "m_hOwnerEntity", client);
+
+    SetVariantString("!activator");
+    AcceptEntityInput(model, "SetParent", client, model);
+    SetVariantString(attachments[attachIdx]);
+    AcceptEntityInput(model, "SetParentAttachment", client, model);
+    SDKHook(model, SDKHook_SetTransmit, Hook_BBallBackModelSetTransmit);
+    g_iBBallBackModel[client] = EntIndexToEntRef(model);
+}
+
+void RemoveBBallIntelWorldFx(int arena_index)
+{
+    RemoveEntityByRef(g_iBBallIntelWorldParticle[arena_index]);
+    g_hBBallIntelSpinTimer[arena_index] = null;
+}
+
+void ApplyBBallIntelVisuals(int arena_index)
+{
+    int intel = g_iBBallIntel[arena_index];
+    if (intel <= 0 || !IsValidEntity(intel))
+        return;
+
+    SetEntProp(intel, Prop_Send, "m_nSkin", g_iBBallIntelSkinTeam[arena_index]);
+    RemoveBBallIntelWorldFx(arena_index);
+
+    int particle = CreateEntityByName("info_particle_system");
+    if (particle != -1)
+    {
+        float pos[3];
+        GetEntPropVector(intel, Prop_Send, "m_vecOrigin", pos);
+        TeleportEntity(particle, pos, NULL_VECTOR, NULL_VECTOR);
+        DispatchKeyValue(particle, "effect_name", g_iBBallIntelSkinTeam[arena_index] == 0 ? "mannpower_imbalance_red_beam" : "mannpower_imbalance_blue_beam");
+        DispatchSpawn(particle);
+        SetVariantString("!activator");
+        AcceptEntityInput(particle, "SetParent", intel, particle);
+        ActivateEntity(particle);
+        AcceptEntityInput(particle, "Start");
+        g_iBBallIntelWorldParticle[arena_index] = EntIndexToEntRef(particle);
+    }
+
+        g_hBBallIntelSpinTimer[arena_index] = CreateTimer(0.01, Timer_SpinBBallIntel, arena_index, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+}
+
+Action Hook_BBallBackModelSetTransmit(int entity, int client)
+{
+    int owner = GetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity");
+    if (owner == client)
+        return Plugin_Handled;
+    return Plugin_Continue;
+}
+
+void ConfigureAndSpawnBBallIntelEntity(int arena_index, float pos[3])
+{
+    DispatchKeyValue(g_iBBallIntel[arena_index], "powerup_model", MODEL_BRIEFCASE);
+    DispatchSpawn(g_iBBallIntel[arena_index]);
+    TeleportEntity(g_iBBallIntel[arena_index], pos, NULL_VECTOR, NULL_VECTOR);
+    SetEntProp(g_iBBallIntel[arena_index], Prop_Send, "m_iTeamNum", 1, 4);
+    SetEntPropFloat(g_iBBallIntel[arena_index], Prop_Send, "m_flModelScale", 1.15);
+    SDKHook(g_iBBallIntel[arena_index], SDKHook_StartTouch, OnTouchIntel);
+    AcceptEntityInput(g_iBBallIntel[arena_index], "Enable");
+    ApplyBBallIntelVisuals(arena_index);
+}
+
 // Setup BBall hoops for all BBall arenas during round start
 void SetupBBallHoops()
 {
@@ -11,14 +118,44 @@ void SetupBBallHoops()
         if (g_bArenaBBall[i])
         {
             float hoop_2_loc[3];
-            hoop_2_loc[0] = g_fArenaSpawnOrigin[i][g_iArenaSpawns[i]][0];
-            hoop_2_loc[1] = g_fArenaSpawnOrigin[i][g_iArenaSpawns[i]][1];
-            hoop_2_loc[2] = g_fArenaSpawnOrigin[i][g_iArenaSpawns[i]][2];
+            if (g_bArenaBBallHoopSpawnBluSet[i])
+            {
+                hoop_2_loc[0] = g_fArenaBBallHoopSpawnBlu[i][0];
+                hoop_2_loc[1] = g_fArenaBBallHoopSpawnBlu[i][1];
+                hoop_2_loc[2] = g_fArenaBBallHoopSpawnBlu[i][2];
+            }
+            else if (g_bArenaBBallHoopSpawnSet[i])
+            {
+                hoop_2_loc[0] = g_fArenaBBallHoopSpawn[i][0];
+                hoop_2_loc[1] = g_fArenaBBallHoopSpawn[i][1];
+                hoop_2_loc[2] = g_fArenaBBallHoopSpawn[i][2];
+            }
+            else
+            {
+                hoop_2_loc[0] = g_fArenaSpawnOrigin[i][g_iArenaSpawns[i]][0];
+                hoop_2_loc[1] = g_fArenaSpawnOrigin[i][g_iArenaSpawns[i]][1];
+                hoop_2_loc[2] = g_fArenaSpawnOrigin[i][g_iArenaSpawns[i]][2];
+            }
 
             float hoop_1_loc[3];
-            hoop_1_loc[0] = g_fArenaSpawnOrigin[i][g_iArenaSpawns[i] - 1][0];
-            hoop_1_loc[1] = g_fArenaSpawnOrigin[i][g_iArenaSpawns[i] - 1][1];
-            hoop_1_loc[2] = g_fArenaSpawnOrigin[i][g_iArenaSpawns[i] - 1][2];
+            if (g_bArenaBBallHoopSpawnRedSet[i])
+            {
+                hoop_1_loc[0] = g_fArenaBBallHoopSpawnRed[i][0];
+                hoop_1_loc[1] = g_fArenaBBallHoopSpawnRed[i][1];
+                hoop_1_loc[2] = g_fArenaBBallHoopSpawnRed[i][2];
+            }
+            else if (g_bArenaBBallHoopSpawnSet[i])
+            {
+                hoop_1_loc[0] = g_fArenaBBallHoopSpawn[i][0];
+                hoop_1_loc[1] = g_fArenaBBallHoopSpawn[i][1];
+                hoop_1_loc[2] = g_fArenaBBallHoopSpawn[i][2];
+            }
+            else
+            {
+                hoop_1_loc[0] = g_fArenaSpawnOrigin[i][g_iArenaSpawns[i] - 1][0];
+                hoop_1_loc[1] = g_fArenaSpawnOrigin[i][g_iArenaSpawns[i] - 1][1];
+                hoop_1_loc[2] = g_fArenaSpawnOrigin[i][g_iArenaSpawns[i] - 1][2];
+            }
 
             if (IsValidEdict(g_iBBallHoop[i][SLOT_ONE]) && g_iBBallHoop[i][SLOT_ONE] > 0)
             {
@@ -91,29 +228,61 @@ void ResetIntel(int arena_index, any client = -1)
 
             if (client_slot == SLOT_ONE || client_slot == SLOT_THREE)
             {
-                intel_loc[0] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index] - 3][0];
-                intel_loc[1] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index] - 3][1];
-                intel_loc[2] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index] - 3][2];
+                if (g_bArenaBBallIntelSpawnRedSet[arena_index])
+                {
+                    intel_loc[0] = g_fArenaBBallIntelSpawnRed[arena_index][0];
+                    intel_loc[1] = g_fArenaBBallIntelSpawnRed[arena_index][1];
+                    intel_loc[2] = g_fArenaBBallIntelSpawnRed[arena_index][2];
+                }
+                else if (g_bArenaBBallIntelSpawnSet[arena_index])
+                {
+                    intel_loc[0] = g_fArenaBBallIntelSpawn[arena_index][0];
+                    intel_loc[1] = g_fArenaBBallIntelSpawn[arena_index][1];
+                    intel_loc[2] = g_fArenaBBallIntelSpawn[arena_index][2];
+                }
+                else
+                {
+                    intel_loc[0] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index] - 3][0];
+                    intel_loc[1] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index] - 3][1];
+                    intel_loc[2] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index] - 3][2];
+                }
             } else if (client_slot == SLOT_TWO || client_slot == SLOT_FOUR) {
-                intel_loc[0] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index] - 2][0];
-                intel_loc[1] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index] - 2][1];
-                intel_loc[2] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index] - 2][2];
+                if (g_bArenaBBallIntelSpawnBluSet[arena_index])
+                {
+                    intel_loc[0] = g_fArenaBBallIntelSpawnBlu[arena_index][0];
+                    intel_loc[1] = g_fArenaBBallIntelSpawnBlu[arena_index][1];
+                    intel_loc[2] = g_fArenaBBallIntelSpawnBlu[arena_index][2];
+                }
+                else if (g_bArenaBBallIntelSpawnSet[arena_index])
+                {
+                    intel_loc[0] = g_fArenaBBallIntelSpawn[arena_index][0];
+                    intel_loc[1] = g_fArenaBBallIntelSpawn[arena_index][1];
+                    intel_loc[2] = g_fArenaBBallIntelSpawn[arena_index][2];
+                }
+                else
+                {
+                    intel_loc[0] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index] - 2][0];
+                    intel_loc[1] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index] - 2][1];
+                    intel_loc[2] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index] - 2][2];
+                }
             }
         } else {
-            intel_loc[0] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index] - 4][0];
-            intel_loc[1] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index] - 4][1];
-            intel_loc[2] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index] - 4][2];
+            if (g_bArenaBBallIntelSpawnSet[arena_index])
+            {
+                intel_loc[0] = g_fArenaBBallIntelSpawn[arena_index][0];
+                intel_loc[1] = g_fArenaBBallIntelSpawn[arena_index][1];
+                intel_loc[2] = g_fArenaBBallIntelSpawn[arena_index][2];
+            }
+            else
+            {
+                intel_loc[0] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index] - 4][0];
+                intel_loc[1] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index] - 4][1];
+                intel_loc[2] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index] - 4][2];
+            }
         }
 
         // Should fix the intel being an ammopack
-        DispatchKeyValue(g_iBBallIntel[arena_index], "powerup_model", MODEL_BRIEFCASE);
-        DispatchSpawn(g_iBBallIntel[arena_index]);
-        TeleportEntity(g_iBBallIntel[arena_index], intel_loc, NULL_VECTOR, NULL_VECTOR);
-        SetEntProp(g_iBBallIntel[arena_index], Prop_Send, "m_iTeamNum", 1, 4);
-        SetEntPropFloat(g_iBBallIntel[arena_index], Prop_Send, "m_flModelScale", 1.15);
-
-        SDKHook(g_iBBallIntel[arena_index], SDKHook_StartTouch, OnTouchIntel);
-        AcceptEntityInput(g_iBBallIntel[arena_index], "Enable");
+        ConfigureAndSpawnBBallIntelEntity(arena_index, intel_loc);
     }
 }
 
@@ -133,6 +302,7 @@ Action OnTouchIntel(int entity, int other)
 
     int arena_index = g_iPlayerArena[client];
     g_bPlayerHasIntel[client] = true;
+    AttachBBallBackModel(client);
     char msg[64];
     Format(msg, sizeof(msg), "%T", "YouHaveTheIntel", client);
     PrintCenterText(client, msg);
@@ -142,6 +312,7 @@ Action OnTouchIntel(int entity, int other)
         // SDKUnhook(g_iBBallIntel[arena_index], SDKHook_StartTouch, OnTouchIntel);
         RemoveEdict(g_iBBallIntel[arena_index]);
         g_iBBallIntel[arena_index] = -1;
+        RemoveBBallIntelWorldFx(arena_index);
     }
 
     int particle;
@@ -213,6 +384,7 @@ Action OnTouchHoop(int entity, int other)
     {
         // Remove the particle effect attached to the player carrying the intel.
         RemoveClientParticle(client);
+        RemoveBBallBackModel(client);
 
         char foe_name[MAX_NAME_LENGTH];
         GetClientName(foe, foe_name, sizeof(foe_name));
@@ -223,6 +395,7 @@ Action OnTouchHoop(int entity, int other)
 
         g_bPlayerHasIntel[client] = false;
         g_iArenaScore[arena_index][client_team_slot] += 1;
+        g_iBBallIntelSkinTeam[arena_index] = (client_team_slot == SLOT_ONE) ? 0 : 1;
 
         if (fraglimit > 0 && g_iArenaScore[arena_index][client_team_slot] >= fraglimit && g_iArenaStatus[arena_index] >= AS_FIGHT && g_iArenaStatus[arena_index] < AS_REPORTED)
         {
@@ -254,6 +427,7 @@ Action OnTouchHoop(int entity, int other)
                 // SDKUnhook(g_iBBallIntel[arena_index], SDKHook_StartTouch, OnTouchIntel);
                 RemoveEdict(g_iBBallIntel[arena_index]);
                 g_iBBallIntel[arena_index] = -1;
+                RemoveBBallIntelWorldFx(arena_index);
             }
             if (g_bFourPersonArena[arena_index] && g_iArenaQueue[arena_index][SLOT_FOUR + 1])
             {
@@ -315,6 +489,7 @@ void HandleBBallPlayerDeath(int victim, int killer, int arena_index)
         return;
         
     g_bPlayerHasIntel[victim] = false;
+    RemoveBBallBackModel(victim);
     float pos[3];
     GetClientAbsOrigin(victim, pos);
     float dist = DistanceAboveGround(victim);
@@ -329,13 +504,7 @@ void HandleBBallPlayerDeath(int victim, int killer, int arena_index)
         LogError("[%s] Player died with intel, but intel [%i] already exists.", g_sArenaName[arena_index], g_iBBallIntel[arena_index]);
 
     // Configure intel entity properties
-    DispatchKeyValue(g_iBBallIntel[arena_index], "powerup_model", MODEL_BRIEFCASE);
-    TeleportEntity(g_iBBallIntel[arena_index], pos, NULL_VECTOR, NULL_VECTOR);
-    DispatchSpawn(g_iBBallIntel[arena_index]);
-    SetEntProp(g_iBBallIntel[arena_index], Prop_Send, "m_iTeamNum", 1, 4);
-    SetEntPropFloat(g_iBBallIntel[arena_index], Prop_Send, "m_flModelScale", 1.15);
-    SDKHook(g_iBBallIntel[arena_index], SDKHook_StartTouch, OnTouchIntel);
-    AcceptEntityInput(g_iBBallIntel[arena_index], "Enable");
+    ConfigureAndSpawnBBallIntelEntity(arena_index, pos);
 
     // Play intel drop sounds
     EmitSoundToClient(victim, "vo/intel_teamdropped.mp3");
@@ -356,6 +525,7 @@ Action Command_DropItem(int client, const char[] command, int argc)
         if (g_bPlayerHasIntel[client])
         {
             g_bPlayerHasIntel[client] = false;
+            RemoveBBallBackModel(client);
             float pos[3];
             GetClientAbsOrigin(client, pos);
             float dist = DistanceAboveGroundAroundPlayer(client);
@@ -370,14 +540,7 @@ Action Command_DropItem(int client, const char[] command, int argc)
                 LogError("[%s] Player dropped the intel, but intel [%i] already exists.", g_sArenaName[arena_index], g_iBBallIntel[arena_index]);
 
             // This should fix the ammopack not being turned into a briefcase
-            DispatchKeyValue(g_iBBallIntel[arena_index], "powerup_model", MODEL_BRIEFCASE);
-            TeleportEntity(g_iBBallIntel[arena_index], pos, NULL_VECTOR, NULL_VECTOR);
-            DispatchSpawn(g_iBBallIntel[arena_index]);
-            SetEntProp(g_iBBallIntel[arena_index], Prop_Send, "m_iTeamNum", 1, 4);
-            SetEntPropFloat(g_iBBallIntel[arena_index], Prop_Send, "m_flModelScale", 1.15);
-
-            SDKHook(g_iBBallIntel[arena_index], SDKHook_StartTouch, OnTouchIntel);
-            AcceptEntityInput(g_iBBallIntel[arena_index], "Enable");
+            ConfigureAndSpawnBBallIntelEntity(arena_index, pos);
 
             EmitSoundToClient(client, "vo/intel_teamdropped.mp3");
 
@@ -410,5 +573,31 @@ Action Timer_AllowPlayerCap(Handle timer, int userid)
 {
     g_bCanPlayerGetIntel[userid] = true;
 
+    return Plugin_Continue;
+}
+
+Action Timer_SpinBBallIntel(Handle timer, any arena_index)
+{
+    if (arena_index <= 0 || arena_index > g_iArenaCount)
+    {
+        if (g_hBBallIntelSpinTimer[arena_index] == timer)
+            g_hBBallIntelSpinTimer[arena_index] = null;
+        return Plugin_Stop;
+    }
+
+    int intel = g_iBBallIntel[arena_index];
+    if (intel <= 0 || !IsValidEntity(intel))
+    {
+        if (g_hBBallIntelSpinTimer[arena_index] == timer)
+            g_hBBallIntelSpinTimer[arena_index] = null;
+        return Plugin_Stop;
+    }
+
+    float ang[3];
+    GetEntPropVector(intel, Prop_Data, "m_angRotation", ang);
+    ang[1] += 2.75;
+    if (ang[1] > 360.0)
+        ang[1] -= 360.0;
+    TeleportEntity(intel, NULL_VECTOR, ang, NULL_VECTOR);
     return Plugin_Continue;
 }

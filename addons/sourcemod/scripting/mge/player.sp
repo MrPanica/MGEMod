@@ -290,7 +290,11 @@ int ResetPlayer(int client)
 
     g_iPlayerSpecTarget[client] = 0;
 
-    if (player_slot == SLOT_ONE || player_slot == SLOT_THREE)
+    bool is_red_team = (player_slot == SLOT_ONE || player_slot == SLOT_THREE);
+    if (g_bArenaNoFight[arena_index])
+        is_red_team = ((player_slot % 2) == 1);
+
+    if (is_red_team)
         ChangeClientTeam(client, TEAM_RED);
     else
         ChangeClientTeam(client, TEAM_BLU);
@@ -319,10 +323,10 @@ int ResetPlayer(int client)
     if (g_bArenaMidair[arena_index])
         g_iPlayerHP[client] = g_iMidairHP;
     else
-        g_iPlayerHP[client] = g_iPlayerHandicap[client] ? g_iPlayerHandicap[client] : RoundToNearest(float(g_iPlayerMaxHP[client]) * g_fArenaHPRatio[arena_index]);
+        g_iPlayerHP[client] = g_iPlayerHandicap[client] ? g_iPlayerHandicap[client] : GetArenaTargetHPForClient(client, arena_index, g_iPlayerMaxHP[client]);
 
     if (g_bArenaMGE[arena_index] || g_bArenaBBall[arena_index])
-        SetEntProp(client, Prop_Data, "m_iHealth", g_iPlayerHandicap[client] ? g_iPlayerHandicap[client] : RoundToNearest(float(g_iPlayerMaxHP[client]) * g_fArenaHPRatio[arena_index]));
+        SetEntProp(client, Prop_Data, "m_iHealth", g_iPlayerHandicap[client] ? g_iPlayerHandicap[client] : GetArenaTargetHPForClient(client, arena_index, g_iPlayerMaxHP[client]));
 
     UpdateHud(client);
     ResetClientAmmoCounts(client);
@@ -334,7 +338,7 @@ int ResetPlayer(int client)
 // Restores killer's health and regenerates them after scoring a frag
 void ResetKiller(int killer, int arena_index)
 {
-    int reset_hp = g_iPlayerHandicap[killer] ? g_iPlayerHandicap[killer] : RoundToNearest(float(g_iPlayerMaxHP[killer]) * g_fArenaHPRatio[arena_index]);
+    int reset_hp = g_iPlayerHandicap[killer] ? g_iPlayerHandicap[killer] : GetArenaTargetHPForClient(killer, arena_index, g_iPlayerMaxHP[killer]);
     g_iPlayerHP[killer] = reset_hp;
     SetEntProp(killer, Prop_Data, "m_iHealth", reset_hp);
     RequestFrame(RegenKiller, killer);
@@ -941,7 +945,7 @@ Action Command_Handicap(int client, int args)
             return Plugin_Handled;
         }
 
-        if (argint > RoundToNearest(float(g_iPlayerMaxHP[client]) * g_fArenaHPRatio[arena_index]))
+        if (argint > GetArenaTargetHPForClient(client, arena_index, g_iPlayerMaxHP[client]))
         {
             MC_PrintToChat(client, "%t", "InvalidHandicap");
             g_iPlayerHandicap[client] = 0;
@@ -1027,21 +1031,22 @@ Action Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast)
 
     ResetClientAmmoCounts(client);
 
-    if (!g_bFourPersonArena[arena_index] && g_iPlayerSlot[client] != SLOT_ONE && g_iPlayerSlot[client] != SLOT_TWO)
+    if (!g_bArenaNoFight[arena_index] && !g_bFourPersonArena[arena_index] && g_iPlayerSlot[client] != SLOT_ONE && g_iPlayerSlot[client] != SLOT_TWO)
         ChangeClientTeam(client, TEAM_SPEC);
 
-    else if (g_bFourPersonArena[arena_index] && g_iPlayerSlot[client] != SLOT_ONE && g_iPlayerSlot[client] != SLOT_TWO && (g_iPlayerSlot[client] != SLOT_THREE && g_iPlayerSlot[client] != SLOT_FOUR))
+    else if (!g_bArenaNoFight[arena_index] && g_bFourPersonArena[arena_index] && g_iPlayerSlot[client] != SLOT_ONE && g_iPlayerSlot[client] != SLOT_TWO && (g_iPlayerSlot[client] != SLOT_THREE && g_iPlayerSlot[client] != SLOT_FOUR))
         ChangeClientTeam(client, TEAM_SPEC);
 
     if (g_bArenaMGE[arena_index])
     {
-        g_iPlayerHP[client] = RoundToNearest(float(g_iPlayerMaxHP[client]) * g_fArenaHPRatio[arena_index]);
+        g_iPlayerHP[client] = GetArenaTargetHPForClient(client, arena_index, g_iPlayerMaxHP[client]);
         UpdateHudForArena(arena_index);
     }
 
     if (g_bArenaBBall[arena_index])
     {
         g_bPlayerHasIntel[client] = false;
+        RemoveBBallBackModel(client);
     }
 
     return Plugin_Continue;
@@ -1195,7 +1200,7 @@ Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
     if (g_iArenaStatus[arena_index] < AS_FIGHT && IsValidClient(attacker) && IsPlayerAlive(attacker))
     {
         TF2_RegeneratePlayer(attacker);
-        int raised_hp = RoundToNearest(float(g_iPlayerMaxHP[attacker]) * g_fArenaHPRatio[arena_index]);
+        int raised_hp = GetArenaTargetHPForClient(attacker, arena_index, g_iPlayerMaxHP[attacker]);
         g_iPlayerHP[attacker] = raised_hp;
         SetEntProp(attacker, Prop_Data, "m_iHealth", raised_hp);
     }
@@ -1364,7 +1369,7 @@ Action Timer_Tele(Handle timer, int userid)
         return Plugin_Continue;
 
     int player_slot = g_iPlayerSlot[client];
-    if ((!g_bFourPersonArena[arena_index] && player_slot > SLOT_TWO) || (g_bFourPersonArena[arena_index] && player_slot > SLOT_FOUR))
+    if (!g_bArenaNoFight[arena_index] && ((!g_bFourPersonArena[arena_index] && player_slot > SLOT_TWO) || (g_bFourPersonArena[arena_index] && player_slot > SLOT_FOUR)))
     {
         return Plugin_Continue;
     }
@@ -1399,16 +1404,44 @@ Action Timer_Tele(Handle timer, int userid)
     // BBall and 2v2 arenas handle spawns differently, each team, has their own spawns.
     if (g_bArenaBBall[arena_index])
     {
+        bool hasCustomBballNodes =
+            g_bArenaBBallIntelSpawnSet[arena_index] ||
+            g_bArenaBBallIntelSpawnRedSet[arena_index] ||
+            g_bArenaBBallIntelSpawnBluSet[arena_index] ||
+            g_bArenaBBallHoopSpawnSet[arena_index] ||
+            g_bArenaBBallHoopSpawnRedSet[arena_index] ||
+            g_bArenaBBallHoopSpawnBluSet[arena_index];
+
+        int playerSpawnCount = g_iArenaSpawns[arena_index];
+        if (!hasCustomBballNodes)
+        {
+            // Legacy BBall layout: last 5 points are hoop/intel helpers.
+            playerSpawnCount = g_iArenaSpawns[arena_index] - 5;
+        }
+
+        // If map has only a few points (e.g. 2), use them directly for players.
+        if (playerSpawnCount < 2)
+            playerSpawnCount = g_iArenaSpawns[arena_index];
+        if (playerSpawnCount < 1)
+            playerSpawnCount = 1;
+
+        int split = (playerSpawnCount / 2);
+        if (split < 1)
+            split = 1;
+
         int random_int;
         int offset_high, offset_low;
         if (g_iPlayerSlot[client] == SLOT_ONE || g_iPlayerSlot[client] == SLOT_THREE)
         {
-            offset_high = ((g_iArenaSpawns[arena_index] - 5) / 2);
-            random_int = GetRandomInt(1, offset_high); // The first half of the player spawns are for slot one and three.
+            offset_low = 1;
+            offset_high = split;
+            random_int = GetRandomInt(offset_low, offset_high); // RED side
         } else {
-            offset_high = (g_iArenaSpawns[arena_index] - 5);
-            offset_low = (((g_iArenaSpawns[arena_index] - 5) / 2) + 1);
-            random_int = GetRandomInt(offset_low, offset_high); // The last 5 spawns are for the intel and trigger spawns, not players.
+            offset_low = split + 1;
+            offset_high = playerSpawnCount;
+            if (offset_low > offset_high)
+                offset_low = offset_high;
+            random_int = GetRandomInt(offset_low, offset_high); // BLU side
         }
 
         TeleportEntity(client, g_fArenaSpawnOrigin[arena_index][random_int], g_fArenaSpawnAngles[arena_index][random_int], vel);
@@ -1439,7 +1472,11 @@ Action Timer_Tele(Handle timer, int userid)
     {
         int random_int;
         int offset_high, offset_low;
-        if (g_iPlayerSlot[client] == SLOT_ONE || g_iPlayerSlot[client] == SLOT_THREE)
+        bool is_red_team = (g_iPlayerSlot[client] == SLOT_ONE || g_iPlayerSlot[client] == SLOT_THREE);
+        if (g_bArenaNoFight[arena_index])
+            is_red_team = ((g_iPlayerSlot[client] % 2) == 1);
+
+        if (is_red_team)
         {
             offset_high = ((g_iArenaSpawns[arena_index]) / 2);
             offset_low = 1;

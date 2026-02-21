@@ -60,6 +60,9 @@ Handle g_hTopRatingTimer; // Timer for displaying top online player rating
 Handle g_hSpecHudTimer;
 Handle g_hQueueKeyHintTimer;
 Handle g_hQueueDisplayTimer;
+Handle g_hMapWorldTextTimer;
+Handle g_hMapWorldTextApplyTimer;
+Handle g_hBBallIntelSpinTimer[MAXARENAS + 1];
 
 char g_sDBConfig[256];
 int g_iReconnectInterval;
@@ -88,6 +91,7 @@ Convar
     gcvar_debugWadd,
     gcvar_allowUnverifiedPlayers,
     gcvar_vipQueuePriority,
+    gcvar_mapWorldText,
     g_cvarPlayArenaSound;
 
 // Classes
@@ -108,7 +112,14 @@ char
 float
     g_fArenaSpawnOrigin     [MAXARENAS + 1][MAXSPAWNS+1][3],
     g_fArenaSpawnAngles     [MAXARENAS + 1][MAXSPAWNS+1][3],
+    g_fArenaBBallIntelSpawn [MAXARENAS + 1][3],
+    g_fArenaBBallIntelSpawnRed [MAXARENAS + 1][3],
+    g_fArenaBBallIntelSpawnBlu [MAXARENAS + 1][3],
+    g_fArenaBBallHoopSpawn [MAXARENAS + 1][3],
+    g_fArenaBBallHoopSpawnRed [MAXARENAS + 1][3],
+    g_fArenaBBallHoopSpawnBlu [MAXARENAS + 1][3],
     g_fArenaHPRatio         [MAXARENAS + 1],
+    g_fArenaClassHPRatio    [MAXARENAS + 1][10],
     g_fArenaMinSpawnDist    [MAXARENAS + 1],
     g_fArenaRespawnTime     [MAXARENAS + 1],
     g_fKothCappedPercent    [MAXARENAS + 1],
@@ -138,6 +149,13 @@ bool
     g_bArenaHasCapTrigger   [MAXARENAS + 1],
     g_bArenaBoostVectors    [MAXARENAS + 1],
     g_bArenaClassChange     [MAXARENAS + 1];
+bool g_bArenaNoFight       [MAXARENAS + 1];
+bool g_bArenaBBallIntelSpawnSet [MAXARENAS + 1];
+bool g_bArenaBBallIntelSpawnRedSet [MAXARENAS + 1];
+bool g_bArenaBBallIntelSpawnBluSet [MAXARENAS + 1];
+bool g_bArenaBBallHoopSpawnSet [MAXARENAS + 1];
+bool g_bArenaBBallHoopSpawnRedSet [MAXARENAS + 1];
+bool g_bArenaBBallHoopSpawnBluSet [MAXARENAS + 1];
 
 int
     g_iArenaCount,
@@ -165,6 +183,8 @@ int
     //                      [What arena the hoop is in][Hoop 1 or Hoop 2]
     g_iBBallHoop            [MAXARENAS + 1][3],
     g_iBBallIntel           [MAXARENAS + 1],
+    g_iBBallIntelWorldParticle [MAXARENAS + 1],
+    g_iBBallIntelSkinTeam   [MAXARENAS + 1],
     g_iArenaEarlyLeave      [MAXARENAS + 1],
     g_iPublicInviteArena    [MAXARENAS + 1],
     g_iTopPlayersPage       [MAXPLAYERS + 1],
@@ -204,6 +224,7 @@ int
     g_iPlayerSpecTarget     [MAXPLAYERS + 1],
     g_iPlayerMaxHP          [MAXPLAYERS + 1],
     g_iClientParticle       [MAXPLAYERS + 1],
+    g_iBBallBackModel       [MAXPLAYERS + 1],
     g_iPlayerClip           [MAXPLAYERS + 1][3],
     g_iPlayerWins           [MAXPLAYERS + 1],
     g_iPlayerLosses         [MAXPLAYERS + 1],
@@ -246,6 +267,61 @@ float g_fPlayerAddCooldown[MAXPLAYERS + 1]; // Last time player used 'add' comma
 ArrayList g_alArenaWaitingList[MAXARENAS + 1]; // Players waiting for arenas to become available
 bool g_bPlayArenaSound; // Whether to play sound when player auto-joins arena
 bool g_bPlayerAddedViaWadd[MAXPLAYERS + 1]; // Track if player was added via wadd command
+
+// Map worldtext integration
+char g_sCurrentCameraName[64];
+int g_iCurrentCameraIndex;
+int g_iCurrentCameraArenaIndex;
+char g_sTop10WorldTextNames[10][MAX_NAME_LENGTH * 2];
+char g_sLastTvText[128];
+char g_sLastTopMvpText[MAX_NAME_LENGTH * 2];
+float g_fNextTopMvpWorldTextUpdate;
+bool g_bMapWorldTextApplyPending;
+bool g_bTvTextVisible;
+
+// Arena POV camera mode
+bool g_bCameraPovMode;
+int g_iCameraPovTarget;
+int g_iCameraPovArenaIndex;
+int g_iCameraPovListIndex;
+int g_iCameraSpectateEntity;
+bool g_bCameraPovCameraPoseSaved;
+int g_iCameraPovMovedCameraEnt;
+int g_iCameraPovAttachedTargetSpectate;
+int g_iCameraPovAttachedTargetArenaCam;
+float g_fCameraPovSavedOrigin[3];
+float g_fCameraPovSavedAngles[3];
+Handle g_hCameraPovFollowTimer;
+
+// Arena HP helpers
+float GetArenaHpRatioByClass(int arena_index, TFClassType playerClass)
+{
+    int classId = view_as<int>(playerClass);
+    if (arena_index <= 0 || arena_index > MAXARENAS || classId < 1 || classId > 9)
+        return 1.0;
+
+    return g_fArenaClassHPRatio[arena_index][classId];
+}
+
+float GetArenaHpRatioForClient(int client, int arena_index)
+{
+    if (!IsValidClient(client))
+        return g_fArenaHPRatio[arena_index];
+
+    TFClassType playerClass = g_tfctPlayerClass[client];
+    if (playerClass == TFClass_Unknown)
+        playerClass = TF2_GetPlayerClass(client);
+
+    float ratio = GetArenaHpRatioByClass(arena_index, playerClass);
+    if (ratio <= 0.0)
+        ratio = g_fArenaHPRatio[arena_index];
+    return ratio;
+}
+
+int GetArenaTargetHPForClient(int client, int arena_index, int maxHP)
+{
+    return RoundToNearest(float(maxHP) * GetArenaHpRatioForClient(client, arena_index));
+}
 
 // Midair
 int g_iMidairHP;

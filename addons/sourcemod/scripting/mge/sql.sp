@@ -119,6 +119,7 @@ void PrepareSQL()
     }
 
     RunDatabaseMigrations();
+    RequestMapTop10WorldTextData();
 
     // Handle hot reload after database is ready
     if (g_bLate)

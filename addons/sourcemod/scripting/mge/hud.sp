@@ -132,7 +132,7 @@ void ShowCriticalGameInfo(int client, int arena_index)
         // Regular health display for non-BBall arenas
         if (g_bArenaShowHPToPlayers[arena_index])
         {
-            float hp_ratio = ((float(g_iPlayerHP[client])) / (float(g_iPlayerMaxHP[client]) * g_fArenaHPRatio[arena_index]));
+            float hp_ratio = ((float(g_iPlayerHP[client])) / (float(g_iPlayerMaxHP[client]) * GetArenaHpRatioForClient(client, arena_index)));
             if (hp_ratio > 0.66)
                 SetHudTextParams(0.01, 0.80, HUDFADEOUTTIME, 0, 255, 0, 255); // Green
             else if (hp_ratio >= 0.33)
@@ -205,6 +205,13 @@ void ShowFullHud(int client, int arena_index, bool is_spectator)
     {
         // Players get critical info first, then score
         ShowCriticalGameInfo(client, arena_index);
+    }
+
+    // In nofight arenas, hide left arena HUD for players.
+    if (!is_spectator && g_bArenaNoFight[arena_index])
+    {
+        ClearSyncHud(client, hm_Score);
+        return;
     }
 
     // Both players and spectators get score display (now includes battle timer in arena name)
@@ -496,6 +503,12 @@ void ShowQueueInKeyHintText(int client, int arena_index)
     if (g_bScoreboardOpen[client])
         return;
 
+    if (g_bArenaNoFight[arena_index])
+    {
+        ClearQueueKeyHintText(client);
+        return;
+    }
+
     // Check if player wants to see queue
     if (!g_bShowQueue[client])
     {
@@ -570,6 +583,17 @@ void UpdateQueueKeyHintText(int arena_index)
 {
     if (arena_index <= 0 || arena_index > g_iArenaCount)
         return;
+
+    if (g_bArenaNoFight[arena_index])
+    {
+        for (int i = 1; i < MAXPLAYERS; i++)
+        {
+            int player = g_iArenaQueue[arena_index][i];
+            if (player != 0 && IsValidClient(player))
+                ClearQueueKeyHintText(player);
+        }
+        return;
+    }
 
     // Update for all players in the arena
     for (int i = SLOT_ONE; i <= (g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO); i++)

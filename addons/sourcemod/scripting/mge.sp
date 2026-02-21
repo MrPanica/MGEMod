@@ -8,6 +8,7 @@
 #endif
 
 #include <sourcemod>
+#include <sdktools>
 #include <tf2_stocks>
 #include <sdkhooks>
 #include <morecolors>
@@ -121,6 +122,7 @@ public void OnPluginStart()
     gcvar_debugWadd = new Convar("mgemod_debug_wadd", "0", "Debug wadd logic to mgemod.log? (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
     gcvar_allowUnverifiedPlayers = new Convar("mgemod_allow_unverified_players", "0", "Allow players with unverified ELO to play? ELO calculations will be skipped for them. (0 = Block unverified, 1 = Allow but skip ELO)", FCVAR_NONE, true, 0.0, true, 1.0);
     gcvar_vipQueuePriority = new Convar("mgemod_vip_queue_priority", "0", "Enable VIP queue priority? Players with 'a' or 'z' admin flags will be placed at the front of the queue. (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
+    gcvar_mapWorldText = new Convar("mgemod_map_worldtext", "0", "Enable map worldtext integration (top/MVP/camera arena text). (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
 
     // Create config file
     Convar.CreateConfig("mge");
@@ -187,6 +189,7 @@ public void OnPluginStart()
     gcvar_debugWadd.AddChangeHook(handler_ConVarChange);
     gcvar_allowUnverifiedPlayers.AddChangeHook(handler_ConVarChange);
     gcvar_vipQueuePriority.AddChangeHook(handler_ConVarChange);
+    gcvar_mapWorldText.AddChangeHook(handler_ConVarChange);
 
     // Sound control convar
     g_cvarPlayArenaSound = new Convar("mgemod_play_arena_sound", "1", "Play sound when player auto-joins arena from waiting list (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
@@ -232,6 +235,14 @@ public void OnPluginStart()
     RegAdminCmd("loc", Command_Loc, ADMFLAG_BAN, "Shows client origin and angle vectors");
     RegAdminCmd("botme", Command_AddBot, ADMFLAG_BAN, "Add bot to your arena");
     RegAdminCmd("conntest", Command_ConnectionTest, ADMFLAG_BAN, "MySQL connection test");
+    RegAdminCmd("sm_mge_worldtext_debug", Command_MgeWorldTextDebug, ADMFLAG_BAN, "Print current worldtext values to your console");
+    RegAdminCmd("sm_mge_worldtext_refresh", Command_MgeWorldTextRefresh, ADMFLAG_BAN, "Force refresh worldtext from DB and re-apply map text");
+    RegAdminCmd("sm_mge_camera_debug", Command_MgeCameraDebug, ADMFLAG_BAN, "Print camera/POV debug state and arena players");
+    RegAdminCmd("sm_mge_camera_set", Command_MgeCameraSet, ADMFLAG_BAN, "Force camera by targetname. Usage: sm_mge_camera_set <camera_targetname>");
+    RegAdminCmd("sm_mge_camera_pov", Command_MgeCameraPov, ADMFLAG_BAN, "Run one POV cycle manually (same as sg_sm_camera_pov relay)");
+    RegAdminCmd("sm_mge_camera_pov_off", Command_MgeCameraPovOff, ADMFLAG_BAN, "Force exit POV mode and restore arena camera");
+    RegAdminCmd("sm_mge_camera_scan_relays", Command_MgeCameraScanRelays, ADMFLAG_BAN, "List sg_sm* logic_relay entities and disabled state");
+    RegAdminCmd("sm_mge_camera_trigger_pov", Command_MgeCameraTriggerPov, ADMFLAG_BAN, "Force Trigger on logic_relay sg_sm_camera_pov");
     RegAdminCmd("sm_force_remove", Command_ForceRemove, ADMFLAG_BAN, "Force remove a player from their arena. Usage: sm_force_remove <player>");
     RegAdminCmd("sm_force_add", Command_ForceAdd, ADMFLAG_BAN, "Force add a player to admin's arena. Usage: sm_force_add <player>");
     
@@ -243,6 +254,11 @@ public void OnPluginStart()
     AddCommandListener(Command_SpecNavigation, "spec_next");
     AddCommandListener(Command_SpecNavigation, "spec_prev");
     AddCommandListener(Command_BlockSpectate, "spectate");
+    HookEntityOutput("logic_relay", "OnTrigger", OnSgCameraSignal);
+    HookEntityOutput("logic_relay", "OnTrigger", OnSgTvTextSignal);
+    HookEntityOutput("logic_relay", "OnTrigger", OnSgCameraPovSignal);
+    HookEntityOutput("logic_relay", "OnTrigger", OnSgRelayDebugTrace);
+    HookEntityOutput("func_button", "OnPressed", OnFightButtonPressed);
 
     // HUD synchronizers
     hm_HP           = CreateHudSynchronizer();
@@ -641,6 +657,27 @@ public void OnMapStart()
     PrecacheModel(MODEL_POINT, true);
 
     g_bNoStats = gcvar_stats.BoolValue ? false : true; /* Reset this variable, since it is forced to false during Event_WinPanel */
+    g_sCurrentCameraName[0] = '\0';
+    g_iCurrentCameraIndex = 0;
+    g_iCurrentCameraArenaIndex = 0;
+    g_sLastTvText[0] = '\0';
+    g_sLastTopMvpText[0] = '\0';
+    g_fNextTopMvpWorldTextUpdate = 0.0;
+    g_bMapWorldTextApplyPending = false;
+    g_bTvTextVisible = true;
+    g_bCameraPovMode = false;
+    g_iCameraPovTarget = 0;
+    g_iCameraPovArenaIndex = 0;
+    g_iCameraPovListIndex = -1;
+    g_iCameraSpectateEntity = -1;
+    g_bCameraPovCameraPoseSaved = false;
+    g_iCameraPovMovedCameraEnt = -1;
+    g_iCameraPovAttachedTargetSpectate = 0;
+    g_iCameraPovAttachedTargetArenaCam = 0;
+    delete g_hCameraPovFollowTimer;
+    delete g_hMapWorldTextApplyTimer;
+    for (int i = 0; i < 10; i++)
+        strcopy(g_sTop10WorldTextNames[i], sizeof(g_sTop10WorldTextNames[]), "---");
 
     // Spawns
     bool isMapAm = LoadSpawnPoints();
@@ -653,6 +690,9 @@ public void OnMapStart()
                 g_iBBallHoop[i][SLOT_ONE] = -1;
                 g_iBBallHoop[i][SLOT_TWO] = -1;
                 g_iBBallIntel[i] = -1;
+                g_iBBallIntelWorldParticle[i] = 0;
+                g_iBBallIntelSkinTeam[i] = 0; // 0 = RED (default)
+                g_hBBallIntelSpinTimer[i] = null;
             }
             if (g_bArenaKoth[i])
             {
@@ -664,6 +704,9 @@ public void OnMapStart()
 
         // Create timer to show top rated online player every 5 minutes
         g_hTopRatingTimer = CreateTimer(300.0, Timer_ShowTopRatedPlayer, _, TIMER_FLAG_NO_MAPCHANGE | TIMER_REPEAT);
+        if (g_hMapWorldTextTimer == null)
+            g_hMapWorldTextTimer = CreateTimer(1.0, Timer_UpdateMapWorldText, _, TIMER_FLAG_NO_MAPCHANGE | TIMER_REPEAT);
+        RequestMapTop10WorldTextData();
 
         // Create timer to update queue display every 10 seconds
         if (g_hQueueDisplayTimer == null)
@@ -699,6 +742,7 @@ public void OnMapStart()
         g_iPlayerInviteTo[i] = 0;
         g_fPlayerInviteTime[i] = 0.0;
         g_fPlayerAddCooldown[i] = 0.0;
+        g_iBBallBackModel[i] = 0;
         for (int classId = 1; classId <= 9; classId++)
         {
             g_iPlayerClassPoints[i][classId] = 0;
@@ -737,6 +781,15 @@ public void OnMapEnd()
 {
     delete g_hDBReconnectTimer;
     delete g_hTopRatingTimer;
+    delete g_hMapWorldTextTimer;
+    delete g_hMapWorldTextApplyTimer;
+    delete g_hCameraPovFollowTimer;
+    for (int i = 0; i <= MAXARENAS; i++)
+        g_hBBallIntelSpinTimer[i] = null;
+    g_bCameraPovCameraPoseSaved = false;
+    g_iCameraPovMovedCameraEnt = -1;
+    g_iCameraPovAttachedTargetSpectate = 0;
+    g_iCameraPovAttachedTargetArenaCam = 0;
     g_bNoStats = gcvar_stats.BoolValue ? false : true;
 
     UnhookEvent("player_death", Event_PlayerDeath, EventHookMode_Pre);
@@ -928,8 +981,982 @@ void handler_ConVarChange(Handle convar, const char[] oldValue, const char[] new
         g_bAllowUnverifiedPlayers = boolValue;
     else if (convar == gcvar_vipQueuePriority)
         g_bVipQueuePriority = boolValue;
+    else if (convar == gcvar_mapWorldText)
+    {
+        if (boolValue)
+        {
+            RequestMapTop10WorldTextData();
+            Timer_UpdateMapWorldText(null);
+        }
+    }
     else if (convar == g_cvarPlayArenaSound)
         g_bPlayArenaSound = boolValue;
+}
+
+bool IsMapWorldTextEnabled()
+{
+    return (gcvar_mapWorldText != null && gcvar_mapWorldText.BoolValue);
+}
+
+Action Timer_UpdateMapWorldText(Handle timer)
+{
+    if (!IsMapWorldTextEnabled())
+        return Plugin_Continue;
+
+    if (UpdateTopMvpWorldTextIfNeeded())
+        QueueApplyMapWorldText(0.4);
+    else
+        UpdateTvTextForCurrentCamera();
+
+    return Plugin_Continue;
+}
+
+void RequestMapTop10WorldTextData()
+{
+    if (g_bNoStats || g_DB == null)
+        return;
+
+    char query[256];
+    g_DB.Format(query, sizeof(query), "SELECT rating, name FROM mgemod_stats ORDER BY rating DESC LIMIT 10");
+    g_DB.Query(SQL_OnMapTop10Received, query);
+}
+
+void SQL_OnMapTop10Received(Database db, DBResultSet results, const char[] error, any data)
+{
+    if (db == null || results == null || !StrEqual(error, ""))
+        return;
+
+    for (int i = 0; i < 10; i++)
+        strcopy(g_sTop10WorldTextNames[i], sizeof(g_sTop10WorldTextNames[]), "---");
+
+    int row = 0;
+    while (results.FetchRow() && row < 10)
+    {
+        int rating = results.FetchInt(0);
+        char nameRaw[MAX_NAME_LENGTH];
+        char nameAscii[MAX_NAME_LENGTH * 2];
+        results.FetchString(1, nameRaw, sizeof(nameRaw));
+        TransliterateToAscii(nameRaw, nameAscii, sizeof(nameAscii));
+        Format(g_sTop10WorldTextNames[row], sizeof(g_sTop10WorldTextNames[]), "%s (%d)", nameAscii, rating);
+        row++;
+    }
+
+    if (IsMapWorldTextEnabled())
+    {
+        UpdateTopMvpWorldTextIfNeeded(true);
+        QueueApplyMapWorldText(1.0);
+    }
+}
+
+bool UpdateTopMvpWorldTextIfNeeded(bool force = false)
+{
+    float now = GetGameTime();
+    if (!force && g_fNextTopMvpWorldTextUpdate > now)
+        return false;
+
+    g_fNextTopMvpWorldTextUpdate = now + 60.0;
+
+    int topPlayer = FindTopRatedOnlinePlayer();
+    char mvpRaw[MAX_NAME_LENGTH];
+    char mvpAscii[MAX_NAME_LENGTH * 2];
+
+    if (topPlayer != -1 && IsValidClient(topPlayer))
+        GetClientName(topPlayer, mvpRaw, sizeof(mvpRaw));
+    else
+        strcopy(mvpRaw, sizeof(mvpRaw), "---");
+
+    TransliterateToAscii(mvpRaw, mvpAscii, sizeof(mvpAscii));
+    if (topPlayer != -1 && IsValidClient(topPlayer))
+        Format(g_sLastTopMvpText, sizeof(g_sLastTopMvpText), "%s (%d)", mvpAscii, g_iPlayerRating[topPlayer]);
+    else
+        strcopy(g_sLastTopMvpText, sizeof(g_sLastTopMvpText), mvpAscii);
+
+    return true;
+}
+
+void QueueApplyMapWorldText(float delay)
+{
+    if (!IsMapWorldTextEnabled())
+        return;
+
+    if (g_bMapWorldTextApplyPending)
+        return;
+
+    g_bMapWorldTextApplyPending = true;
+    g_hMapWorldTextApplyTimer = CreateTimer(delay, Timer_ApplyMapWorldText, _, TIMER_FLAG_NO_MAPCHANGE);
+}
+
+Action Timer_ApplyMapWorldText(Handle timer)
+{
+    g_hMapWorldTextApplyTimer = null;
+    g_bMapWorldTextApplyPending = false;
+    ApplyMapWorldTextNow();
+    return Plugin_Stop;
+}
+
+void ApplyMapWorldTextNow()
+{
+    if (!IsMapWorldTextEnabled())
+        return;
+
+    SetMapTextByTargetName("text_mge_top", g_sLastTopMvpText[0] ? g_sLastTopMvpText : "---");
+
+    for (int i = 0; i < 10; i++)
+    {
+        char line[192];
+        Format(line, sizeof(line), "%d. %s", i + 1, g_sTop10WorldTextNames[i]);
+
+        char targetName[32];
+        Format(targetName, sizeof(targetName), "text_mge_top_%d", i + 1);
+        SetMapTextByTargetName(targetName, line);
+    }
+
+    UpdateTvTextForCurrentCamera();
+}
+
+public void OnSgCameraSignal(const char[] output, int caller, int activator, float delay)
+{
+    int relayEnt = ResolveOutputEntity(caller);
+    if (relayEnt == -1)
+        return;
+
+    char relayName[64];
+    GetEntPropString(relayEnt, Prop_Data, "m_iName", relayName, sizeof(relayName));
+    if (!StrEqual(relayName, "sg_sm_camera_signal", false))
+        return;
+
+    if (!IsValidEntity(activator))
+    {
+        LogMessage("[MGE camera][WARN] sg_sm_camera_signal trigger without valid activator");
+        return;
+    }
+
+    char className[64];
+    GetEntityClassname(activator, className, sizeof(className));
+    if (!StrEqual(className, "point_camera", false))
+    {
+        LogMessage("[MGE camera][WARN] sg_sm_camera_signal activator is not point_camera (%s, ent=%d)", className, activator);
+        return;
+    }
+
+    char camName[64];
+    GetEntPropString(activator, Prop_Data, "m_iName", camName, sizeof(camName));
+    if (camName[0] == '\0')
+    {
+        LogMessage("[MGE camera][WARN] sg_sm_camera_signal got camera without targetname");
+        return;
+    }
+
+    if (StrEqual(camName, g_sCurrentCameraName, false))
+        return;
+
+    char prevCamera[64];
+    strcopy(prevCamera, sizeof(prevCamera), g_sCurrentCameraName);
+    strcopy(g_sCurrentCameraName, sizeof(g_sCurrentCameraName), camName);
+    g_iCurrentCameraIndex = 0;
+    g_iCurrentCameraArenaIndex = 0;
+
+    if (g_bCameraPovMode)
+        ExitCameraPovModeToCamera(camName);
+
+    SetVariantString("1");
+    AcceptEntityInput(activator, "SetOnAndTurnOthersOff");
+    AcceptEntityInput(activator, "Enable");
+
+    if (ParseCameraIndex(camName, g_iCurrentCameraIndex))
+    {
+        g_iCurrentCameraArenaIndex = ResolveCameraArenaIndexFromEntity(activator, g_iCurrentCameraIndex);
+        LogMessage("[MGE camera] active camera changed: %s -> %s (idx=%d, arena=%d)", prevCamera[0] ? prevCamera : "---", camName, g_iCurrentCameraIndex, g_iCurrentCameraArenaIndex);
+    }
+    else
+    {
+        LogMessage("[MGE camera][WARN] invalid camera name format: %s (expected sg_camera_N)", camName);
+    }
+
+    if (IsMapWorldTextEnabled())
+        UpdateTvTextForCurrentCamera();
+}
+
+public void OnSgTvTextSignal(const char[] output, int caller, int activator, float delay)
+{
+    int relayEnt = ResolveOutputEntity(caller);
+    if (relayEnt == -1)
+        return;
+
+    char relayName[64];
+    GetEntPropString(relayEnt, Prop_Data, "m_iName", relayName, sizeof(relayName));
+    if (!StrEqual(relayName, "sg_sm_tv_text", false))
+        return;
+
+    g_bTvTextVisible = !g_bTvTextVisible;
+    ApplyTvTextVisibility();
+}
+
+public void OnSgCameraPovSignal(const char[] output, int caller, int activator, float delay)
+{
+    int relayEnt = ResolveOutputEntity(caller);
+    if (relayEnt == -1)
+    {
+        LogMessage("[MGE camera][WARN] OnSgCameraPovSignal with invalid caller=%d", caller);
+        return;
+    }
+
+    char relayName[64];
+    GetEntPropString(relayEnt, Prop_Data, "m_iName", relayName, sizeof(relayName));
+    if (!StrEqual(relayName, "sg_sm_camera_pov", false) && !StrEqual(relayName, "sg_sm_camera_pov_signal", false))
+        return;
+
+    HandleCameraPovToggle("relay", activator);
+}
+
+public void OnSgRelayDebugTrace(const char[] output, int caller, int activator, float delay)
+{
+    int relayEnt = ResolveOutputEntity(caller);
+    if (relayEnt == -1)
+        return;
+
+    char relayName[64];
+    GetEntPropString(relayEnt, Prop_Data, "m_iName", relayName, sizeof(relayName));
+    if (relayName[0] == '\0' || StrContains(relayName, "sg_sm_", false) != 0)
+        return;
+
+    char actClass[64];
+    char actName[64];
+    if (IsValidEntity(activator))
+    {
+        GetEntityClassname(activator, actClass, sizeof(actClass));
+        GetEntPropString(activator, Prop_Data, "m_iName", actName, sizeof(actName));
+    }
+    else
+    {
+        strcopy(actClass, sizeof(actClass), "invalid");
+        strcopy(actName, sizeof(actName), "");
+    }
+
+    LogMessage("[MGE relay] %s triggered (caller=%d->%d, activator=%d class=%s name=%s)", relayName, caller, relayEnt, activator, actClass, actName);
+}
+
+void HandleCameraPovToggle(const char[] source, int activator)
+{
+    int arenaIndex = g_iCurrentCameraArenaIndex;
+    if (arenaIndex <= 0 && g_iCurrentCameraIndex > 0)
+        arenaIndex = ResolveCameraArenaIndex(g_iCurrentCameraIndex);
+    if (arenaIndex <= 0 && IsValidClient(activator))
+        arenaIndex = g_iPlayerArena[activator];
+    if (arenaIndex <= 0 || arenaIndex > g_iArenaCount)
+    {
+        LogMessage("[MGE camera][WARN] POV %s ignored: invalid arena (camera=%s idx=%d arena=%d)", source, g_sCurrentCameraName, g_iCurrentCameraIndex, g_iCurrentCameraArenaIndex);
+        return;
+    }
+
+    int players[MAXPLAYERS + 1];
+    int count = 0;
+    CollectArenaPovPlayers(arenaIndex, players, count);
+    LogMessage("[MGE camera] POV %s: arena=%d players=%d mode=%d", source, arenaIndex, count, g_bCameraPovMode ? 1 : 0);
+
+    if (count <= 0)
+    {
+        ExitCameraPovModeToCamera(g_sCurrentCameraName);
+        return;
+    }
+
+    int firstValid = FindNextValidPovTarget(players, count, -1);
+    if (firstValid == -1)
+    {
+        LogMessage("[MGE camera][WARN] POV %s: no valid players with eyes attachment in arena=%d", source, arenaIndex);
+        ExitCameraPovModeToCamera(g_sCurrentCameraName);
+        return;
+    }
+
+    if (!g_bCameraPovMode || g_iCameraPovArenaIndex != arenaIndex)
+    {
+        EnterCameraPovMode(arenaIndex, players[firstValid], firstValid);
+        return;
+    }
+
+    int nextIndex = FindNextValidPovTarget(players, count, g_iCameraPovListIndex);
+    if (nextIndex == -1)
+    {
+        LogMessage("[MGE camera] POV relay: cycle end, returning to arena camera");
+        ExitCameraPovModeToCamera(g_sCurrentCameraName);
+        return;
+    }
+
+    g_iCameraPovListIndex = nextIndex;
+    g_iCameraPovTarget = players[nextIndex];
+    LogMessage("[MGE camera] POV relay: switch target to %N (index=%d/%d)", g_iCameraPovTarget, nextIndex, count - 1);
+    UpdateCameraPovViewNow();
+}
+
+int FindNextValidPovTarget(const int players[MAXPLAYERS + 1], int count, int currentIndex)
+{
+    for (int i = currentIndex + 1; i < count; i++)
+    {
+        int player = players[i];
+        if (IsPovAttachTargetValid(player))
+            return i;
+    }
+    return -1;
+}
+
+bool IsPovAttachTargetValid(int client)
+{
+    if (!IsValidClient(client))
+        return false;
+
+    return (LookupEntityAttachment(client, "head") > 0);
+}
+
+public void OnFightButtonPressed(const char[] output, int caller, int activator, float delay)
+{
+    if (!IsValidEntity(caller))
+        return;
+
+    char buttonName[64];
+    GetEntPropString(caller, Prop_Data, "m_iName", buttonName, sizeof(buttonName));
+    if (!StrEqual(buttonName, "button_fight", false))
+        return;
+
+    if (!IsValidClient(activator) || IsFakeClient(activator))
+        return;
+
+    FakeClientCommand(activator, "add");
+}
+
+int ResolveCameraArenaIndex(int cameraIndex)
+{
+    if (cameraIndex >= 1 && cameraIndex <= g_iArenaCount)
+        return cameraIndex;
+
+    return 0;
+}
+
+int ResolveCameraArenaIndexFromEntity(int cameraEntity, int cameraIndex)
+{
+    // First try geometric mapping camera->closest arena spawn.
+    if (IsValidEntity(cameraEntity))
+    {
+        float camOrigin[3];
+        GetEntPropVector(cameraEntity, Prop_Data, "m_vecOrigin", camOrigin);
+
+        int bestArena = 0;
+        float bestDistance = 99999999.0;
+
+        for (int arena = 1; arena <= g_iArenaCount; arena++)
+        {
+            for (int spawn = 1; spawn <= g_iArenaSpawns[arena]; spawn++)
+            {
+                float dist = GetVectorDistance(camOrigin, g_fArenaSpawnOrigin[arena][spawn]);
+                if (dist < bestDistance)
+                {
+                    bestDistance = dist;
+                    bestArena = arena;
+                }
+            }
+        }
+
+        if (bestArena > 0)
+            return bestArena;
+    }
+
+    // Fallback to camera naming convention.
+    int byIndex = ResolveCameraArenaIndex(cameraIndex);
+    if (byIndex > 0)
+        return byIndex;
+
+    // Legacy fallback for maps that use sg_camera_0 for arena 1.
+    if ((cameraIndex + 1) >= 1 && (cameraIndex + 1) <= g_iArenaCount)
+        return cameraIndex + 1;
+
+    return 0;
+}
+
+void CollectArenaPovPlayers(int arenaIndex, int players[MAXPLAYERS + 1], int &count)
+{
+    count = 0;
+
+    int maxSlot = g_bArenaNoFight[arenaIndex] ? MAXPLAYERS : (g_bFourPersonArena[arenaIndex] ? SLOT_FOUR : SLOT_TWO);
+    if (maxSlot > MAXPLAYERS)
+        maxSlot = MAXPLAYERS;
+
+    for (int slot = SLOT_ONE; slot <= maxSlot; slot++)
+    {
+        int player = g_iArenaQueue[arenaIndex][slot];
+        if (!IsValidClient(player))
+            continue;
+        if (g_iPlayerArena[player] != arenaIndex)
+            continue;
+
+        players[count++] = player;
+        if (count >= MAXPLAYERS)
+            break;
+    }
+}
+
+void EnterCameraPovMode(int arenaIndex, int target, int listIndex)
+{
+    g_bCameraPovMode = true;
+    g_iCameraPovArenaIndex = arenaIndex;
+    g_iCameraPovTarget = target;
+    g_iCameraPovListIndex = listIndex;
+    g_bCameraPovCameraPoseSaved = false;
+    g_iCameraPovMovedCameraEnt = -1;
+    g_iCameraPovAttachedTargetSpectate = 0;
+    g_iCameraPovAttachedTargetArenaCam = 0;
+
+    int activeArenaCam = FindEntityByTargetName("point_camera", g_sCurrentCameraName);
+    if (activeArenaCam != -1)
+    {
+        GetEntPropVector(activeArenaCam, Prop_Data, "m_vecOrigin", g_fCameraPovSavedOrigin);
+        GetEntPropVector(activeArenaCam, Prop_Data, "m_angRotation", g_fCameraPovSavedAngles);
+        g_iCameraPovMovedCameraEnt = activeArenaCam;
+        g_bCameraPovCameraPoseSaved = true;
+        AcceptEntityInput(activeArenaCam, "ClearParent");
+        LogMessage("[MGE camera] POV ON: saved active camera pose (%s ent=%d)", g_sCurrentCameraName, activeArenaCam);
+    }
+
+    int spectateCam = GetCameraSpectateEntity();
+    if (spectateCam != -1)
+    {
+        AcceptEntityInput(spectateCam, "ClearParent");
+        SetVariantString("1");
+        AcceptEntityInput(spectateCam, "SetOnAndTurnOthersOff");
+        AcceptEntityInput(spectateCam, "Enable");
+        LogMessage("[MGE camera] POV ON: arena=%d target=%N index=%d spectate_ent=%d", arenaIndex, target, listIndex, spectateCam);
+    }
+    else
+    {
+        LogMessage("[MGE camera][WARN] POV ON failed: point_camera camera_spectate not found");
+    }
+
+    delete g_hCameraPovFollowTimer;
+    g_hCameraPovFollowTimer = CreateTimer(0.05, Timer_UpdateCameraPovFollow, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+    UpdateCameraPovViewNow();
+}
+
+void ExitCameraPovModeToCamera(const char[] restoreCameraName)
+{
+    if (!g_bCameraPovMode && g_hCameraPovFollowTimer == null)
+        return;
+
+    g_bCameraPovMode = false;
+    g_iCameraPovTarget = 0;
+    g_iCameraPovArenaIndex = 0;
+    g_iCameraPovListIndex = -1;
+    delete g_hCameraPovFollowTimer;
+
+    int spectateCam = GetCameraSpectateEntity();
+    if (spectateCam != -1)
+    {
+        AcceptEntityInput(spectateCam, "ClearParent");
+        AcceptEntityInput(spectateCam, "Disable");
+    }
+
+    if (g_bCameraPovCameraPoseSaved && g_iCameraPovMovedCameraEnt != -1 && IsValidEntity(g_iCameraPovMovedCameraEnt))
+    {
+        AcceptEntityInput(g_iCameraPovMovedCameraEnt, "ClearParent");
+        TeleportEntity(g_iCameraPovMovedCameraEnt, g_fCameraPovSavedOrigin, g_fCameraPovSavedAngles, NULL_VECTOR);
+        LogMessage("[MGE camera] POV OFF: restored saved pose for ent=%d", g_iCameraPovMovedCameraEnt);
+    }
+    g_bCameraPovCameraPoseSaved = false;
+    g_iCameraPovMovedCameraEnt = -1;
+    g_iCameraPovAttachedTargetSpectate = 0;
+    g_iCameraPovAttachedTargetArenaCam = 0;
+
+    int arenaCam = FindEntityByTargetName("point_camera", restoreCameraName);
+    if (arenaCam != -1)
+    {
+        SetVariantString("1");
+        AcceptEntityInput(arenaCam, "SetOnAndTurnOthersOff");
+        AcceptEntityInput(arenaCam, "Enable");
+        LogMessage("[MGE camera] POV OFF: restored camera=%s ent=%d", restoreCameraName, arenaCam);
+    }
+    else
+    {
+        LogMessage("[MGE camera][WARN] POV OFF: restore camera not found (%s)", restoreCameraName);
+    }
+}
+
+Action Timer_UpdateCameraPovFollow(Handle timer)
+{
+    if (!g_bCameraPovMode)
+        return Plugin_Stop;
+
+    if (!IsValidClient(g_iCameraPovTarget) || g_iPlayerArena[g_iCameraPovTarget] != g_iCameraPovArenaIndex || !IsPovAttachTargetValid(g_iCameraPovTarget))
+    {
+        int players[MAXPLAYERS + 1];
+        int count = 0;
+        CollectArenaPovPlayers(g_iCameraPovArenaIndex, players, count);
+        int nextIndex = FindNextValidPovTarget(players, count, g_iCameraPovListIndex);
+        if (nextIndex == -1)
+        {
+            LogMessage("[MGE camera] POV target invalid and no next valid target, exiting POV");
+            ExitCameraPovModeToCamera(g_sCurrentCameraName);
+            return Plugin_Stop;
+        }
+
+        g_iCameraPovListIndex = nextIndex;
+        g_iCameraPovTarget = players[nextIndex];
+        LogMessage("[MGE camera] POV auto-skip invalid target, switched to %N", g_iCameraPovTarget);
+    }
+
+    UpdateCameraPovViewNow();
+    return Plugin_Continue;
+}
+
+void UpdateCameraPovViewNow()
+{
+    int spectateCam = GetCameraSpectateEntity();
+    if (!IsValidClient(g_iCameraPovTarget) || !IsPovAttachTargetValid(g_iCameraPovTarget))
+        return;
+
+    // Keep spectate camera forced as active while POV mode is enabled.
+    if (g_bCameraPovMode && spectateCam != -1)
+    {
+        EnsureCameraAttachedToEyes(spectateCam, g_iCameraPovTarget, g_iCameraPovAttachedTargetSpectate);
+        SetVariantString("1");
+        AcceptEntityInput(spectateCam, "SetOnAndTurnOthersOff");
+        AcceptEntityInput(spectateCam, "Enable");
+    }
+
+    if (g_bCameraPovMode && g_iCameraPovMovedCameraEnt != -1 && IsValidEntity(g_iCameraPovMovedCameraEnt))
+    {
+        EnsureCameraAttachedToEyes(g_iCameraPovMovedCameraEnt, g_iCameraPovTarget, g_iCameraPovAttachedTargetArenaCam);
+        // Compatibility path: some func_monitor setups are hard-bound to sg_camera_N.
+        SetVariantString("1");
+        AcceptEntityInput(g_iCameraPovMovedCameraEnt, "SetOnAndTurnOthersOff");
+        AcceptEntityInput(g_iCameraPovMovedCameraEnt, "Enable");
+    }
+}
+
+void EnsureCameraAttachedToEyes(int cameraEnt, int target, int &attachedTarget)
+{
+    if (cameraEnt == -1 || !IsValidEntity(cameraEnt) || !IsValidClient(target))
+        return;
+
+    if (attachedTarget == target)
+        return;
+
+    if (!IsPovAttachTargetValid(target))
+    {
+        LogMessage("[MGE camera][WARN] POV attach skipped: target=%N has no head attachment", target);
+        return;
+    }
+
+    float headPos[3];
+    float headAng[3];
+    GetClientEyePosition(target, headPos);
+    GetClientEyeAngles(target, headAng);
+    TeleportEntity(cameraEnt, headPos, headAng, NULL_VECTOR);
+
+    AcceptEntityInput(cameraEnt, "ClearParent");
+    SetVariantString("!activator");
+    AcceptEntityInput(cameraEnt, "SetParent", target, target);
+    SetVariantString("head");
+    AcceptEntityInput(cameraEnt, "SetParentAttachment", target, target);
+    attachedTarget = target;
+    LogMessage("[MGE camera] POV attach: cam_ent=%d -> target=%N attachment=head", cameraEnt, target);
+}
+
+int GetCameraSpectateEntity()
+{
+    if (g_iCameraSpectateEntity != -1 && IsValidEntity(g_iCameraSpectateEntity))
+        return g_iCameraSpectateEntity;
+
+    g_iCameraSpectateEntity = FindEntityByTargetName("point_camera", "camera_spectate");
+    return g_iCameraSpectateEntity;
+}
+
+int ResolveOutputEntity(int entityOrRef)
+{
+    if (entityOrRef > 0 && IsValidEntity(entityOrRef))
+        return entityOrRef;
+
+    int ent = EntRefToEntIndex(entityOrRef);
+    if (ent > 0 && IsValidEntity(ent))
+        return ent;
+
+    return -1;
+}
+
+bool ForceActivateCameraByName(const char[] cameraName, int &cameraEntity)
+{
+    cameraEntity = FindEntityByTargetName("point_camera", cameraName);
+    if (cameraEntity == -1)
+        return false;
+
+    SetVariantString("1");
+    AcceptEntityInput(cameraEntity, "SetOnAndTurnOthersOff");
+    AcceptEntityInput(cameraEntity, "Enable");
+    return true;
+}
+
+bool ParseCameraIndex(const char[] cameraName, int &cameraIndex)
+{
+    cameraIndex = 0;
+
+    if (StrContains(cameraName, "sg_camera_", false) != 0)
+        return false;
+
+    int start = strlen("sg_camera_");
+    if (cameraName[start] == '\0')
+        return false;
+
+    for (int i = start; cameraName[i] != '\0'; i++)
+    {
+        if (!IsCharNumeric(cameraName[i]))
+            return false;
+    }
+
+    char indexBuf[16];
+    strcopy(indexBuf, sizeof(indexBuf), cameraName[start]);
+    cameraIndex = StringToInt(indexBuf);
+    return true;
+}
+
+void UpdateTvTextForCurrentCamera()
+{
+    if (!IsMapWorldTextEnabled())
+        return;
+
+    int arenaIndex = g_iCurrentCameraArenaIndex;
+    if (arenaIndex <= 0 || arenaIndex > g_iArenaCount)
+        return;
+
+    int red = 0;
+    int blu = 0;
+    GetTvPlayersForArena(arenaIndex, red, blu);
+
+    char versusText[192];
+    BuildTvArenaHeader(arenaIndex, versusText, sizeof(versusText));
+
+    if (!StrEqual(versusText, g_sLastTvText))
+    {
+        SetMapTextByTargetName("tv_text", versusText);
+        strcopy(g_sLastTvText, sizeof(g_sLastTvText), versusText);
+    }
+
+    char scoreLine1[192];
+    char scoreLine2[192];
+    BuildTvScoreLine(red, arenaIndex, g_iArenaScore[arenaIndex][SLOT_ONE], scoreLine1, sizeof(scoreLine1));
+    BuildTvScoreLine(blu, arenaIndex, g_iArenaScore[arenaIndex][SLOT_TWO], scoreLine2, sizeof(scoreLine2));
+    SetMapTextByTargetName("tv_text_score_1", scoreLine1);
+    SetMapTextByTargetName("tv_text_score_2", scoreLine2);
+
+    ApplyTvTextVisibility();
+}
+
+void BuildTvScoreLine(int player, int arenaIndex, int score, char[] output, int outputSize)
+{
+    if (!IsValidClient(player) || g_iPlayerArena[player] != arenaIndex)
+    {
+        strcopy(output, outputSize, "---");
+        return;
+    }
+
+    int overall = g_iPlayerRating[player];
+    int matchup = 1500;
+    GetPlayerTvRatings(player, overall, matchup);
+
+    char nameRaw[MAX_NAME_LENGTH];
+    char nameAscii[MAX_NAME_LENGTH * 2];
+    GetClientName(player, nameRaw, sizeof(nameRaw));
+    TransliterateToAscii(nameRaw, nameAscii, sizeof(nameAscii));
+    Format(output, outputSize, "%s (%d, CvC: %d): %d", nameAscii, overall, matchup, score);
+}
+
+void BuildTvArenaHeader(int arenaIndex, char[] output, int outputSize)
+{
+    char arenaName[64];
+    int fraglimit;
+    bool is2v2, isBball;
+    GetArenaBasicInfo(arenaIndex, arenaName, sizeof(arenaName), fraglimit, is2v2, isBball);
+
+    char header[192];
+    FormatArenaHeader(arenaName, fraglimit, isBball, false, g_iArenaStatus[arenaIndex], header, sizeof(header));
+
+    if (g_iArenaStatus[arenaIndex] == AS_FIGHT && g_iArenaDuelStartTime[arenaIndex] > 0)
+    {
+        int currentTime = GetTime();
+        int elapsedTime = currentTime - g_iArenaDuelStartTime[arenaIndex];
+        int minutes = elapsedTime / 60;
+        int seconds = elapsedTime % 60;
+
+        char timerText[32];
+        Format(timerText, sizeof(timerText), " [%02d:%02d]", minutes, seconds);
+        StrCat(header, sizeof(header), timerText);
+    }
+
+    TransliterateToAscii(header, output, outputSize);
+}
+
+void GetPlayerTvRatings(int player, int &overall, int &matchup)
+{
+    overall = g_iPlayerRating[player];
+    matchup = 1500;
+
+    int arenaIndex = g_iPlayerArena[player];
+    if (arenaIndex <= 0)
+        return;
+
+    int classId = view_as<int>(g_tfctPlayerClass[player]);
+    if (classId < 1 || classId > 9)
+        classId = view_as<int>(TF2_GetPlayerClass(player));
+
+    if (classId < 1 || classId > 9)
+        return;
+
+    int playerSlot = g_iPlayerSlot[player];
+    int opponent = 0;
+    if (playerSlot == SLOT_ONE || playerSlot == SLOT_THREE)
+        opponent = g_iArenaQueue[arenaIndex][SLOT_TWO];
+    else
+        opponent = g_iArenaQueue[arenaIndex][SLOT_ONE];
+
+    if (!IsValidClient(opponent) || g_iPlayerArena[opponent] != arenaIndex)
+        return;
+
+    int oppClassId = view_as<int>(g_tfctPlayerClass[opponent]);
+    if (oppClassId < 1 || oppClassId > 9)
+        oppClassId = view_as<int>(TF2_GetPlayerClass(opponent));
+
+    if (oppClassId < 1 || oppClassId > 9)
+        return;
+
+    int stored = g_iPlayerClassRating[player][classId][oppClassId];
+    matchup = (stored > 0) ? stored : 1500;
+}
+
+bool IsValidArenaPlayerForTv(int client, int arenaIndex)
+{
+    if (!IsValidClient(client))
+        return false;
+    if (g_iPlayerArena[client] != arenaIndex)
+        return false;
+    return true;
+}
+
+void GetTvPlayersForArena(int arenaIndex, int &red, int &blu)
+{
+    red = 0;
+    blu = 0;
+
+    int maxSlot = g_bArenaNoFight[arenaIndex] ? MaxClients : (g_bFourPersonArena[arenaIndex] ? SLOT_FOUR : SLOT_TWO);
+    if (maxSlot > MAXPLAYERS)
+        maxSlot = MAXPLAYERS;
+
+    for (int slot = SLOT_ONE; slot <= maxSlot; slot++)
+    {
+        int player = g_iArenaQueue[arenaIndex][slot];
+        if (!IsValidArenaPlayerForTv(player, arenaIndex))
+            continue;
+
+        bool isRed = (slot == SLOT_ONE || slot == SLOT_THREE);
+        if (g_bArenaNoFight[arenaIndex])
+            isRed = ((slot % 2) == 1);
+
+        if (isRed)
+        {
+            if (red == 0)
+                red = player;
+        }
+        else
+        {
+            if (blu == 0)
+                blu = player;
+        }
+
+        if (red != 0 && blu != 0)
+            return;
+    }
+}
+
+void ApplyTvTextVisibility()
+{
+    int alpha = g_bTvTextVisible ? 255 : 0;
+    SetMapTextAlphaByTargetName("tv_text", alpha);
+    SetMapTextAlphaByTargetName("tv_text_score_1", alpha);
+    SetMapTextAlphaByTargetName("tv_text_score_2", alpha);
+}
+
+void SetMapTextAlphaByTargetName(const char[] targetName, int alpha)
+{
+    int entity = FindEntityByTargetName("point_worldtext", targetName);
+    if (entity == -1)
+        return;
+
+    char color[32];
+    Format(color, sizeof(color), "255 255 255 %d", alpha);
+    DispatchKeyValue(entity, "color", color);
+    SetVariantString(color);
+    AcceptEntityInput(entity, "SetColor");
+}
+
+int FindEntityByTargetName(const char[] classname, const char[] targetName)
+{
+    int entity = -1;
+    char nameBuf[64];
+
+    while ((entity = FindEntityByClassname(entity, classname)) != -1)
+    {
+        if (!IsValidEntity(entity))
+            continue;
+
+        GetEntPropString(entity, Prop_Data, "m_iName", nameBuf, sizeof(nameBuf));
+        if (StrEqual(nameBuf, targetName, false))
+            return entity;
+    }
+
+    return -1;
+}
+
+void SetMapTextByTargetName(const char[] targetName, const char[] rawText)
+{
+    int entity = FindEntityByTargetName("point_worldtext", targetName);
+    if (entity == -1)
+        return;
+
+    DispatchKeyValue(entity, "message", rawText);
+    SetVariantString(rawText);
+    AcceptEntityInput(entity, "SetText");
+    SetVariantString(rawText);
+    AcceptEntityInput(entity, "SetMessage");
+}
+
+void AppendAsciiString(char[] output, int maxlen, int &outPos, const char[] repl)
+{
+    for (int j = 0; repl[j] != '\0' && outPos < maxlen - 1; j++)
+        output[outPos++] = repl[j];
+}
+
+void TransliterateToAscii(const char[] input, char[] output, int maxlen)
+{
+    int outPos = 0;
+    int inLen = strlen(input);
+
+    for (int i = 0; i < inLen && outPos < maxlen - 1; i++)
+    {
+        int c = input[i] & 0xFF;
+
+        if (c < 0x80)
+        {
+            output[outPos++] = c;
+            continue;
+        }
+
+        if (i + 1 >= inLen)
+            break;
+
+        int n = input[i + 1] & 0xFF;
+        bool mapped = true;
+
+        if (c == 0xD0)
+        {
+            switch (n)
+            {
+                case 0x81: AppendAsciiString(output, maxlen, outPos, "Yo");
+                case 0x84: AppendAsciiString(output, maxlen, outPos, "Ye");
+                case 0x86: AppendAsciiString(output, maxlen, outPos, "I");
+                case 0x87: AppendAsciiString(output, maxlen, outPos, "Yi");
+                case 0x90: AppendAsciiString(output, maxlen, outPos, "A");
+                case 0x91: AppendAsciiString(output, maxlen, outPos, "B");
+                case 0x92: AppendAsciiString(output, maxlen, outPos, "V");
+                case 0x93: AppendAsciiString(output, maxlen, outPos, "G");
+                case 0x94: AppendAsciiString(output, maxlen, outPos, "D");
+                case 0x95: AppendAsciiString(output, maxlen, outPos, "E");
+                case 0x96: AppendAsciiString(output, maxlen, outPos, "Zh");
+                case 0x97: AppendAsciiString(output, maxlen, outPos, "Z");
+                case 0x98: AppendAsciiString(output, maxlen, outPos, "I");
+                case 0x99: AppendAsciiString(output, maxlen, outPos, "Y");
+                case 0x9A: AppendAsciiString(output, maxlen, outPos, "K");
+                case 0x9B: AppendAsciiString(output, maxlen, outPos, "L");
+                case 0x9C: AppendAsciiString(output, maxlen, outPos, "M");
+                case 0x9D: AppendAsciiString(output, maxlen, outPos, "N");
+                case 0x9E: AppendAsciiString(output, maxlen, outPos, "O");
+                case 0x9F: AppendAsciiString(output, maxlen, outPos, "P");
+                case 0xA0: AppendAsciiString(output, maxlen, outPos, "R");
+                case 0xA1: AppendAsciiString(output, maxlen, outPos, "S");
+                case 0xA2: AppendAsciiString(output, maxlen, outPos, "T");
+                case 0xA3: AppendAsciiString(output, maxlen, outPos, "U");
+                case 0xA4: AppendAsciiString(output, maxlen, outPos, "F");
+                case 0xA5: AppendAsciiString(output, maxlen, outPos, "Kh");
+                case 0xA6: AppendAsciiString(output, maxlen, outPos, "Ts");
+                case 0xA7: AppendAsciiString(output, maxlen, outPos, "Ch");
+                case 0xA8: AppendAsciiString(output, maxlen, outPos, "Sh");
+                case 0xA9: AppendAsciiString(output, maxlen, outPos, "Sch");
+                case 0xAA: AppendAsciiString(output, maxlen, outPos, "");
+                case 0xAB: AppendAsciiString(output, maxlen, outPos, "Y");
+                case 0xAC: AppendAsciiString(output, maxlen, outPos, "");
+                case 0xAD: AppendAsciiString(output, maxlen, outPos, "E");
+                case 0xAE: AppendAsciiString(output, maxlen, outPos, "Yu");
+                case 0xAF: AppendAsciiString(output, maxlen, outPos, "Ya");
+                case 0xB0: AppendAsciiString(output, maxlen, outPos, "a");
+                case 0xB1: AppendAsciiString(output, maxlen, outPos, "b");
+                case 0xB2: AppendAsciiString(output, maxlen, outPos, "v");
+                case 0xB3: AppendAsciiString(output, maxlen, outPos, "g");
+                case 0xB4: AppendAsciiString(output, maxlen, outPos, "d");
+                case 0xB5: AppendAsciiString(output, maxlen, outPos, "e");
+                case 0xB6: AppendAsciiString(output, maxlen, outPos, "zh");
+                case 0xB7: AppendAsciiString(output, maxlen, outPos, "z");
+                case 0xB8: AppendAsciiString(output, maxlen, outPos, "i");
+                case 0xB9: AppendAsciiString(output, maxlen, outPos, "y");
+                case 0xBA: AppendAsciiString(output, maxlen, outPos, "k");
+                case 0xBB: AppendAsciiString(output, maxlen, outPos, "l");
+                case 0xBC: AppendAsciiString(output, maxlen, outPos, "m");
+                case 0xBD: AppendAsciiString(output, maxlen, outPos, "n");
+                case 0xBE: AppendAsciiString(output, maxlen, outPos, "o");
+                case 0xBF: AppendAsciiString(output, maxlen, outPos, "p");
+                default: mapped = false;
+            }
+        }
+        else if (c == 0xD1)
+        {
+            switch (n)
+            {
+                case 0x80: AppendAsciiString(output, maxlen, outPos, "r");
+                case 0x81: AppendAsciiString(output, maxlen, outPos, "s");
+                case 0x82: AppendAsciiString(output, maxlen, outPos, "t");
+                case 0x83: AppendAsciiString(output, maxlen, outPos, "u");
+                case 0x84: AppendAsciiString(output, maxlen, outPos, "f");
+                case 0x85: AppendAsciiString(output, maxlen, outPos, "kh");
+                case 0x86: AppendAsciiString(output, maxlen, outPos, "ts");
+                case 0x87: AppendAsciiString(output, maxlen, outPos, "ch");
+                case 0x88: AppendAsciiString(output, maxlen, outPos, "sh");
+                case 0x89: AppendAsciiString(output, maxlen, outPos, "sch");
+                case 0x8A: AppendAsciiString(output, maxlen, outPos, "");
+                case 0x8B: AppendAsciiString(output, maxlen, outPos, "y");
+                case 0x8C: AppendAsciiString(output, maxlen, outPos, "");
+                case 0x8D: AppendAsciiString(output, maxlen, outPos, "e");
+                case 0x8E: AppendAsciiString(output, maxlen, outPos, "yu");
+                case 0x8F: AppendAsciiString(output, maxlen, outPos, "ya");
+                case 0x91: AppendAsciiString(output, maxlen, outPos, "yo");
+                case 0x94: AppendAsciiString(output, maxlen, outPos, "ye");
+                case 0x96: AppendAsciiString(output, maxlen, outPos, "i");
+                case 0x97: AppendAsciiString(output, maxlen, outPos, "yi");
+                default: mapped = false;
+            }
+        }
+        else if (c == 0xD2)
+        {
+            switch (n)
+            {
+                case 0x90: AppendAsciiString(output, maxlen, outPos, "G");
+                case 0x91: AppendAsciiString(output, maxlen, outPos, "g");
+                default: mapped = false;
+            }
+        }
+        else
+        {
+            mapped = false;
+        }
+
+        if (!mapped && outPos < maxlen - 1)
+            output[outPos++] = '?';
+
+        i++;
+    }
+
+    output[outPos] = '\0';
 }
 
 
@@ -982,6 +2009,187 @@ Action Command_ConnectionTest(int client, int args)
     g_DB.Format(query, sizeof(query), "SELECT rating FROM mgemod_stats LIMIT 1");
     g_DB.Query(SQL_OnTestReceived, query, client);
 
+    return Plugin_Handled;
+}
+
+Action Command_MgeWorldTextDebug(int client, int args)
+{
+    if (!IsValidClient(client))
+        return Plugin_Handled;
+
+    PrintToConsole(client, "===== MGE WorldText Debug =====");
+    PrintToConsole(client, "text_mge_top: %s", g_sLastTopMvpText[0] ? g_sLastTopMvpText : "---");
+
+    for (int i = 0; i < 10; i++)
+    {
+        PrintToConsole(client, "text_mge_top_%d: %d. %s", i + 1, i + 1, g_sTop10WorldTextNames[i]);
+    }
+
+    PrintToConsole(client, "tv_text: %s", g_sLastTvText[0] ? g_sLastTvText : "---");
+    PrintToConsole(client, "camera: %s (idx=%d, arena=%d)", g_sCurrentCameraName[0] ? g_sCurrentCameraName : "---", g_iCurrentCameraIndex, g_iCurrentCameraArenaIndex);
+    PrintToConsole(client, "map_worldtext_enabled: %d", IsMapWorldTextEnabled() ? 1 : 0);
+
+    return Plugin_Handled;
+}
+
+Action Command_MgeWorldTextRefresh(int client, int args)
+{
+    if (!IsValidClient(client))
+        return Plugin_Handled;
+
+    RequestMapTop10WorldTextData();
+    UpdateTopMvpWorldTextIfNeeded(true);
+    QueueApplyMapWorldText(1.0);
+
+    PrintToConsole(client, "[MGE] WorldText refresh requested: DB top10 query + delayed apply.");
+    return Plugin_Handled;
+}
+
+Action Command_MgeCameraDebug(int client, int args)
+{
+    if (!IsValidClient(client))
+        return Plugin_Handled;
+
+    PrintToConsole(client, "===== MGE Camera Debug =====");
+    PrintToConsole(client, "camera: %s (idx=%d, arena=%d)", g_sCurrentCameraName[0] ? g_sCurrentCameraName : "---", g_iCurrentCameraIndex, g_iCurrentCameraArenaIndex);
+    PrintToConsole(client, "pov_mode: %d, pov_target: %d, pov_arena: %d, pov_list_index: %d", g_bCameraPovMode ? 1 : 0, g_iCameraPovTarget, g_iCameraPovArenaIndex, g_iCameraPovListIndex);
+
+    int arenaIndex = g_iCurrentCameraArenaIndex;
+    if (arenaIndex <= 0 && g_iCurrentCameraIndex > 0)
+        arenaIndex = ResolveCameraArenaIndex(g_iCurrentCameraIndex);
+
+    if (arenaIndex <= 0 || arenaIndex > g_iArenaCount)
+    {
+        PrintToConsole(client, "arena_from_camera: invalid");
+        return Plugin_Handled;
+    }
+
+    PrintToConsole(client, "arena_from_camera: %d (%s)", arenaIndex, g_sArenaName[arenaIndex]);
+
+    int players[MAXPLAYERS + 1];
+    int count = 0;
+    CollectArenaPovPlayers(arenaIndex, players, count);
+    PrintToConsole(client, "arena_players: %d", count);
+
+    for (int i = 0; i < count; i++)
+    {
+        int p = players[i];
+        if (!IsValidClient(p))
+            continue;
+
+        char pname[MAX_NAME_LENGTH];
+        GetClientName(p, pname, sizeof(pname));
+        PrintToConsole(client, "  #%d: %N (%s) slot=%d rating=%d", i + 1, p, pname, g_iPlayerSlot[p], g_iPlayerRating[p]);
+    }
+
+    return Plugin_Handled;
+}
+
+Action Command_MgeCameraSet(int client, int args)
+{
+    if (!IsValidClient(client))
+        return Plugin_Handled;
+
+    if (args < 1)
+    {
+        PrintToConsole(client, "Usage: sm_mge_camera_set <camera_targetname>");
+        return Plugin_Handled;
+    }
+
+    char cameraName[64];
+    GetCmdArg(1, cameraName, sizeof(cameraName));
+
+    int cameraEntity = -1;
+    if (!ForceActivateCameraByName(cameraName, cameraEntity))
+    {
+        PrintToConsole(client, "[MGE camera] Camera not found: %s", cameraName);
+        return Plugin_Handled;
+    }
+
+    strcopy(g_sCurrentCameraName, sizeof(g_sCurrentCameraName), cameraName);
+    g_iCurrentCameraIndex = 0;
+    g_iCurrentCameraArenaIndex = 0;
+    if (ParseCameraIndex(cameraName, g_iCurrentCameraIndex))
+        g_iCurrentCameraArenaIndex = ResolveCameraArenaIndexFromEntity(cameraEntity, g_iCurrentCameraIndex);
+
+    ExitCameraPovModeToCamera(cameraName);
+    UpdateTvTextForCurrentCamera();
+
+    PrintToConsole(client, "[MGE camera] Forced camera: %s (ent=%d, idx=%d, arena=%d)", cameraName, cameraEntity, g_iCurrentCameraIndex, g_iCurrentCameraArenaIndex);
+    LogMessage("[MGE camera] forced by admin %N: %s (ent=%d, idx=%d, arena=%d)", client, cameraName, cameraEntity, g_iCurrentCameraIndex, g_iCurrentCameraArenaIndex);
+    return Plugin_Handled;
+}
+
+Action Command_MgeCameraPov(int client, int args)
+{
+    if (!IsValidClient(client))
+        return Plugin_Handled;
+
+    HandleCameraPovToggle("cmd", client);
+    PrintToConsole(client, "[MGE camera] POV cycle requested.");
+    return Plugin_Handled;
+}
+
+Action Command_MgeCameraPovOff(int client, int args)
+{
+    if (!IsValidClient(client))
+        return Plugin_Handled;
+
+    ExitCameraPovModeToCamera(g_sCurrentCameraName);
+    PrintToConsole(client, "[MGE camera] POV mode disabled; restored camera: %s", g_sCurrentCameraName[0] ? g_sCurrentCameraName : "---");
+    return Plugin_Handled;
+}
+
+Action Command_MgeCameraScanRelays(int client, int args)
+{
+    if (!IsValidClient(client))
+        return Plugin_Handled;
+
+    PrintToConsole(client, "===== MGE Relay Scan (sg_sm*) =====");
+    int ent = -1;
+    int total = 0;
+    while ((ent = FindEntityByClassname(ent, "logic_relay")) != -1)
+    {
+        if (!IsValidEntity(ent))
+            continue;
+
+        char relayName[64];
+        GetEntPropString(ent, Prop_Data, "m_iName", relayName, sizeof(relayName));
+        if (relayName[0] == '\0' || StrContains(relayName, "sg_sm_", false) != 0)
+            continue;
+
+        int disabled = 0;
+        if (HasEntProp(ent, Prop_Data, "m_bDisabled"))
+            disabled = GetEntProp(ent, Prop_Data, "m_bDisabled");
+
+        PrintToConsole(client, "ent=%d name=%s disabled=%d", ent, relayName, disabled);
+        total++;
+    }
+
+    PrintToConsole(client, "total sg_sm relays: %d", total);
+    return Plugin_Handled;
+}
+
+Action Command_MgeCameraTriggerPov(int client, int args)
+{
+    if (!IsValidClient(client))
+        return Plugin_Handled;
+
+    int relay = FindEntityByTargetName("logic_relay", "sg_sm_camera_pov");
+    if (relay == -1)
+    {
+        relay = FindEntityByTargetName("logic_relay", "sg_sm_camera_pov_signal");
+    }
+
+    if (relay == -1)
+    {
+        PrintToConsole(client, "[MGE camera] relay not found: sg_sm_camera_pov / sg_sm_camera_pov_signal");
+        return Plugin_Handled;
+    }
+
+    AcceptEntityInput(relay, "Trigger", client, client);
+    PrintToConsole(client, "[MGE camera] Trigger sent to relay ent=%d", relay);
+    LogMessage("[MGE camera] admin %N triggered POV relay ent=%d", client, relay);
     return Plugin_Handled;
 }
 
