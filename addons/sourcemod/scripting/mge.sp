@@ -47,6 +47,7 @@ float g_fSpawnAnnotationOrigin[MAXPLAYERS + 1][MAX_SPAWN_ANNOTATIONS][3];
 #include "mge/elo.sp"
 #include "mge/sql.sp"
 #include "mge/hud.sp"
+#include "mge/weapons.sp"
 #include "mge/arenas.sp"
 #include "mge/match.sp"
 #include "mge/player.sp"
@@ -109,6 +110,8 @@ public void OnPluginStart()
     // Initialize cookies
     g_hShowEloCookie = new Cookie("mgemod_showelo", "MGEMod ELO display preference", CookieAccess_Private);
     g_hShowQueueCookie = new Cookie("mgemod_showqueue", "MGEMod queue display in keyhint preference", CookieAccess_Private);
+    InitWeaponRuleSystem();
+    EnsureWeaponConfigTemplateExists();
 
     // ConVars
     CreateConVar("sm_mgemod_version", PL_VERSION, "MGEMod version", FCVAR_SPONLY | FCVAR_NOTIFY);
@@ -132,6 +135,8 @@ public void OnPluginStart()
     gcvar_clearProjectiles = new Convar("mgemod_clear_projectiles", "0", "Clear projectiles when a new round starts? (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
     gcvar_clearPlayerEntities = new Convar("mgemod_clear_player_entities", "0", "Clear player entities (projectiles and buildings) between duels? (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
     gcvar_debugWadd = new Convar("mgemod_debug_wadd", "0", "Debug wadd logic to mgemod.log? (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
+    gcvar_debugTeleport = new Convar("mgemod_debug_teleport", "0", "Debug arena teleport reasons to logs? (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
+    gcvar_debugWeaponRules = new Convar("mgemod_debug_weaponrules", "0", "Debug weapon block/replace rule matches to logs? (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
     gcvar_allowUnverifiedPlayers = new Convar("mgemod_allow_unverified_players", "0", "Allow players with unverified ELO to play? ELO calculations will be skipped for them. (0 = Block unverified, 1 = Allow but skip ELO)", FCVAR_NONE, true, 0.0, true, 1.0);
     gcvar_vipQueuePriority = new Convar("mgemod_vip_queue_priority", "0", "Enable VIP queue priority? Players with 'a' or 'z' admin flags will be placed at the front of the queue. (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
     gcvar_mapWorldText = new Convar("mgemod_map_worldtext", "0", "Enable map worldtext integration (top/MVP/camera arena text). (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
@@ -152,6 +157,8 @@ public void OnPluginStart()
     g_bClearProjectiles = gcvar_clearProjectiles.IntValue ? true : false;
     g_bClearPlayerEntities = gcvar_clearPlayerEntities.IntValue ? true : false;
     g_bDebugWadd = gcvar_debugWadd.IntValue ? true : false;
+    g_bDebugTeleport = gcvar_debugTeleport.IntValue ? true : false;
+    g_bDebugWeaponRules = gcvar_debugWeaponRules.IntValue ? true : false;
     g_bAllowUnverifiedPlayers = gcvar_allowUnverifiedPlayers.IntValue ? true : false;
     g_bVipQueuePriority = gcvar_vipQueuePriority.IntValue ? true : false;
 
@@ -199,6 +206,8 @@ public void OnPluginStart()
     gcvar_clearProjectiles.AddChangeHook(handler_ConVarChange);
     gcvar_clearPlayerEntities.AddChangeHook(handler_ConVarChange);
     gcvar_debugWadd.AddChangeHook(handler_ConVarChange);
+    gcvar_debugTeleport.AddChangeHook(handler_ConVarChange);
+    gcvar_debugWeaponRules.AddChangeHook(handler_ConVarChange);
     gcvar_allowUnverifiedPlayers.AddChangeHook(handler_ConVarChange);
     gcvar_vipQueuePriority.AddChangeHook(handler_ConVarChange);
     gcvar_mapWorldText.AddChangeHook(handler_ConVarChange);
@@ -256,6 +265,7 @@ public void OnPluginStart()
     RegAdminCmd("sm_mge_camera_scan_relays", Command_MgeCameraScanRelays, ADMFLAG_BAN, "List sg_sm* logic_relay entities and disabled state");
     RegAdminCmd("sm_mge_camera_trigger_pov", Command_MgeCameraTriggerPov, ADMFLAG_BAN, "Force Trigger on logic_relay sg_sm_camera_pov");
     RegAdminCmd("sm_mge_show_spawns", Command_MgeShowSpawns, ADMFLAG_BAN, "Show nearby (3000u) arena spawns via show_annotation; persists until re-run");
+    RegAdminCmd("sm_mge_weapon_reload", Command_MgeWeaponReload, ADMFLAG_BAN, "Reload weapon profile config and arena weapon bindings without plugin reload");
     RegAdminCmd("sm_setspawn", Command_SetSpawn, ADMFLAG_BAN, "Edit spawns in your current arena. Usage: sm_setspawn [red|blue]");
     RegAdminCmd("arena_restart", Command_ArenaRestart, ADMFLAG_BAN, "Restart current arena fight");
     RegAdminCmd("sm_arena_restart", Command_ArenaRestart, ADMFLAG_BAN, "Restart current arena fight");
@@ -277,6 +287,8 @@ public void OnPluginStart()
     HookEntityOutput("logic_relay", "OnTrigger", OnSgCameraPovSignal);
     HookEntityOutput("logic_relay", "OnTrigger", OnSgRelayDebugTrace);
     HookEntityOutput("func_button", "OnPressed", OnFightButtonPressed);
+    HookEntityOutput("func_respawnroom", "OnStartTouch", OnRespawnroomStartTouchOutput);
+    HookEntityOutput("func_respawnroom", "OnEndTouch", OnRespawnroomEndTouchOutput);
 
     // HUD synchronizers
     hm_HP           = CreateHudSynchronizer();
@@ -739,6 +751,11 @@ public void OnMapStart()
     delete g_hMapWorldTextApplyTimer;
     for (int i = 0; i < 10; i++)
         strcopy(g_sTop10WorldTextNames[i], sizeof(g_sTop10WorldTextNames[]), "---");
+    for (int i = 1; i <= MaxClients; i++)
+        g_iPlayerRespawnroomTouchDepth[i] = 0;
+
+    LoadWeaponRuleProfiles();
+    ResetArenaWeaponRuleBindings();
 
     // Spawns
     bool isMapAm = LoadSpawnPoints();
@@ -782,6 +799,7 @@ public void OnMapStart()
 
         HookEvent("player_death", Event_PlayerDeath, EventHookMode_Pre);
         HookEvent("player_spawn", Event_PlayerSpawn, EventHookMode_Post);
+        HookEvent("post_inventory_application", Event_PostInventoryApplication, EventHookMode_Post);
         HookEvent("player_hurt", Event_PlayerHurt, EventHookMode_Pre);
         HookEvent("teamplay_round_start", Event_RoundStart, EventHookMode_Post);
         HookEvent("teamplay_win_panel", Event_WinPanel, EventHookMode_Post);
@@ -849,6 +867,7 @@ public void OnMapStart()
 // Clean up resources and unhook events when map ends
 public void OnMapEnd()
 {
+    CleanupWeaponRuleSystem();
     delete g_hDBReconnectTimer;
     delete g_hTopRatingTimer;
     delete g_hMapWorldTextTimer;
@@ -864,6 +883,7 @@ public void OnMapEnd()
 
     UnhookEvent("player_death", Event_PlayerDeath, EventHookMode_Pre);
     UnhookEvent("player_spawn", Event_PlayerSpawn, EventHookMode_Post);
+    UnhookEvent("post_inventory_application", Event_PostInventoryApplication, EventHookMode_Post);
     UnhookEvent("player_hurt", Event_PlayerHurt, EventHookMode_Pre);
     UnhookEvent("teamplay_round_start", Event_RoundStart, EventHookMode_Post);
     UnhookEvent("teamplay_win_panel", Event_WinPanel, EventHookMode_Post);
@@ -1059,6 +1079,10 @@ void handler_ConVarChange(Handle convar, const char[] oldValue, const char[] new
         g_bClearPlayerEntities = boolValue;
     else if (convar == gcvar_debugWadd)
         g_bDebugWadd = boolValue;
+    else if (convar == gcvar_debugTeleport)
+        g_bDebugTeleport = boolValue;
+    else if (convar == gcvar_debugWeaponRules)
+        g_bDebugWeaponRules = boolValue;
     else if (convar == gcvar_allowUnverifiedPlayers)
         g_bAllowUnverifiedPlayers = boolValue;
     else if (convar == gcvar_vipQueuePriority)

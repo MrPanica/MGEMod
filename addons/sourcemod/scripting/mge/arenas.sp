@@ -192,6 +192,7 @@ bool LoadSpawnPoints()
         char sAllowedClasses[128];
         kv.GetString("classes", sAllowedClasses, sizeof(sAllowedClasses));
         ParseAllowedClasses(sAllowedClasses,g_tfctArenaAllowedClasses[g_iArenaCount]);
+        ParseArenaWeaponRuleSettings(kv, g_iArenaCount);
         g_iArenaFraglimit[g_iArenaCount] = g_iArenaMgelimit[g_iArenaCount];
         UpdateArenaName(g_iArenaCount);
     } while (kv.GotoNextKey());
@@ -334,9 +335,10 @@ void ResetArena(int arena_index)
 // Update arena display name based on current gamemode and configuration
 void UpdateArenaName(int arena)
 {
-    char mode[4], type[8];
+    char mode[4], type[16];
     Format(mode, sizeof(mode), "%s", g_bFourPersonArena[arena] ? "2v2" : "1v1");
     Format(type, sizeof(type), "%s",
+        g_bArenaNoFight[arena] ? "No Fight" :
         g_bArenaMGE[arena] ? "MGE" :
         g_bArenaUltiduo[arena] ? "ULTI" :
         g_bArenaKoth[arena] ? "KOTH" :
@@ -345,7 +347,10 @@ void UpdateArenaName(int arena)
         g_bArenaMidair[arena] ? "MIDA" :
         g_bArenaEndif[arena] ? "ENDIF" : ""
     );
-    Format(g_sArenaName[arena], sizeof(g_sArenaName), "%s [%s %s]", g_sArenaOriginalName[arena], mode, type);
+    if (g_bArenaNoFight[arena])
+        Format(g_sArenaName[arena], sizeof(g_sArenaName), "%s [No Fight]", g_sArenaOriginalName[arena]);
+    else
+        Format(g_sArenaName[arena], sizeof(g_sArenaName), "%s [%s %s]", g_sArenaOriginalName[arena], mode, type);
 }
 
 // Reset class point tracking for all active players in an arena
@@ -566,6 +571,33 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
     }
 
     int after_leaver_slot = player_slot + 1;
+
+    if (g_bArenaNoFight[arena_index])
+    {
+        if (g_bTimerRunning[arena_index])
+        {
+            delete g_tKothTimer[arena_index];
+            g_bTimerRunning[arena_index] = false;
+        }
+
+        if (g_iArenaQueue[arena_index][after_leaver_slot])
+        {
+            while (g_iArenaQueue[arena_index][after_leaver_slot])
+            {
+                g_iArenaQueue[arena_index][after_leaver_slot - 1] = g_iArenaQueue[arena_index][after_leaver_slot];
+                g_iPlayerSlot[g_iArenaQueue[arena_index][after_leaver_slot]] -= 1;
+                after_leaver_slot++;
+            }
+            g_iArenaQueue[arena_index][after_leaver_slot - 1] = 0;
+        }
+
+        g_iArenaStatus[arena_index] = AS_IDLE;
+        g_iArenaDuelStartTime[arena_index] = 0;
+        UpdateHudForArena(arena_index);
+        CheckWaitingList(arena_index);
+        CallForward_OnPlayerArenaRemoved(client, arena_index);
+        return;
+    }
 
     // I beleive I don't need to do this anymore BUT
     // If the player was in the arena, and the timer was running, kill it

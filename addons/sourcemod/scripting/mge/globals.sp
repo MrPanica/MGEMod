@@ -46,6 +46,8 @@ bool g_bBlockFallDamage,
      g_bClearProjectiles,
      g_bClearPlayerEntities,
      g_bDebugWadd,
+     g_bDebugTeleport,
+     g_bDebugWeaponRules,
      g_bAllowUnverifiedPlayers,
      g_bVipQueuePriority;
 
@@ -90,6 +92,8 @@ Convar
     gcvar_clearProjectiles,
     gcvar_clearPlayerEntities,
     gcvar_debugWadd,
+    gcvar_debugTeleport,
+    gcvar_debugWeaponRules,
     gcvar_allowUnverifiedPlayers,
     gcvar_vipQueuePriority,
     gcvar_mapWorldText,
@@ -215,6 +219,7 @@ char g_sPlayerSteamID       [MAXPLAYERS + 1][32]; // Saving steamid
 bool
     g_bPlayerTakenDirectHit [MAXPLAYERS + 1],// Player was hit directly
     g_bPlayerRestoringAmmo  [MAXPLAYERS + 1],// Player is awaiting full ammo restore
+    g_bSkipNextSpawnTeleport [MAXPLAYERS + 1],// Skip Event_PlayerSpawn teleport once (ResetPlayer already queued it)
     g_bPlayerHasIntel       [MAXPLAYERS + 1],
     g_bScoreboardOpen       [MAXPLAYERS + 1],
     g_bWaddMenu             [MAXPLAYERS + 1],
@@ -233,6 +238,7 @@ int g_iSetSpawnMode        [MAXPLAYERS + 1];
 int
     g_iPlayerArena          [MAXPLAYERS + 1],
     g_iPlayerSlot           [MAXPLAYERS + 1],
+    g_iPlayerRespawnroomTouchDepth [MAXPLAYERS + 1],
     g_iPlayerHP             [MAXPLAYERS + 1], // True HP of players
     g_iPlayerSpecTarget     [MAXPLAYERS + 1],
     g_iPlayerMaxHP          [MAXPLAYERS + 1],
