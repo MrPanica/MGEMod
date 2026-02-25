@@ -1,6 +1,8 @@
 
 // ===== SPECTATOR HUD MANAGEMENT =====
 
+#define OBS_MODE_ROAMING 6
+
 // Displays countdown messages to spectators watching a specific arena
 void ShowCountdownToSpec(int arena_index, char[] text)
 {
@@ -150,6 +152,18 @@ Action Command_SpecNavigation(int client, const char[] command, int args)
     if (!IsValidClient(client) || GetClientTeam(client) != TEAM_SPEC || g_iPlayerArena[client] > 0)
         return Plugin_Continue;
 
+    bool isNext = StrEqual(command, "spec_next");
+    bool isPrev = StrEqual(command, "spec_prev");
+    if (!isNext && !isPrev)
+        return Plugin_Continue;
+
+    int observer_mode = GetEntProp(client, Prop_Send, "m_iObserverMode");
+    if (observer_mode == OBS_MODE_ROAMING)
+    {
+        // In free-roam mode let the engine handle navigation/state transitions.
+        return Plugin_Continue;
+    }
+
     // Get current target
     int current_target = GetEntPropEnt(client, Prop_Send, "m_hObserverTarget");
 
@@ -181,11 +195,15 @@ Action Command_SpecNavigation(int client, const char[] command, int args)
 
     // Determine next target based on command
     int next_index;
-    if (StrEqual(command, "spec_next"))
+    if (current_index == -1)
+    {
+        next_index = isNext ? 0 : (target_count - 1);
+    }
+    else if (isNext)
     {
         next_index = (current_index + 1) % target_count;
     }
-    else if (StrEqual(command, "spec_prev"))
+    else if (isPrev)
     {
         next_index = (current_index - 1 + target_count) % target_count;
     }
@@ -196,8 +214,19 @@ Action Command_SpecNavigation(int client, const char[] command, int args)
 
     // Set new target
     int new_target = valid_targets[next_index];
-    SetEntPropEnt(client, Prop_Send, "m_hObserverTarget", new_target);
-    SetEntProp(client, Prop_Send, "m_iObserverMode", 4); // Third person mode
+    if (!IsValidClient(new_target) || !IsPlayerAlive(new_target) || g_iPlayerArena[new_target] <= 0)
+        return Plugin_Continue;
+
+    if (new_target != current_target)
+    {
+        SetEntPropEnt(client, Prop_Send, "m_hObserverTarget", new_target);
+    }
+
+    // Preserve spectator mode instead of forcing a fixed observer mode.
+    if (GetEntProp(client, Prop_Send, "m_iObserverMode") != observer_mode)
+    {
+        SetEntProp(client, Prop_Send, "m_iObserverMode", observer_mode);
+    }
 
     // Update HUD
     g_iPlayerSpecTarget[client] = new_target;

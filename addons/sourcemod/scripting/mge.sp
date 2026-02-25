@@ -75,6 +75,10 @@ int g_iTvBrushLkmEntRef;
 int g_iTvBrushPkmEntRef;
 int g_iTvBrushMouseEntRef;
 float g_fMonitorHintNextAt[MAXPLAYERS + 1];
+bool g_bCameraMonitorVolumeEnabled;
+int g_iMonitorMicSpeaker1EntRef;
+int g_iMonitorNoSoundBrush1EntRef;
+int g_iMonitorNoSoundBrush2EntRef;
 
 // Modules
 #include "mge/elo.sp"
@@ -318,6 +322,7 @@ public void OnPluginStart()
     HookEntityOutput("logic_relay", "OnTrigger", OnSgCameraSignal);
     HookEntityOutput("logic_relay", "OnTrigger", OnSgTvTextSignal);
     HookEntityOutput("logic_relay", "OnTrigger", OnSgTvTextShowKeysSignal);
+    HookEntityOutput("logic_relay", "OnTrigger", OnSgCameraMonitorVolumeSignal);
     HookEntityOutput("logic_relay", "OnTrigger", OnSgCameraPovSignal);
     HookEntityOutput("logic_relay", "OnTrigger", OnSgRelayDebugTrace);
     HookEntityOutput("func_button", "OnPressed", OnFightButtonPressed);
@@ -771,6 +776,10 @@ public void OnMapStart()
     g_sCurrentCameraName[0] = '\0';
     g_iCurrentCameraIndex = 0;
     g_iCurrentCameraArenaIndex = 0;
+    g_bCameraMonitorVolumeEnabled = true;
+    g_iMonitorMicSpeaker1EntRef = INVALID_ENT_REFERENCE;
+    g_iMonitorNoSoundBrush1EntRef = INVALID_ENT_REFERENCE;
+    g_iMonitorNoSoundBrush2EntRef = INVALID_ENT_REFERENCE;
     g_sLastTvText[0] = '\0';
     g_sLastTopMvpText[0] = '\0';
     g_fNextTopMvpWorldTextUpdate = 0.0;
@@ -833,6 +842,7 @@ public void OnMapStart()
             g_hMapWorldTextTimer = CreateTimer(1.0, Timer_UpdateMapWorldText, _, TIMER_FLAG_NO_MAPCHANGE | TIMER_REPEAT);
         RequestMapTop10WorldTextData();
         ApplyTvKeyOverlayVisibility();
+        UpdateMonitorMicrophonesPlacement();
 
         // Create timer to update queue display every 10 seconds
         if (g_hQueueDisplayTimer == null)
@@ -915,6 +925,10 @@ public void OnMapStart()
 // Clean up resources and unhook events when map ends
 public void OnMapEnd()
 {
+    g_bCameraMonitorVolumeEnabled = true;
+    g_iMonitorMicSpeaker1EntRef = INVALID_ENT_REFERENCE;
+    g_iMonitorNoSoundBrush1EntRef = INVALID_ENT_REFERENCE;
+    g_iMonitorNoSoundBrush2EntRef = INVALID_ENT_REFERENCE;
     CleanupWeaponRuleSystem();
     delete g_hDBReconnectTimer;
     delete g_hTopRatingTimer;
@@ -1340,6 +1354,8 @@ public void OnSgCameraSignal(const char[] output, int caller, int activator, flo
 
     if (IsMapWorldTextEnabled())
         UpdateTvTextForCurrentCamera();
+
+    UpdateMonitorMicrophonesPlacement();
 }
 
 public void OnSgTvTextSignal(const char[] output, int caller, int activator, float delay)
@@ -1380,6 +1396,26 @@ public void OnSgTvTextShowKeysSignal(const char[] output, int caller, int activa
 
     ApplyTvKeyOverlayVisibility();
     RefreshTvKeyOverlayForCurrentPov();
+}
+
+public void OnSgCameraMonitorVolumeSignal(const char[] output, int caller, int activator, float delay)
+{
+    #pragma unused output
+    #pragma unused activator
+    #pragma unused delay
+
+    int relayEnt = ResolveOutputEntity(caller);
+    if (relayEnt == -1)
+        return;
+
+    char relayName[64];
+    GetEntPropString(relayEnt, Prop_Data, "m_iName", relayName, sizeof(relayName));
+    if (!StrEqual(relayName, "sg_sm_camera_monitor_volume", false))
+        return;
+
+    g_bCameraMonitorVolumeEnabled = !g_bCameraMonitorVolumeEnabled;
+    UpdateMonitorMicrophonesPlacement();
+    LogMessage("[MGE camera] monitor volume: %s", g_bCameraMonitorVolumeEnabled ? "enabled" : "disabled");
 }
 
 public void OnSgCameraPovSignal(const char[] output, int caller, int activator, float delay)
@@ -1535,6 +1571,98 @@ void UpdateTvKeyOverlayFromClientInput(int client, int buttons)
 
     if (changed)
         ApplyTvKeyOverlayVisibility();
+}
+
+int GetMonitorMicrophoneEntity(const char[] targetName, int &entRef)
+{
+    int cached = EntRefToEntIndex(entRef);
+    if (cached > MaxClients && IsValidEntity(cached))
+        return cached;
+
+    int entity = FindEntityByTargetName("env_microphone", targetName);
+    entRef = (entity == -1) ? INVALID_ENT_REFERENCE : EntIndexToEntRef(entity);
+    return entity;
+}
+
+int GetMonitorNoSoundBrushEntity(const char[] targetName, int &entRef)
+{
+    int cached = EntRefToEntIndex(entRef);
+    if (cached > MaxClients && IsValidEntity(cached))
+        return cached;
+
+    int entity = FindEntityByTargetName("func_brush", targetName);
+    entRef = (entity == -1) ? INVALID_ENT_REFERENCE : EntIndexToEntRef(entity);
+    return entity;
+}
+
+void SetMonitorMicrophonesEnabled(bool enabled)
+{
+    int mic1 = GetMonitorMicrophoneEntity("speaker_1", g_iMonitorMicSpeaker1EntRef);
+
+    if (mic1 != -1)
+        AcceptEntityInput(mic1, enabled ? "Enable" : "Disable");
+}
+
+void ApplyMonitorNoSoundBrushState()
+{
+    int brush1 = GetMonitorNoSoundBrushEntity("brush_no_sound_1", g_iMonitorNoSoundBrush1EntRef);
+    int brush2 = GetMonitorNoSoundBrushEntity("brush_no_sound_2", g_iMonitorNoSoundBrush2EntRef);
+
+    if (brush1 != -1)
+        AcceptEntityInput(brush1, g_bCameraMonitorVolumeEnabled ? "Disable" : "Enable");
+    if (brush2 != -1)
+        AcceptEntityInput(brush2, g_bCameraMonitorVolumeEnabled ? "Disable" : "Enable");
+}
+
+bool TryResolveMonitorAudioSource(float sourcePos[3], float sourceAng[3])
+{
+    if (g_bCameraPovMode && IsValidClient(g_iCameraPovTarget))
+    {
+        GetClientEyePosition(g_iCameraPovTarget, sourcePos);
+        GetClientEyeAngles(g_iCameraPovTarget, sourceAng);
+        return true;
+    }
+
+    if (g_sCurrentCameraName[0] == '\0')
+        return false;
+
+    int cameraEnt = FindEntityByTargetName("point_camera", g_sCurrentCameraName);
+    if (cameraEnt == -1 || !IsValidEntity(cameraEnt))
+        return false;
+
+    GetEntPropVector(cameraEnt, Prop_Data, "m_vecOrigin", sourcePos);
+    GetEntPropVector(cameraEnt, Prop_Data, "m_angRotation", sourceAng);
+    return true;
+}
+
+void UpdateMonitorMicrophonesPlacement()
+{
+    ApplyMonitorNoSoundBrushState();
+
+    if (!g_bCameraMonitorVolumeEnabled)
+    {
+        SetMonitorMicrophonesEnabled(false);
+        return;
+    }
+
+    int mic1 = GetMonitorMicrophoneEntity("speaker_1", g_iMonitorMicSpeaker1EntRef);
+    if (mic1 == -1)
+        return;
+
+    float sourcePos[3];
+    float sourceAng[3];
+    if (!TryResolveMonitorAudioSource(sourcePos, sourceAng))
+    {
+        // Keep microphones enabled at their current map positions until camera source resolves.
+        SetMonitorMicrophonesEnabled(true);
+        return;
+    }
+
+    if (mic1 != -1)
+    {
+        TeleportEntity(mic1, sourcePos, sourceAng, NULL_VECTOR);
+        AcceptEntityInput(mic1, "Enable");
+    }
 }
 
 void HandleCameraPovToggle(const char[] source, int activator)
@@ -1734,6 +1862,65 @@ void CollectArenaPovPlayers(int arenaIndex, int players[MAXPLAYERS + 1], int &co
     }
 }
 
+void ResetPovForArenaAfterMatch(int arenaIndex)
+{
+    if (!g_bCameraPovMode || g_iCameraPovArenaIndex != arenaIndex)
+        return;
+
+    int previousTarget = g_iCameraPovTarget;
+
+    // Force a fresh reattach after duel transition.
+    g_iCameraPovAttachedTargetSpectate = 0;
+    g_iCameraPovAttachedTargetArenaCam = 0;
+
+    int players[MAXPLAYERS + 1];
+    int count = 0;
+    CollectArenaPovPlayers(arenaIndex, players, count);
+
+    if (count <= 0)
+    {
+        LogMessage("[MGE camera] POV reset after match: no players in arena=%d, restoring arena camera", arenaIndex);
+        ExitCameraPovModeToCamera(g_sCurrentCameraName);
+        return;
+    }
+
+    int selectedIndex = -1;
+    if (IsValidClient(previousTarget) && g_iPlayerArena[previousTarget] == arenaIndex && IsPovAttachTargetValid(previousTarget))
+    {
+        for (int i = 0; i < count; i++)
+        {
+            if (players[i] == previousTarget)
+            {
+                selectedIndex = i;
+                break;
+            }
+        }
+    }
+
+    if (selectedIndex == -1)
+        selectedIndex = FindNextValidPovTarget(players, count, -1);
+
+    if (selectedIndex == -1)
+    {
+        LogMessage("[MGE camera] POV reset after match: no valid POV target in arena=%d, restoring arena camera", arenaIndex);
+        ExitCameraPovModeToCamera(g_sCurrentCameraName);
+        return;
+    }
+
+    g_iCameraPovListIndex = selectedIndex;
+    g_iCameraPovTarget = players[selectedIndex];
+
+    UpdateCameraPovViewNow();
+    UpdateTvTextForCurrentCamera();
+    RefreshTvKeyOverlayForCurrentPov();
+    UpdateMonitorMicrophonesPlacement();
+
+    if (g_iCameraPovTarget != previousTarget)
+        LogMessage("[MGE camera] POV reset after match: switched target to %N (arena=%d)", g_iCameraPovTarget, arenaIndex);
+    else
+        LogMessage("[MGE camera] POV reset after match: reattached target %N (arena=%d)", g_iCameraPovTarget, arenaIndex);
+}
+
 void EnterCameraPovMode(int arenaIndex, int target, int listIndex)
 {
     g_bCameraPovMode = true;
@@ -1775,6 +1962,7 @@ void EnterCameraPovMode(int arenaIndex, int target, int listIndex)
     UpdateCameraPovViewNow();
     UpdateTvTextForCurrentCamera();
     RefreshTvKeyOverlayForCurrentPov();
+    UpdateMonitorMicrophonesPlacement();
 }
 
 void ExitCameraPovModeToCamera(const char[] restoreCameraName, bool fromPovFollowTimer = false)
@@ -1827,6 +2015,7 @@ void ExitCameraPovModeToCamera(const char[] restoreCameraName, bool fromPovFollo
 
     UpdateTvTextForCurrentCamera();
     RefreshTvKeyOverlayForCurrentPov();
+    UpdateMonitorMicrophonesPlacement();
 }
 
 Action Timer_UpdateCameraPovFollow(Handle timer)
@@ -1885,12 +2074,22 @@ void UpdateCameraPovViewNow()
         AcceptEntityInput(g_iCameraPovMovedCameraEnt, "SetOnAndTurnOthersOff");
         AcceptEntityInput(g_iCameraPovMovedCameraEnt, "Enable");
     }
+
+    UpdateMonitorMicrophonesPlacement();
 }
 
 void EnsureCameraAttachedToEyes(int cameraEnt, int target, int &attachedTarget)
 {
     if (cameraEnt == -1 || !IsValidEntity(cameraEnt) || !IsValidClient(target))
         return;
+
+    char className[64];
+    GetEntityClassname(cameraEnt, className, sizeof(className));
+    if (!StrEqual(className, "point_camera", false))
+    {
+        LogMessage("[MGE camera][WARN] POV attach skipped: ent=%d class=%s target=%N", cameraEnt, className, target);
+        return;
+    }
 
     if (attachedTarget == target)
         return;
@@ -2717,6 +2916,7 @@ Action Command_MgeCameraSet(int client, int args)
 
     ExitCameraPovModeToCamera(cameraName);
     UpdateTvTextForCurrentCamera();
+    UpdateMonitorMicrophonesPlacement();
 
     PrintToConsole(client, "[MGE camera] Forced camera: %s (ent=%d, idx=%d, arena=%d)", cameraName, cameraEntity, g_iCurrentCameraIndex, g_iCurrentCameraArenaIndex);
     LogMessage("[MGE camera] forced by admin %N: %s (ent=%d, idx=%d, arena=%d)", client, cameraName, cameraEntity, g_iCurrentCameraIndex, g_iCurrentCameraArenaIndex);
@@ -2739,6 +2939,7 @@ Action Command_MgeCameraPovOff(int client, int args)
         return Plugin_Handled;
 
     ExitCameraPovModeToCamera(g_sCurrentCameraName);
+    UpdateMonitorMicrophonesPlacement();
     PrintToConsole(client, "[MGE camera] POV mode disabled; restored camera: %s", g_sCurrentCameraName[0] ? g_sCurrentCameraName : "---");
     return Plugin_Handled;
 }

@@ -82,6 +82,10 @@ void ProcessMatchCompletion(int arena_index, int winner1, int winner2, int loser
 
     // Handle post-match queue rotation and timers
     HandlePostMatchQueueRotation(arena_index, loser1, loser2);
+
+    // Re-evaluate POV after queue rotation:
+    // keep current target if still valid, otherwise switch to another arena player, otherwise restore arena view.
+    ResetPovForArenaAfterMatch(arena_index);
 }
 
 
