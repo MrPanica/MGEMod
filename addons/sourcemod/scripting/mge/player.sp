@@ -16,6 +16,7 @@ void HandleClientConnection(int client)
     g_bScoreboardOpen[client] = false;
     g_bWaddMenu[client] = false;
     g_iPlayerRespawnroomTouchDepth[client] = 0;
+    g_iTeleportRevision[client] = 0;
     g_bSkipNextSpawnTeleport[client] = false;
     g_bSetSpawnAwaitInput[client] = false;
     g_iSetSpawnArena[client] = 0;
@@ -98,9 +99,89 @@ void HandleClientAuthentication(int client)
     }
 }
 
+void BumpTeleportRevision(int client, const char[] reason = "")
+{
+    if (client <= 0 || client > MaxClients)
+        return;
+
+    g_iTeleportRevision[client]++;
+
+    if (!g_bDebugTeleport)
+        return;
+
+    if (IsClientInGame(client))
+    {
+        LogMessage("[MGE tele][debug] rev bump client=%N rev=%d reason=%s arena=%d slot=%d",
+            client, g_iTeleportRevision[client], reason, g_iPlayerArena[client], g_iPlayerSlot[client]);
+    }
+    else
+    {
+        LogMessage("[MGE tele][debug] rev bump client=%d rev=%d reason=%s arena=%d slot=%d",
+            client, g_iTeleportRevision[client], reason, g_iPlayerArena[client], g_iPlayerSlot[client]);
+    }
+}
+
+bool IsTeleportContextCurrent(int client, int arena_index, int player_slot, int revision, const char[] phase, const char[] reason = "")
+{
+    if (!IsValidClient(client))
+    {
+        if (g_bDebugTeleport)
+            LogMessage("[MGE tele][debug] %s drop: invalid client userid context reason=%s", phase, reason);
+        return false;
+    }
+
+    if (revision != g_iTeleportRevision[client])
+    {
+        if (g_bDebugTeleport)
+        {
+            LogMessage("[MGE tele][debug] %s drop: stale revision client=%N queued_rev=%d current_rev=%d reason=%s",
+                phase, client, revision, g_iTeleportRevision[client], reason);
+        }
+        return false;
+    }
+
+    if (arena_index <= 0 || arena_index > g_iArenaCount)
+    {
+        if (g_bDebugTeleport)
+            LogMessage("[MGE tele][debug] %s drop: invalid arena client=%N arena=%d reason=%s", phase, client, arena_index, reason);
+        return false;
+    }
+
+    if (player_slot <= 0 || player_slot >= MAXPLAYERS)
+    {
+        if (g_bDebugTeleport)
+            LogMessage("[MGE tele][debug] %s drop: invalid slot client=%N slot=%d reason=%s", phase, client, player_slot, reason);
+        return false;
+    }
+
+    if (g_iPlayerArena[client] != arena_index || g_iPlayerSlot[client] != player_slot)
+    {
+        if (g_bDebugTeleport)
+        {
+            LogMessage("[MGE tele][debug] %s drop: context mismatch client=%N queued=[a:%d s:%d] current=[a:%d s:%d] reason=%s",
+                phase, client, arena_index, player_slot, g_iPlayerArena[client], g_iPlayerSlot[client], reason);
+        }
+        return false;
+    }
+
+    if (g_iArenaQueue[arena_index][player_slot] != client)
+    {
+        if (g_bDebugTeleport)
+        {
+            LogMessage("[MGE tele][debug] %s drop: queue mismatch client=%N arena=%d slot=%d queue_client=%d reason=%s",
+                phase, client, arena_index, player_slot, g_iArenaQueue[arena_index][player_slot], reason);
+        }
+        return false;
+    }
+
+    return true;
+}
+
 // Handle client disconnection and cleanup
 void HandleClientDisconnection(int client)
 {
+    BumpTeleportRevision(client, "HandleClientDisconnection");
+
     g_iPlayerRespawnroomTouchDepth[client] = 0;
     g_bSetSpawnAwaitInput[client] = false;
     g_iSetSpawnArena[client] = 0;
@@ -276,15 +357,42 @@ void QueueArenaTeleport(int client, float delay, const char[] reason)
     if (!IsValidClient(client))
         return;
 
+    int arena_index = g_iPlayerArena[client];
+    int player_slot = g_iPlayerSlot[client];
+    int revision = g_iTeleportRevision[client];
+
+    if (arena_index <= 0 || arena_index > g_iArenaCount || player_slot <= 0 || player_slot >= MAXPLAYERS)
+    {
+        if (g_bDebugTeleport)
+        {
+            LogMessage("[MGE tele][debug] queue skip reason=%s client=%N invalid context arena=%d slot=%d rev=%d",
+                reason, client, arena_index, player_slot, revision);
+        }
+        return;
+    }
+
+    if (g_iArenaQueue[arena_index][player_slot] != client)
+    {
+        if (g_bDebugTeleport)
+        {
+            LogMessage("[MGE tele][debug] queue skip reason=%s client=%N queue mismatch arena=%d slot=%d queue_client=%d rev=%d",
+                reason, client, arena_index, player_slot, g_iArenaQueue[arena_index][player_slot], revision);
+        }
+        return;
+    }
+
     if (g_bDebugTeleport)
     {
-        LogMessage("[MGE tele][debug] queue reason=%s client=%N delay=%.2f arena=%d slot=%d team=%d alive=%d",
-            reason, client, delay, g_iPlayerArena[client], g_iPlayerSlot[client], GetClientTeam(client), IsPlayerAlive(client) ? 1 : 0);
+        LogMessage("[MGE tele][debug] queue reason=%s client=%N delay=%.2f arena=%d slot=%d rev=%d team=%d alive=%d",
+            reason, client, delay, arena_index, player_slot, revision, GetClientTeam(client), IsPlayerAlive(client) ? 1 : 0);
     }
 
     DataPack pack = new DataPack();
     CreateDataTimer(delay, Timer_TeleWithDebug, pack, TIMER_FLAG_NO_MAPCHANGE);
     pack.WriteCell(GetClientUserId(client));
+    pack.WriteCell(arena_index);
+    pack.WriteCell(player_slot);
+    pack.WriteCell(revision);
     pack.WriteString(reason);
 }
 
@@ -292,6 +400,9 @@ Action Timer_TeleWithDebug(Handle timer, DataPack pack)
 {
     pack.Reset();
     int userid = pack.ReadCell();
+    int queued_arena = pack.ReadCell();
+    int queued_slot = pack.ReadCell();
+    int queued_revision = pack.ReadCell();
     char reason[64];
     pack.ReadString(reason, sizeof(reason));
 
@@ -299,16 +410,20 @@ Action Timer_TeleWithDebug(Handle timer, DataPack pack)
     if (!IsValidClient(client))
         return Plugin_Stop;
 
+    if (!IsTeleportContextCurrent(client, queued_arena, queued_slot, queued_revision, "fire", reason))
+        return Plugin_Stop;
+
     if (g_bDebugTeleport)
     {
-        int arena_index = g_iPlayerArena[client];
-        int player_slot = g_iPlayerSlot[client];
         bool inRespawnNet = IsClientInRespawnroomByNetprop(client);
-        LogMessage("[MGE tele][debug] fire reason=%s client=%N arena=%d slot=%d team=%d alive=%d in_upgrade_zone=%d rr_depth=%d",
-            reason, client, arena_index, player_slot, GetClientTeam(client), IsPlayerAlive(client) ? 1 : 0, inRespawnNet ? 1 : 0, g_iPlayerRespawnroomTouchDepth[client]);
+        LogMessage("[MGE tele][debug] fire reason=%s client=%N queued=[a:%d s:%d r:%d] current=[a:%d s:%d r:%d] team=%d alive=%d in_upgrade_zone=%d rr_depth=%d",
+            reason, client,
+            queued_arena, queued_slot, queued_revision,
+            g_iPlayerArena[client], g_iPlayerSlot[client], g_iTeleportRevision[client],
+            GetClientTeam(client), IsPlayerAlive(client) ? 1 : 0, inRespawnNet ? 1 : 0, g_iPlayerRespawnroomTouchDepth[client]);
     }
 
-    return Timer_Tele(timer, userid);
+    return Timer_Tele(timer, userid, queued_arena, queued_slot, queued_revision, reason);
 }
 
 // Attempts to load player statistics from database with Steam ID validation
@@ -392,6 +507,12 @@ int ResetPlayer(int client)
         return 0;
     }
 
+    if (arena_index <= 0 || arena_index > g_iArenaCount || g_iArenaQueue[arena_index][player_slot] != client)
+        return 0;
+
+    BumpTeleportRevision(client, "ResetPlayer");
+    int teleportRevision = g_iTeleportRevision[client];
+
     // Any pending "move to spec while waiting" timer is stale once we are resetting this player.
     if (g_hPlayerWaitingSpecTimer[client] != null)
     {
@@ -437,6 +558,9 @@ int ResetPlayer(int client)
 
     g_iPlayerMaxHP[client] = GetEntProp(client, Prop_Data, "m_iMaxHealth");
 
+    if (!IsTeleportContextCurrent(client, arena_index, player_slot, teleportRevision, "reset_post_spawn", "ResetPlayer"))
+        return 0;
+
     if (g_bArenaMidair[arena_index])
         g_iPlayerHP[client] = g_iMidairHP;
     else
@@ -447,9 +571,11 @@ int ResetPlayer(int client)
 
     UpdateHud(client);
     ResetClientAmmoCounts(client);
+
+    if (!IsTeleportContextCurrent(client, arena_index, player_slot, teleportRevision, "reset_queue", "ResetPlayer"))
+        return 0;
+
     QueueArenaTeleport(client, 0.1, "ResetPlayer");
-    QueueApplyWeaponRules(client, 0.15);
-    QueueApplyWeaponRules(client, 0.45);
 
     return 1;
 }
@@ -503,6 +629,9 @@ void SetPlayerToAllowedClass(int client, int arena_index)
 // Regenerates killer's health and ammo after successful elimination
 void RegenKiller(any killer)
 {
+    if (!IsValidClient(killer))
+        return;
+
     TF2_RegeneratePlayer(killer);
 }
 
@@ -1139,7 +1268,7 @@ Action Command_AutoTeam(int client, int args)
 
 // ===== GAME EVENT HANDLERS =====
 
-// Handles post-inventory updates (loadout/respawnroom) by re-applying arena teleports.
+// Handles post-inventory updates (loadout/regen/respawnroom): applies weapon rules and keeps teleport logic.
 Action Event_PostInventoryApplication(Event event, const char[] name, bool dontBroadcast)
 {
     int client = GetClientOfUserId(event.GetInt("userid"));
@@ -1157,6 +1286,8 @@ Action Event_PostInventoryApplication(Event event, const char[] name, bool dontB
     int max_active_slot = g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO;
     if (!g_bArenaNoFight[arena_index] && player_slot > max_active_slot)
         return Plugin_Continue;
+
+    ApplyWeaponRulesAfterInventoryUpdate(client, "post_inventory_application");
 
     bool inRespawnNet = IsClientInRespawnroomByNetprop(client);
     bool inRespawnOutput = (g_iPlayerRespawnroomTouchDepth[client] > 0);
@@ -1177,8 +1308,6 @@ Action Event_PostInventoryApplication(Event event, const char[] name, bool dontB
 
     if (g_bDebugTeleport)
         LogMessage("[MGE tele][debug] post_inventory_application: teleport suppressed (handled on player_spawn) client=%N", client);
-    QueueApplyWeaponRules(client, 0.1);
-    QueueApplyWeaponRules(client, 0.35);
     return Plugin_Continue;
 }
 
@@ -1238,8 +1367,6 @@ Action Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast)
                 LogMessage("[MGE tele][debug] player_spawn: queue teleport client=%N arena=%d slot=%d", client, arena_index, player_slot);
         }
     }
-
-    QueueApplyWeaponRules(client, 0.15);
 
     return Plugin_Continue;
 }
@@ -1665,7 +1792,7 @@ bool TeleportToConfiguredTeamSpawn(int client, int arena_index, float vel[3])
 }
 
 // Handles player teleportation to appropriate spawn points based on arena type
-Action Timer_Tele(Handle timer, int userid)
+Action Timer_Tele(Handle timer, int userid, int arena_index, int player_slot, int revision, const char[] reason)
 {
     #pragma unused timer
     int client = GetClientOfUserId(userid);
@@ -1676,16 +1803,9 @@ Action Timer_Tele(Handle timer, int userid)
         return Plugin_Continue;
     }
 
-    int arena_index = g_iPlayerArena[client];
+    if (!IsTeleportContextCurrent(client, arena_index, player_slot, revision, "tele_exec", reason))
+        return Plugin_Stop;
 
-    if (!arena_index)
-    {
-        if (g_bDebugTeleport)
-            LogMessage("[MGE tele][debug] Timer_Tele skip: no arena client=%N", client);
-        return Plugin_Continue;
-    }
-
-    int player_slot = g_iPlayerSlot[client];
     if (!g_bArenaNoFight[arena_index] && ((!g_bFourPersonArena[arena_index] && player_slot > SLOT_TWO) || (g_bFourPersonArena[arena_index] && player_slot > SLOT_FOUR)))
     {
         if (g_bDebugTeleport)
@@ -1718,6 +1838,7 @@ Action Timer_Tele(Handle timer, int userid)
                 MC_PrintToChat(client, "%t", "EndIfManntreadsRemoval");
                 // Run elo calc so clients can't be cheeky if they're losing
                 RemoveFromQueue(client, true);
+                return Plugin_Continue;
             }
         }
     }

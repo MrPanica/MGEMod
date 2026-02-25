@@ -1495,6 +1495,11 @@
 		"es"			"{green}[MGE]{default} ¡Te has unido automáticamente a la arena {green}{1}{default}!"
 		"pt"			"{green}[MGE]{default} Você entrou automaticamente na arena {green}{1}{default}!"
 	}
+	"EnableDrawMonitorsCenter"
+	{
+		"en"			"Enable monitor rendering: type cl_drawmonitors 1 in console."
+		"ru"			"Vklyuchite otrisovku monitorov: vvedite v konsol cl_drawmonitors 1."
+	}
 	"SpectatingLabel"
 	{
 		"en"			"spectating"

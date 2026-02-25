@@ -519,6 +519,7 @@ void AddLoserToQueue(int client, int arena_index)
     // Add to end of queue (no VIP priority)
     g_iPlayerArena[client] = arena_index;
     g_iPlayerSlot[client] = queueSlot;
+    BumpTeleportRevision(client, "AddLoserToQueue");
     g_iArenaQueue[arena_index][queueSlot] = client;
 
     // Set player to spectator if not already
@@ -547,6 +548,7 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
     int player_slot = g_iPlayerSlot[client];
     g_iPlayerArena[client] = 0;
     g_iPlayerSlot[client] = 0;
+    BumpTeleportRevision(client, "RemoveFromQueue");
     g_iArenaQueue[arena_index][player_slot] = 0;
     g_iPlayerHandicap[client] = 0;
     g_bPlayerAddedViaWadd[client] = false;
@@ -585,7 +587,9 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
             while (g_iArenaQueue[arena_index][after_leaver_slot])
             {
                 g_iArenaQueue[arena_index][after_leaver_slot - 1] = g_iArenaQueue[arena_index][after_leaver_slot];
-                g_iPlayerSlot[g_iArenaQueue[arena_index][after_leaver_slot]] -= 1;
+                int shiftedClient = g_iArenaQueue[arena_index][after_leaver_slot];
+                g_iPlayerSlot[shiftedClient] -= 1;
+                BumpTeleportRevision(shiftedClient, "RemoveFromQueue shift_nofight");
                 after_leaver_slot++;
             }
             g_iArenaQueue[arena_index][after_leaver_slot - 1] = 0;
@@ -713,6 +717,7 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
                 g_iArenaQueue[arena_index][SLOT_FOUR + 1] = 0;
                 g_iArenaQueue[arena_index][player_slot] = next_client;
                 g_iPlayerSlot[next_client] = player_slot;
+                BumpTeleportRevision(next_client, "RemoveFromQueue promote_2v2");
                 after_leaver_slot = SLOT_FOUR + 2;
                 char playername[MAX_NAME_LENGTH];
                 CreateTimer(2.0, Timer_Restart2v2Ready, arena_index);
@@ -813,6 +818,7 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
                 g_iArenaQueue[arena_index][SLOT_TWO + 1] = 0;
                 g_iArenaQueue[arena_index][player_slot] = next_client;
                 g_iPlayerSlot[next_client] = player_slot;
+                BumpTeleportRevision(next_client, "RemoveFromQueue promote_1v1");
                 after_leaver_slot = SLOT_TWO + 2;
                 char playername[MAX_NAME_LENGTH];
                 CreateTimer(2.0, Timer_StartDuel, arena_index);
@@ -850,7 +856,9 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
         while (g_iArenaQueue[arena_index][after_leaver_slot])
         {
             g_iArenaQueue[arena_index][after_leaver_slot - 1] = g_iArenaQueue[arena_index][after_leaver_slot];
-            g_iPlayerSlot[g_iArenaQueue[arena_index][after_leaver_slot]] -= 1;
+            int shiftedClient = g_iArenaQueue[arena_index][after_leaver_slot];
+            g_iPlayerSlot[shiftedClient] -= 1;
+            BumpTeleportRevision(shiftedClient, "RemoveFromQueue shift");
             after_leaver_slot++;
         }
         g_iArenaQueue[arena_index][after_leaver_slot - 1] = 0;
@@ -1063,6 +1071,7 @@ void AddInQueue(int client, int arena_index, bool showmsg = true, int playerPref
     
     g_iPlayerArena[client] = arena_index;
     g_iPlayerSlot[client] = player_slot;
+    BumpTeleportRevision(client, "AddInQueue");
     g_iArenaQueue[arena_index][player_slot] = client;
 
     // Update keyhint immediately when queue changes

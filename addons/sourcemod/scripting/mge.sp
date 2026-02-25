@@ -26,6 +26,8 @@
 #define SPAWN_ANN_TYPE_NEUTRAL 0
 #define SPAWN_ANN_TYPE_RED 1
 #define SPAWN_ANN_TYPE_BLU 2
+#define TV_KEY_OVERLAY_COUNT 8
+#define MONITOR_HINT_COOLDOWN 5.0
 
 #if !defined(IN_SCORE)
 #define IN_SCORE (1 << 16)
@@ -42,6 +44,37 @@ int g_iSpawnAnnotationArena[MAXPLAYERS + 1][MAX_SPAWN_ANNOTATIONS];
 int g_iSpawnAnnotationType[MAXPLAYERS + 1][MAX_SPAWN_ANNOTATIONS];
 int g_iSpawnAnnotationNumber[MAXPLAYERS + 1][MAX_SPAWN_ANNOTATIONS];
 float g_fSpawnAnnotationOrigin[MAXPLAYERS + 1][MAX_SPAWN_ANNOTATIONS][3];
+
+enum TvKeyOverlay
+{
+    TV_KEY_W = 0,
+    TV_KEY_S,
+    TV_KEY_A,
+    TV_KEY_D,
+    TV_KEY_JUMP,
+    TV_KEY_CTRL,
+    TV_KEY_LKM,
+    TV_KEY_PKM
+}
+
+char g_sTvKeyTextTarget[TV_KEY_OVERLAY_COUNT][32] =
+{
+    "text_w",
+    "text_s",
+    "text_a",
+    "text_d",
+    "text_jump",
+    "text_ztrl",
+    "text_lkm",
+    "text_pkm"
+};
+
+bool g_bTvKeysVisible;
+bool g_bTvKeyPressed[TV_KEY_OVERLAY_COUNT];
+int g_iTvBrushLkmEntRef;
+int g_iTvBrushPkmEntRef;
+int g_iTvBrushMouseEntRef;
+float g_fMonitorHintNextAt[MAXPLAYERS + 1];
 
 // Modules
 #include "mge/elo.sp"
@@ -284,9 +317,12 @@ public void OnPluginStart()
     AddCommandListener(Command_SetSpawnChatInput, "say_team");
     HookEntityOutput("logic_relay", "OnTrigger", OnSgCameraSignal);
     HookEntityOutput("logic_relay", "OnTrigger", OnSgTvTextSignal);
+    HookEntityOutput("logic_relay", "OnTrigger", OnSgTvTextShowKeysSignal);
     HookEntityOutput("logic_relay", "OnTrigger", OnSgCameraPovSignal);
     HookEntityOutput("logic_relay", "OnTrigger", OnSgRelayDebugTrace);
     HookEntityOutput("func_button", "OnPressed", OnFightButtonPressed);
+    HookEntityOutput("trigger_multiple", "OnStartTouch", OnTriggerMultipleStartTouchOutput);
+    HookEntityOutput("trigger_multiple", "OnStartTouchAll", OnTriggerMultipleStartTouchOutput);
     HookEntityOutput("func_respawnroom", "OnStartTouch", OnRespawnroomStartTouchOutput);
     HookEntityOutput("func_respawnroom", "OnEndTouch", OnRespawnroomEndTouchOutput);
 
@@ -527,6 +563,7 @@ bool RestoreHotReloadState()
     {
         g_iPlayerArena[client] = 0;
         g_iPlayerSlot[client] = 0;
+        g_iTeleportRevision[client] = 0;
         g_iPlayerWaiting[client] = false;
         g_bPlayerAddedViaWadd[client] = false;
     }
@@ -738,6 +775,7 @@ public void OnMapStart()
     g_fNextTopMvpWorldTextUpdate = 0.0;
     g_bMapWorldTextApplyPending = false;
     g_bTvTextVisible = true;
+    g_bTvKeysVisible = false;
     g_bCameraPovMode = false;
     g_iCameraPovTarget = 0;
     g_iCameraPovArenaIndex = 0;
@@ -752,7 +790,15 @@ public void OnMapStart()
     for (int i = 0; i < 10; i++)
         strcopy(g_sTop10WorldTextNames[i], sizeof(g_sTop10WorldTextNames[]), "---");
     for (int i = 1; i <= MaxClients; i++)
+    {
         g_iPlayerRespawnroomTouchDepth[i] = 0;
+        g_fMonitorHintNextAt[i] = 0.0;
+    }
+    for (int i = 0; i < TV_KEY_OVERLAY_COUNT; i++)
+        g_bTvKeyPressed[i] = false;
+    g_iTvBrushLkmEntRef = INVALID_ENT_REFERENCE;
+    g_iTvBrushPkmEntRef = INVALID_ENT_REFERENCE;
+    g_iTvBrushMouseEntRef = INVALID_ENT_REFERENCE;
 
     LoadWeaponRuleProfiles();
     ResetArenaWeaponRuleBindings();
@@ -785,6 +831,7 @@ public void OnMapStart()
         if (g_hMapWorldTextTimer == null)
             g_hMapWorldTextTimer = CreateTimer(1.0, Timer_UpdateMapWorldText, _, TIMER_FLAG_NO_MAPCHANGE | TIMER_REPEAT);
         RequestMapTop10WorldTextData();
+        ApplyTvKeyOverlayVisibility();
 
         // Create timer to update queue display every 10 seconds
         if (g_hQueueDisplayTimer == null)
@@ -1020,6 +1067,8 @@ public Action OnPlayerRunCmd(int client, int& buttons, int& impulse, float vel[3
             CreateTimer(0.4, Timer_GiveAmmo, GetClientUserId(client));
         }
     }
+
+    UpdateTvKeyOverlayFromClientInput(client, buttons);
     return Plugin_Continue;
 }
 
@@ -1093,6 +1142,14 @@ void handler_ConVarChange(Handle convar, const char[] oldValue, const char[] new
         {
             RequestMapTop10WorldTextData();
             Timer_UpdateMapWorldText(null);
+            RefreshTvKeyOverlayForCurrentPov();
+        }
+        else
+        {
+            g_bTvKeysVisible = false;
+            for (int i = 0; i < TV_KEY_OVERLAY_COUNT; i++)
+                g_bTvKeyPressed[i] = false;
+            ApplyTvKeyOverlayVisibility();
         }
     }
     else if (convar == g_cvarPlayArenaSound)
@@ -1298,6 +1355,31 @@ public void OnSgTvTextSignal(const char[] output, int caller, int activator, flo
     ApplyTvTextVisibility();
 }
 
+public void OnSgTvTextShowKeysSignal(const char[] output, int caller, int activator, float delay)
+{
+    int relayEnt = ResolveOutputEntity(caller);
+    if (relayEnt == -1)
+        return;
+
+    char relayName[64];
+    GetEntPropString(relayEnt, Prop_Data, "m_iName", relayName, sizeof(relayName));
+    if (!StrEqual(relayName, "sg_sm_tv_text_show_keys", false))
+        return;
+
+    if (!IsMapWorldTextEnabled())
+        return;
+
+    g_bTvKeysVisible = !g_bTvKeysVisible;
+    if (!g_bTvKeysVisible)
+    {
+        for (int i = 0; i < TV_KEY_OVERLAY_COUNT; i++)
+            g_bTvKeyPressed[i] = false;
+    }
+
+    ApplyTvKeyOverlayVisibility();
+    RefreshTvKeyOverlayForCurrentPov();
+}
+
 public void OnSgCameraPovSignal(const char[] output, int caller, int activator, float delay)
 {
     int relayEnt = ResolveOutputEntity(caller);
@@ -1340,6 +1422,117 @@ public void OnSgRelayDebugTrace(const char[] output, int caller, int activator, 
     }
 
     LogMessage("[MGE relay] %s triggered (caller=%d->%d, activator=%d class=%s name=%s)", relayName, caller, relayEnt, activator, actClass, actName);
+}
+
+bool IsTvKeyPressedForButtons(int buttons, TvKeyOverlay key)
+{
+    switch (key)
+    {
+        case TV_KEY_W: return (buttons & IN_FORWARD) != 0;
+        case TV_KEY_S: return (buttons & IN_BACK) != 0;
+        case TV_KEY_A: return (buttons & IN_MOVELEFT) != 0;
+        case TV_KEY_D: return (buttons & IN_MOVERIGHT) != 0;
+        case TV_KEY_JUMP: return (buttons & IN_JUMP) != 0;
+        case TV_KEY_CTRL: return (buttons & IN_DUCK) != 0;
+        case TV_KEY_LKM: return (buttons & IN_ATTACK) != 0;
+        case TV_KEY_PKM: return (buttons & IN_ATTACK2) != 0;
+    }
+
+    return false;
+}
+
+int GetTvBrushEntity(const char[] targetName, int &entRef)
+{
+    int cached = EntRefToEntIndex(entRef);
+    if (cached > MaxClients && IsValidEntity(cached))
+        return cached;
+
+    int entity = FindEntityByTargetName("func_brush", targetName);
+    entRef = (entity == -1) ? INVALID_ENT_REFERENCE : EntIndexToEntRef(entity);
+    return entity;
+}
+
+void SetTvBrushColor(const char[] targetName, int &entRef, bool pressed, int alpha)
+{
+    int entity = GetTvBrushEntity(targetName, entRef);
+    if (entity == -1)
+        return;
+
+    if (alpha > 0)
+        AcceptEntityInput(entity, "Enable");
+    else
+        AcceptEntityInput(entity, "Disable");
+
+    int green = pressed ? 0 : 255;
+    int blue = pressed ? 0 : 255;
+
+    SetEntityRenderMode(entity, RENDER_TRANSCOLOR);
+    SetEntityRenderColor(entity, 255, green, blue, alpha);
+}
+
+void ApplyTvKeyTextColor(TvKeyOverlay key, bool pressed, int alpha)
+{
+    int red = 255;
+    int green = pressed ? 0 : 255;
+    int blue = pressed ? 0 : 255;
+
+    SetMapTextColorByTargetName(g_sTvKeyTextTarget[view_as<int>(key)], red, green, blue, alpha);
+
+    if (key == TV_KEY_CTRL)
+        SetMapTextColorByTargetName("text_ctrl", red, green, blue, alpha);
+}
+
+void ApplyTvKeyOverlayVisibility()
+{
+    int alpha = (IsMapWorldTextEnabled() && g_bTvKeysVisible) ? 255 : 0;
+
+    for (int i = 0; i < TV_KEY_OVERLAY_COUNT; i++)
+        ApplyTvKeyTextColor(view_as<TvKeyOverlay>(i), g_bTvKeyPressed[i], alpha);
+
+    SetTvBrushColor("brush_button_lkm", g_iTvBrushLkmEntRef, g_bTvKeyPressed[TV_KEY_LKM], alpha);
+    SetTvBrushColor("brush_button_pkm", g_iTvBrushPkmEntRef, g_bTvKeyPressed[TV_KEY_PKM], alpha);
+    SetTvBrushColor("brush_button_mouse", g_iTvBrushMouseEntRef, false, alpha);
+}
+
+void RefreshTvKeyOverlayForCurrentPov()
+{
+    if (!IsMapWorldTextEnabled() || !g_bTvKeysVisible)
+        return;
+
+    bool hasTarget = g_bCameraPovMode && IsValidClient(g_iCameraPovTarget) && IsPovAttachTargetValid(g_iCameraPovTarget);
+    int buttons = hasTarget ? GetClientButtons(g_iCameraPovTarget) : 0;
+
+    for (int i = 0; i < TV_KEY_OVERLAY_COUNT; i++)
+    {
+        bool pressed = hasTarget ? IsTvKeyPressedForButtons(buttons, view_as<TvKeyOverlay>(i)) : false;
+        g_bTvKeyPressed[i] = pressed;
+    }
+
+    ApplyTvKeyOverlayVisibility();
+}
+
+void UpdateTvKeyOverlayFromClientInput(int client, int buttons)
+{
+    if (!IsMapWorldTextEnabled() || !g_bTvKeysVisible)
+        return;
+    if (!g_bCameraPovMode || client != g_iCameraPovTarget)
+        return;
+    if (!IsPovAttachTargetValid(client))
+        return;
+
+    bool changed = false;
+    for (int i = 0; i < TV_KEY_OVERLAY_COUNT; i++)
+    {
+        bool pressed = IsTvKeyPressedForButtons(buttons, view_as<TvKeyOverlay>(i));
+        if (pressed == g_bTvKeyPressed[i])
+            continue;
+
+        g_bTvKeyPressed[i] = pressed;
+        changed = true;
+    }
+
+    if (changed)
+        ApplyTvKeyOverlayVisibility();
 }
 
 void HandleCameraPovToggle(const char[] source, int activator)
@@ -1392,6 +1585,8 @@ void HandleCameraPovToggle(const char[] source, int activator)
     g_iCameraPovTarget = players[nextIndex];
     LogMessage("[MGE camera] POV relay: switch target to %N (index=%d/%d)", g_iCameraPovTarget, nextIndex, count - 1);
     UpdateCameraPovViewNow();
+    UpdateTvTextForCurrentCamera();
+    RefreshTvKeyOverlayForCurrentPov();
 }
 
 int FindNextValidPovTarget(const int players[MAXPLAYERS + 1], int count, int currentIndex)
@@ -1427,6 +1622,44 @@ public void OnFightButtonPressed(const char[] output, int caller, int activator,
         return;
 
     FakeClientCommand(activator, "add");
+}
+
+public void OnTriggerMultipleStartTouchOutput(const char[] output, int caller, int activator, float delay)
+{
+    int trigger = ResolveOutputEntity(caller);
+    if (trigger == -1)
+        return;
+    if (!IsValidClient(activator) || IsFakeClient(activator))
+        return;
+
+    char triggerName[64];
+    GetEntPropString(trigger, Prop_Data, "m_iName", triggerName, sizeof(triggerName));
+    if (!StrEqual(triggerName, "trigger_monitor", false))
+        return;
+
+    float now = GetGameTime();
+    if (g_fMonitorHintNextAt[activator] > now)
+        return;
+    g_fMonitorHintNextAt[activator] = now + MONITOR_HINT_COOLDOWN;
+
+    QueryClientConVar(activator, "cl_drawmonitors", OnQueryClientDrawMonitors, GetClientUserId(activator));
+}
+
+public void OnQueryClientDrawMonitors(QueryCookie cookie, int client, ConVarQueryResult result, const char[] cvarName, const char[] cvarValue, any data)
+{
+    #pragma unused cookie
+    #pragma unused client
+    #pragma unused cvarName
+
+    int target = GetClientOfUserId(data);
+    if (!IsValidClient(target) || IsFakeClient(target))
+        return;
+    if (result == ConVarQuery_Okay && StringToInt(cvarValue) != 0)
+        return;
+
+    SetHudTextParams(-1.0, 0.43, 3.0, 255, 80, 80, 255);
+    ShowHudText(target, -1, "%t", "EnableDrawMonitorsCenter");
+    PrintCenterText(target, "%t", "EnableDrawMonitorsCenter");
 }
 
 int ResolveCameraArenaIndex(int cameraIndex)
@@ -1538,9 +1771,11 @@ void EnterCameraPovMode(int arenaIndex, int target, int listIndex)
     delete g_hCameraPovFollowTimer;
     g_hCameraPovFollowTimer = CreateTimer(0.05, Timer_UpdateCameraPovFollow, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
     UpdateCameraPovViewNow();
+    UpdateTvTextForCurrentCamera();
+    RefreshTvKeyOverlayForCurrentPov();
 }
 
-void ExitCameraPovModeToCamera(const char[] restoreCameraName)
+void ExitCameraPovModeToCamera(const char[] restoreCameraName, bool fromPovFollowTimer = false)
 {
     if (!g_bCameraPovMode && g_hCameraPovFollowTimer == null)
         return;
@@ -1549,7 +1784,13 @@ void ExitCameraPovModeToCamera(const char[] restoreCameraName)
     g_iCameraPovTarget = 0;
     g_iCameraPovArenaIndex = 0;
     g_iCameraPovListIndex = -1;
-    delete g_hCameraPovFollowTimer;
+    if (g_hCameraPovFollowTimer != null)
+    {
+        if (fromPovFollowTimer)
+            g_hCameraPovFollowTimer = null;
+        else
+            delete g_hCameraPovFollowTimer;
+    }
 
     int spectateCam = GetCameraSpectateEntity();
     if (spectateCam != -1)
@@ -1581,12 +1822,19 @@ void ExitCameraPovModeToCamera(const char[] restoreCameraName)
     {
         LogMessage("[MGE camera][WARN] POV OFF: restore camera not found (%s)", restoreCameraName);
     }
+
+    UpdateTvTextForCurrentCamera();
+    RefreshTvKeyOverlayForCurrentPov();
 }
 
 Action Timer_UpdateCameraPovFollow(Handle timer)
 {
     if (!g_bCameraPovMode)
+    {
+        if (g_hCameraPovFollowTimer == timer)
+            g_hCameraPovFollowTimer = null;
         return Plugin_Stop;
+    }
 
     if (!IsValidClient(g_iCameraPovTarget) || g_iPlayerArena[g_iCameraPovTarget] != g_iCameraPovArenaIndex || !IsPovAttachTargetValid(g_iCameraPovTarget))
     {
@@ -1597,13 +1845,15 @@ Action Timer_UpdateCameraPovFollow(Handle timer)
         if (nextIndex == -1)
         {
             LogMessage("[MGE camera] POV target invalid and no next valid target, exiting POV");
-            ExitCameraPovModeToCamera(g_sCurrentCameraName);
+            ExitCameraPovModeToCamera(g_sCurrentCameraName, true);
             return Plugin_Stop;
         }
 
         g_iCameraPovListIndex = nextIndex;
         g_iCameraPovTarget = players[nextIndex];
         LogMessage("[MGE camera] POV auto-skip invalid target, switched to %N", g_iCameraPovTarget);
+        UpdateTvTextForCurrentCamera();
+        RefreshTvKeyOverlayForCurrentPov();
     }
 
     UpdateCameraPovViewNow();
@@ -1827,7 +2077,13 @@ void BuildTvScoreLine(int player, int arenaIndex, int score, char[] output, int 
     char nameAscii[MAX_NAME_LENGTH * 2];
     GetClientName(player, nameRaw, sizeof(nameRaw));
     TransliterateToAscii(nameRaw, nameAscii, sizeof(nameAscii));
-    Format(output, outputSize, "%s (%d, CvC: %d): %d", nameAscii, overall, matchup, score);
+
+    char povPrefix[8];
+    povPrefix[0] = '\0';
+    if (g_bCameraPovMode && player == g_iCameraPovTarget)
+        strcopy(povPrefix, sizeof(povPrefix), "[POV] ");
+
+    Format(output, outputSize, "%s%s (%d, CvC: %d): %d", povPrefix, nameAscii, overall, matchup, score);
 }
 
 void BuildTvArenaHeader(int arenaIndex, char[] output, int outputSize)
@@ -1946,12 +2202,17 @@ void ApplyTvTextVisibility()
 
 void SetMapTextAlphaByTargetName(const char[] targetName, int alpha)
 {
+    SetMapTextColorByTargetName(targetName, 255, 255, 255, alpha);
+}
+
+void SetMapTextColorByTargetName(const char[] targetName, int red, int green, int blue, int alpha)
+{
     int entity = FindEntityByTargetName("point_worldtext", targetName);
     if (entity == -1)
         return;
 
     char color[32];
-    Format(color, sizeof(color), "255 255 255 %d", alpha);
+    Format(color, sizeof(color), "%d %d %d %d", red, green, blue, alpha);
     DispatchKeyValue(entity, "color", color);
     SetVariantString(color);
     AcceptEntityInput(entity, "SetColor");

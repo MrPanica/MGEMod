@@ -238,6 +238,7 @@ int g_iSetSpawnMode        [MAXPLAYERS + 1];
 int
     g_iPlayerArena          [MAXPLAYERS + 1],
     g_iPlayerSlot           [MAXPLAYERS + 1],
+    g_iTeleportRevision     [MAXPLAYERS + 1],
     g_iPlayerRespawnroomTouchDepth [MAXPLAYERS + 1],
     g_iPlayerHP             [MAXPLAYERS + 1], // True HP of players
     g_iPlayerSpecTarget     [MAXPLAYERS + 1],

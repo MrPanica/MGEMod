@@ -723,7 +723,7 @@ void ReapplyWeaponRulesToOnlineArenaPlayers()
         if (g_iPlayerArena[client] <= 0)
             continue;
 
-        QueueApplyWeaponRules(client, 0.1);
+        ApplyWeaponRulesAfterInventoryUpdate(client, "weapon_reload");
     }
 }
 
@@ -1312,25 +1312,67 @@ void ApplyArenaWeaponRulesForClient(int client)
         ApplyWeaponRuleToSlot(client, arena, i, weaponEntity, ruleType, replacementIndex, replacementClass);
     }
 
+    // Extra pass for blocked wearables (some items are not in weapon slots).
+    int wearable = -1;
+    while ((wearable = FindEntityByClassname(wearable, "tf_wearable*")) != -1)
+    {
+        if (!IsValidEntity(wearable))
+            continue;
+        if (!HasEntProp(wearable, Prop_Send, "m_iItemDefinitionIndex"))
+            continue;
+        if (!HasEntProp(wearable, Prop_Send, "m_hOwnerEntity"))
+            continue;
+
+        int owner = GetEntPropEnt(wearable, Prop_Send, "m_hOwnerEntity");
+        if (owner != client)
+            continue;
+
+        int itemdef = GetEntProp(wearable, Prop_Send, "m_iItemDefinitionIndex");
+        char ruleDesc[MAX_WEAPON_RULE_DESC];
+        if (!ResolveArenaWeaponRule(arena, wearable, itemdef, ruleDesc, sizeof(ruleDesc), client))
+            continue;
+
+        WeaponRuleType ruleType;
+        int replacementIndex;
+        char replacementClass[MAX_WEAPON_CLASS_TOKEN];
+        if (!DecodeRuleDesc(ruleDesc, ruleType, replacementIndex, replacementClass, sizeof(replacementClass)))
+            continue;
+
+        if (ruleType == WR_Block)
+        {
+            if (g_bDebugWeaponRules)
+            {
+                char wearableClass[64];
+                GetEntityClassname(wearable, wearableClass, sizeof(wearableClass));
+                LogMessage("[MGE weapons][debug] wearable block client=%N arena=%s itemdef=%d class=%s ent=%d",
+                    client, g_sArenaOriginalName[arena], itemdef, wearableClass, wearable);
+            }
+
+            if (GetFeatureStatus(FeatureType_Native, "TF2_RemoveWearable") == FeatureStatus_Available)
+                TF2_RemoveWearable(client, wearable);
+            else
+                RemoveEntity(wearable);
+        }
+        else if (ruleType == WR_Replace && g_bDebugWeaponRules)
+        {
+            LogMessage("[MGE weapons][debug] wearable replace skipped (remove-only for wearables) client=%N arena=%s itemdef=%d",
+                client, g_sArenaOriginalName[arena], itemdef);
+        }
+    }
+
     g_bApplyingWeaponRules[client] = false;
 
     if (g_bDebugWeaponRules)
         LogMessage("[MGE weapons][debug] apply done client=%N arena=%s", client, g_sArenaOriginalName[arena]);
 }
 
-void QueueApplyWeaponRules(int client, float delay = 0.1)
+void ApplyWeaponRulesAfterInventoryUpdate(int client, const char[] source)
 {
     if (!IsValidClient(client))
         return;
 
-    CreateTimer(delay, Timer_ApplyArenaWeaponRules, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
-}
+    if (g_bDebugWeaponRules)
+        LogMessage("[MGE weapons][debug] inventory_update source=%s client=%N", source, client);
 
-Action Timer_ApplyArenaWeaponRules(Handle timer, int userid)
-{
-    int client = GetClientOfUserId(userid);
-    if (IsValidClient(client))
-        ApplyArenaWeaponRulesForClient(client);
-
-    return Plugin_Stop;
+    ApplyArenaWeaponRulesForClient(client);
 }
