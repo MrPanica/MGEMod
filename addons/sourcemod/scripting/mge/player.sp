@@ -181,6 +181,7 @@ bool IsTeleportContextCurrent(int client, int arena_index, int player_slot, int 
 void HandleClientDisconnection(int client)
 {
     BumpTeleportRevision(client, "HandleClientDisconnection");
+    ClearBBallCarryState(client, true);
 
     g_iPlayerRespawnroomTouchDepth[client] = 0;
     g_bSetSpawnAwaitInput[client] = false;
@@ -1339,8 +1340,11 @@ Action Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast)
 
     if (g_bArenaBBall[arena_index])
     {
-        g_bPlayerHasIntel[client] = false;
-        RemoveBBallBackModel(client);
+        ClearBBallCarryState(client, true);
+    }
+    else if (g_iBBallBackModel[client] != 0 || g_bPlayerHasIntel[client])
+    {
+        ClearBBallCarryState(client, true);
     }
 
     // post_inventory/loadout respawns should teleport from this hook; ResetPlayer-initiated spawns already queue teleports.

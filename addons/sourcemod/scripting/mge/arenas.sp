@@ -641,25 +641,21 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
                     g_iBBallIntel[arena_index] = -1;
                 }
 
-                RemoveClientParticle(client);
-                g_bPlayerHasIntel[client] = false;
+                ClearBBallCarryState(client, true);
 
                 if (foe)
                 {
-                    RemoveClientParticle(foe);
-                    g_bPlayerHasIntel[foe] = false;
+                    ClearBBallCarryState(foe, true);
                 }
 
                 if (foe2)
                 {
-                    RemoveClientParticle(foe2);
-                    g_bPlayerHasIntel[foe2] = false;
+                    ClearBBallCarryState(foe2, true);
                 }
 
                 if (player_teammate)
                 {
-                    RemoveClientParticle(player_teammate);
-                    g_bPlayerHasIntel[player_teammate] = false;
+                    ClearBBallCarryState(player_teammate, true);
                 }
             }
 
@@ -772,13 +768,11 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
                     g_iBBallIntel[arena_index] = -1;
                 }
 
-                RemoveClientParticle(client);
-                g_bPlayerHasIntel[client] = false;
+                ClearBBallCarryState(client, true);
 
                 if (foe)
                 {
-                    RemoveClientParticle(foe);
-                    g_bPlayerHasIntel[foe] = false;
+                    ClearBBallCarryState(foe, true);
                 }
             }
 

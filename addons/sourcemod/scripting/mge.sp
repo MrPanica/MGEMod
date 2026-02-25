@@ -748,6 +748,7 @@ public void OnPluginEnd()
             g_hPlayerWaitingSpecTimer[client] = null;
         }
         ClearClientSpawnAnnotations(client, false);
+        ClearBBallCarryState(client, true);
     }
 
     SaveHotReloadState();
@@ -955,6 +956,7 @@ public void OnMapEnd()
         }
         g_iPlayerWaiting[client] = false;
         ClearClientSpawnAnnotations(client, false);
+        ClearBBallCarryState(client, true);
     }
 }
 

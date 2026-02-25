@@ -24,6 +24,18 @@ void RemoveBBallBackModel(int client)
     RemoveEntityByRef(g_iBBallBackModel[client]);
 }
 
+void ClearBBallCarryState(int client, bool removeParticle = true)
+{
+    if (client <= 0 || client > MaxClients)
+        return;
+
+    g_bPlayerHasIntel[client] = false;
+    RemoveBBallBackModel(client);
+
+    if (removeParticle)
+        RemoveClientParticle(client);
+}
+
 void AttachBBallBackModel(int client)
 {
     RemoveBBallBackModel(client);
@@ -224,7 +236,7 @@ void ResetIntel(int arena_index, any client = -1)
         if (client != -1)
         {
             int client_slot = g_iPlayerSlot[client];
-            g_bPlayerHasIntel[client] = false;
+            ClearBBallCarryState(client, true);
 
             if (client_slot == SLOT_ONE || client_slot == SLOT_THREE)
             {
@@ -382,9 +394,8 @@ Action OnTouchHoop(int entity, int other)
 
     if (entity == g_iBBallHoop[arena_index][foe_slot] && g_bPlayerHasIntel[client])
     {
-        // Remove the particle effect attached to the player carrying the intel.
-        RemoveClientParticle(client);
-        RemoveBBallBackModel(client);
+        // Drop carry visuals immediately on dunk.
+        ClearBBallCarryState(client, true);
 
         char foe_name[MAX_NAME_LENGTH];
         GetClientName(foe, foe_name, sizeof(foe_name));
@@ -393,7 +404,6 @@ Action OnTouchHoop(int entity, int other)
 
         MC_PrintToChat(client, "%t", "bballdunk", foe_name);
 
-        g_bPlayerHasIntel[client] = false;
         g_iArenaScore[arena_index][client_team_slot] += 1;
         g_iBBallIntelSkinTeam[arena_index] = (client_team_slot == SLOT_ONE) ? 0 : 1;
 
@@ -502,8 +512,7 @@ void HandleBBallPlayerDeath(int victim, int killer, int arena_index)
     if (!g_bPlayerHasIntel[victim])
         return;
         
-    g_bPlayerHasIntel[victim] = false;
-    RemoveBBallBackModel(victim);
+    ClearBBallCarryState(victim, true);
     float pos[3];
     GetClientAbsOrigin(victim, pos);
     float dist = DistanceAboveGround(victim);
@@ -538,8 +547,7 @@ Action Command_DropItem(int client, const char[] command, int argc)
     {
         if (g_bPlayerHasIntel[client])
         {
-            g_bPlayerHasIntel[client] = false;
-            RemoveBBallBackModel(client);
+            ClearBBallCarryState(client, true);
             float pos[3];
             GetClientAbsOrigin(client, pos);
             float dist = DistanceAboveGroundAroundPlayer(client);
@@ -557,8 +565,6 @@ Action Command_DropItem(int client, const char[] command, int argc)
             ConfigureAndSpawnBBallIntelEntity(arena_index, pos);
 
             EmitSoundToClient(client, "vo/intel_teamdropped.mp3");
-
-            RemoveClientParticle(client);
 
             g_bCanPlayerGetIntel[client] = false;
             CreateTimer(0.5, Timer_AllowPlayerCap, client);
