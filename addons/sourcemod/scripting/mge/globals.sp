@@ -61,10 +61,10 @@ Handle g_hDBReconnectTimer;
 Handle g_hTopRatingTimer; // Timer for displaying top online player rating
 Handle g_hSpecHudTimer;
 Handle g_hQueueKeyHintTimer;
-Handle g_hQueueDisplayTimer;
 Handle g_hMapWorldTextTimer;
 Handle g_hMapWorldTextApplyTimer;
 Handle g_hBBallIntelSpinTimer[MAXARENAS + 1];
+Handle g_hBBallScoreboardTimer;
 Handle g_hPlayerWaitingSpecTimer[MAXPLAYERS + 1];
 
 char g_sDBConfig[256];
@@ -94,8 +94,11 @@ Convar
     gcvar_debugWadd,
     gcvar_debugTeleport,
     gcvar_debugWeaponRules,
+    gcvar_perfDebug,
     gcvar_allowUnverifiedPlayers,
     gcvar_vipQueuePriority,
+    gcvar_queueHintInterval,
+    gcvar_bballSpinInterval,
     gcvar_mapWorldText,
     g_cvarPlayArenaSound;
 
@@ -198,6 +201,8 @@ int
     g_iBBallIntel           [MAXARENAS + 1],
     g_iBBallIntelWorldParticle [MAXARENAS + 1],
     g_iBBallIntelSkinTeam   [MAXARENAS + 1],
+    g_iBBallTimerEntRef     [MAXARENAS + 1][4],
+    g_iBBallScoreEntRef     [MAXARENAS + 1][2][2],
     g_iArenaEarlyLeave      [MAXARENAS + 1],
     g_iPublicInviteArena    [MAXARENAS + 1],
     g_iTopPlayersPage       [MAXPLAYERS + 1],

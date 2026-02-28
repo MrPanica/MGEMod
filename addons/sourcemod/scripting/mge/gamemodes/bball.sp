@@ -8,6 +8,272 @@ void RemoveEntityByRef(int &entityRef)
     entityRef = 0;
 }
 
+// ===== SCOREBOARD =====
+
+enum
+{
+    BBALL_TIMER_MIN_TENS = 0,
+    BBALL_TIMER_MIN_ONES,
+    BBALL_TIMER_SEC_TENS,
+    BBALL_TIMER_SEC_ONES
+}
+
+enum
+{
+    BBALL_SCORE_TEAM_RED = 0,
+    BBALL_SCORE_TEAM_BLU
+}
+
+enum
+{
+    BBALL_SCORE_TENS = 0,
+    BBALL_SCORE_ONES
+}
+
+void ResetBBallScoreboardCache(int arena_index)
+{
+    if (arena_index < 0 || arena_index > MAXARENAS)
+        return;
+
+    for (int i = 0; i < 4; i++)
+        g_iBBallTimerEntRef[arena_index][i] = INVALID_ENT_REFERENCE;
+
+    for (int team = 0; team < 2; team++)
+    {
+        for (int digit = 0; digit < 2; digit++)
+            g_iBBallScoreEntRef[arena_index][team][digit] = INVALID_ENT_REFERENCE;
+    }
+}
+
+void GetBBallScoreboardModeForArena(int arena_index, char[] mode, int modeSize)
+{
+    if (arena_index <= 0 || arena_index > g_iArenaCount)
+    {
+        strcopy(mode, modeSize, "1v1");
+        return;
+    }
+
+    strcopy(mode, modeSize, g_bFourPersonArena[arena_index] ? "2v2" : "1v1");
+}
+
+float GetArenaClosestSpawnDistSqr(int arena_index, float origin[3])
+{
+    float bestDistSqr = -1.0;
+
+    if (g_bArenaUseTeamSpawns[arena_index])
+    {
+        for (int i = 1; i <= g_iArenaRedSpawns[arena_index]; i++)
+        {
+            float distSqr = GetVectorDistance(origin, g_fArenaRedSpawnOrigin[arena_index][i], true);
+            if (bestDistSqr < 0.0 || distSqr < bestDistSqr)
+                bestDistSqr = distSqr;
+        }
+
+        for (int i = 1; i <= g_iArenaBluSpawns[arena_index]; i++)
+        {
+            float distSqr = GetVectorDistance(origin, g_fArenaBluSpawnOrigin[arena_index][i], true);
+            if (bestDistSqr < 0.0 || distSqr < bestDistSqr)
+                bestDistSqr = distSqr;
+        }
+    }
+
+    if (bestDistSqr < 0.0)
+    {
+        for (int i = 1; i <= g_iArenaSpawns[arena_index]; i++)
+        {
+            float distSqr = GetVectorDistance(origin, g_fArenaSpawnOrigin[arena_index][i], true);
+            if (bestDistSqr < 0.0 || distSqr < bestDistSqr)
+                bestDistSqr = distSqr;
+        }
+    }
+
+    return bestDistSqr;
+}
+
+int FindNearestBBallTextureToggleForArena(int arena_index, const char[] targetName)
+{
+    if (arena_index <= 0 || arena_index > g_iArenaCount || targetName[0] == '\0')
+        return INVALID_ENT_REFERENCE;
+
+    int entity = -1;
+    int bestEntity = -1;
+    float bestDistSqr = -1.0;
+    float origin[3];
+    char nameBuf[64];
+
+    while ((entity = FindEntityByClassname(entity, "env_texturetoggle")) != -1)
+    {
+        if (!IsValidEntity(entity))
+            continue;
+
+        GetEntPropString(entity, Prop_Data, "m_iName", nameBuf, sizeof(nameBuf));
+        if (!StrEqual(nameBuf, targetName, false))
+            continue;
+
+        GetEntPropVector(entity, Prop_Data, "m_vecOrigin", origin);
+        float distSqr = GetArenaClosestSpawnDistSqr(arena_index, origin);
+        if (distSqr < 0.0)
+            continue;
+
+        if (bestEntity == -1 || distSqr < bestDistSqr)
+        {
+            bestEntity = entity;
+            bestDistSqr = distSqr;
+        }
+    }
+
+    if (bestEntity == -1)
+        return INVALID_ENT_REFERENCE;
+
+    return EntIndexToEntRef(bestEntity);
+}
+
+void CacheBBallScoreboardEntities()
+{
+    for (int arena = 0; arena <= MAXARENAS; arena++)
+    {
+        ResetBBallScoreboardCache(arena);
+
+        if (arena <= 0 || arena > g_iArenaCount || !g_bArenaBBall[arena])
+            continue;
+
+        char mode[4];
+        GetBBallScoreboardModeForArena(arena, mode, sizeof(mode));
+
+        char targetName[64];
+
+        Format(targetName, sizeof(targetName), "skin_bball_count_%s_1000", mode);
+        g_iBBallTimerEntRef[arena][BBALL_TIMER_MIN_TENS] = FindNearestBBallTextureToggleForArena(arena, targetName);
+
+        Format(targetName, sizeof(targetName), "skin_bball_count_%s_100", mode);
+        g_iBBallTimerEntRef[arena][BBALL_TIMER_MIN_ONES] = FindNearestBBallTextureToggleForArena(arena, targetName);
+
+        Format(targetName, sizeof(targetName), "skin_bball_count_%s_10", mode);
+        g_iBBallTimerEntRef[arena][BBALL_TIMER_SEC_TENS] = FindNearestBBallTextureToggleForArena(arena, targetName);
+
+        Format(targetName, sizeof(targetName), "skin_bball_count_%s_1", mode);
+        g_iBBallTimerEntRef[arena][BBALL_TIMER_SEC_ONES] = FindNearestBBallTextureToggleForArena(arena, targetName);
+
+        Format(targetName, sizeof(targetName), "skin_count_bball_%s_red_10", mode);
+        g_iBBallScoreEntRef[arena][BBALL_SCORE_TEAM_RED][BBALL_SCORE_TENS] = FindNearestBBallTextureToggleForArena(arena, targetName);
+
+        Format(targetName, sizeof(targetName), "skin_count_bball_%s_red_1", mode);
+        g_iBBallScoreEntRef[arena][BBALL_SCORE_TEAM_RED][BBALL_SCORE_ONES] = FindNearestBBallTextureToggleForArena(arena, targetName);
+
+        Format(targetName, sizeof(targetName), "skin_count_bball_%s_blue_10", mode);
+        g_iBBallScoreEntRef[arena][BBALL_SCORE_TEAM_BLU][BBALL_SCORE_TENS] = FindNearestBBallTextureToggleForArena(arena, targetName);
+
+        Format(targetName, sizeof(targetName), "skin_count_bball_%s_blue_1", mode);
+        g_iBBallScoreEntRef[arena][BBALL_SCORE_TEAM_BLU][BBALL_SCORE_ONES] = FindNearestBBallTextureToggleForArena(arena, targetName);
+    }
+}
+
+void ApplyTextureToggleDigit(int entRef, int digit)
+{
+    int entity = EntRefToEntIndex(entRef);
+    if (entity <= MaxClients || !IsValidEntity(entity))
+        return;
+
+    if (digit < 0)
+        digit = 0;
+    else if (digit > 9)
+        digit = 9;
+
+    SetVariantInt(digit);
+    AcceptEntityInput(entity, "SetTextureIndex");
+}
+
+void UpdateBBallScoreboardForArena(int arena_index)
+{
+    if (arena_index <= 0 || arena_index > g_iArenaCount || !g_bArenaBBall[arena_index])
+        return;
+
+    int elapsed = 0;
+    int redScore = 0;
+    int bluScore = 0;
+    if (g_iArenaStatus[arena_index] == AS_FIGHT && g_iArenaDuelStartTime[arena_index] > 0)
+    {
+        elapsed = GetTime() - g_iArenaDuelStartTime[arena_index];
+        if (elapsed < 0)
+            elapsed = 0;
+        else if (elapsed > 5999)
+            elapsed = 5999;
+
+        redScore = g_iArenaScore[arena_index][SLOT_ONE];
+        bluScore = g_iArenaScore[arena_index][SLOT_TWO];
+        if (redScore < 0)
+            redScore = 0;
+        else if (redScore > 99)
+            redScore = 99;
+        if (bluScore < 0)
+            bluScore = 0;
+        else if (bluScore > 99)
+            bluScore = 99;
+    }
+
+    int minutes = elapsed / 60;
+    int seconds = elapsed % 60;
+    int minuteTens = (minutes / 10) % 10;
+    int minuteOnes = minutes % 10;
+    int secondTens = (seconds / 10) % 10;
+    int secondOnes = seconds % 10;
+    int redTens = (redScore / 10) % 10;
+    int redOnes = redScore % 10;
+    int bluTens = (bluScore / 10) % 10;
+    int bluOnes = bluScore % 10;
+
+    ApplyTextureToggleDigit(g_iBBallTimerEntRef[arena_index][BBALL_TIMER_MIN_TENS], minuteTens);
+    ApplyTextureToggleDigit(g_iBBallTimerEntRef[arena_index][BBALL_TIMER_MIN_ONES], minuteOnes);
+    ApplyTextureToggleDigit(g_iBBallTimerEntRef[arena_index][BBALL_TIMER_SEC_TENS], secondTens);
+    ApplyTextureToggleDigit(g_iBBallTimerEntRef[arena_index][BBALL_TIMER_SEC_ONES], secondOnes);
+
+    ApplyTextureToggleDigit(g_iBBallScoreEntRef[arena_index][BBALL_SCORE_TEAM_RED][BBALL_SCORE_TENS], redTens);
+    ApplyTextureToggleDigit(g_iBBallScoreEntRef[arena_index][BBALL_SCORE_TEAM_RED][BBALL_SCORE_ONES], redOnes);
+    ApplyTextureToggleDigit(g_iBBallScoreEntRef[arena_index][BBALL_SCORE_TEAM_BLU][BBALL_SCORE_TENS], bluTens);
+    ApplyTextureToggleDigit(g_iBBallScoreEntRef[arena_index][BBALL_SCORE_TEAM_BLU][BBALL_SCORE_ONES], bluOnes);
+}
+
+void UpdateBBallScoreboards()
+{
+    for (int arena = 1; arena <= g_iArenaCount; arena++)
+    {
+        if (!g_bArenaBBall[arena])
+            continue;
+
+        UpdateBBallScoreboardForArena(arena);
+    }
+}
+
+Action Timer_UpdateBBallScoreboards(Handle timer)
+{
+    if (g_hBBallScoreboardTimer != timer)
+        return Plugin_Stop;
+
+    UpdateBBallScoreboards();
+    return Plugin_Continue;
+}
+
+void StartBBallScoreboardTimer()
+{
+    delete g_hBBallScoreboardTimer;
+
+    bool hasBballArena = false;
+    for (int arena = 1; arena <= g_iArenaCount; arena++)
+    {
+        if (g_bArenaBBall[arena])
+        {
+            hasBballArena = true;
+            break;
+        }
+    }
+
+    if (!hasBballArena)
+        return;
+
+    g_hBBallScoreboardTimer = CreateTimer(1.0, Timer_UpdateBBallScoreboards, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+    UpdateBBallScoreboards();
+}
+
 int ResolveCarryAttachment(int client)
 {
     static const char attachments[][] = { "flag", "backpack", "back_lower", "spine_2", "weapon_bone", "head" };
@@ -69,7 +335,7 @@ void AttachBBallBackModel(int client)
 void RemoveBBallIntelWorldFx(int arena_index)
 {
     RemoveEntityByRef(g_iBBallIntelWorldParticle[arena_index]);
-    g_hBBallIntelSpinTimer[arena_index] = null;
+    delete g_hBBallIntelSpinTimer[arena_index];
 }
 
 void ApplyBBallIntelVisuals(int arena_index)
@@ -96,7 +362,8 @@ void ApplyBBallIntelVisuals(int arena_index)
         g_iBBallIntelWorldParticle[arena_index] = EntIndexToEntRef(particle);
     }
 
-        g_hBBallIntelSpinTimer[arena_index] = CreateTimer(0.01, Timer_SpinBBallIntel, arena_index, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+    delete g_hBBallIntelSpinTimer[arena_index];
+    g_hBBallIntelSpinTimer[arena_index] = CreateTimer(g_fBBallSpinInterval, Timer_SpinBBallIntel, arena_index, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
 }
 
 Action Hook_BBallBackModelSetTransmit(int entity, int client)
@@ -406,6 +673,7 @@ Action OnTouchHoop(int entity, int other)
 
         g_iArenaScore[arena_index][client_team_slot] += 1;
         g_iBBallIntelSkinTeam[arena_index] = (client_team_slot == SLOT_ONE) ? 0 : 1;
+        UpdateBBallScoreboardForArena(arena_index);
 
         if (fraglimit > 0 && g_iArenaScore[arena_index][client_team_slot] >= fraglimit && g_iArenaStatus[arena_index] >= AS_FIGHT && g_iArenaStatus[arena_index] < AS_REPORTED)
         {
@@ -441,6 +709,8 @@ Action OnTouchHoop(int entity, int other)
 
             else if (!g_bNoStats)
                 CalcELO2(client, client_teammate, foe, foe_teammate);
+
+            g_iArenaDuelStartTime[arena_index] = 0;
 
             if (IsValidEdict(g_iBBallIntel[arena_index]) && g_iBBallIntel[arena_index] > -1)
             {
@@ -479,6 +749,8 @@ Action OnTouchHoop(int entity, int other)
 
             CreateTimer(0.15, Timer_ResetIntel, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
         }
+
+        UpdateBBallScoreboardForArena(arena_index);
 
         UpdateHud(client);
         UpdateHud(foe);

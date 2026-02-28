@@ -20,18 +20,25 @@ void ResetClientAmmoCounts(int client)
 // Continuously manage health values in ammomod arenas to prevent one-shot kills
 void ProcessAmmomodHealthManagement()
 {
-    for (int client = 1; client <= MaxClients; client++)
+    for (int arena_index = 1; arena_index <= g_iArenaCount; arena_index++)
     {
-        if (IsValidClient(client) && IsPlayerAlive(client))
+        if (g_iArenaStatus[arena_index] != AS_FIGHT)
+            continue;
+
+        if (g_bArenaBBall[arena_index] || g_bArenaMGE[arena_index] || g_bArenaKoth[arena_index])
+            continue;
+
+        int max_slot = g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO;
+        for (int slot = SLOT_ONE; slot <= max_slot; slot++)
         {
-            int arena_index = g_iPlayerArena[client];
-            if (!g_bArenaBBall[arena_index] && !g_bArenaMGE[arena_index] && !g_bArenaKoth[arena_index])
-            {
-                /*  This is a hack that prevents people from getting one-shot by things
+            int client = g_iArenaQueue[arena_index][slot];
+            if (!IsValidClient(client) || !IsPlayerAlive(client))
+                continue;
+
+            /*  This is a hack that prevents people from getting one-shot by things
                 like the direct hit in the Ammomod arenas. */
-                int replacement_hp = (g_iPlayerMaxHP[client] + 512);
-                SetEntProp(client, Prop_Send, "m_iHealth", replacement_hp, 1);
-            }
+            int replacement_hp = (g_iPlayerMaxHP[client] + 512);
+            SetEntProp(client, Prop_Send, "m_iHealth", replacement_hp, 1);
         }
     }
 }

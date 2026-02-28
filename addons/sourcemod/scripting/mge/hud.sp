@@ -565,11 +565,11 @@ void ShowQueueInKeyHintText(int client, int arena_index)
         }
     }
 
-    // Always send KeyHintText message (empty if no queue)
-    Client_PrintKeyHintText(client, "%s", queueMessage);
+    // Send only when text changes to reduce usermessage spam.
+    SendQueueKeyHintTextIfChanged(client, queueMessage);
 }
 
-// Timer callback to update queue keyhint every 10 seconds
+// Timer callback to update queue keyhint
 Action Timer_UpdateQueueKeyHint(Handle timer)
 {
     for (int i = 1; i <= g_iArenaCount; i++)
@@ -634,20 +634,24 @@ void ClearQueueKeyHintText(int client)
     if (g_bScoreboardOpen[client])
         return;
 
-    // Send empty KeyHintText to clear it
-    Client_PrintKeyHintText(client, "");
+    SendQueueKeyHintTextIfChanged(client, "");
 }
 
-// Timer function to update queue display every 10 seconds
-Action Timer_UpdateQueueDisplay(Handle timer)
+void SendQueueKeyHintTextIfChanged(int client, const char[] text)
 {
-    // Update queue display for all arenas
-    for (int i = 1; i <= g_iArenaCount; i++)
-    {
-        UpdateQueueKeyHintText(i);
-    }
-    
-    return Plugin_Continue;
+    if (!IsValidClient(client))
+        return;
+
+    float now = GetGameTime();
+    bool textChanged = !StrEqual(g_sLastQueueHintText[client], text, false);
+    bool keepAliveDue = (now - g_fLastQueueHintSentAt[client]) >= QUEUE_KEYHINT_KEEPALIVE_SEC;
+
+    if (!textChanged && !keepAliveDue)
+        return;
+
+    strcopy(g_sLastQueueHintText[client], sizeof(g_sLastQueueHintText[]), text);
+    if (Client_PrintKeyHintText(client, "%s", text))
+        g_fLastQueueHintSentAt[client] = now;
 }
 
 // Helper function to print KeyHintText with proper protobuf support

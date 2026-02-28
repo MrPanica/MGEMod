@@ -28,6 +28,7 @@
 #define SPAWN_ANN_TYPE_BLU 2
 #define TV_KEY_OVERLAY_COUNT 8
 #define MONITOR_HINT_COOLDOWN 5.0
+#define QUEUE_KEYHINT_KEEPALIVE_SEC 0.25
 
 #if !defined(IN_SCORE)
 #define IN_SCORE (1 << 16)
@@ -74,11 +75,20 @@ bool g_bTvKeyPressed[TV_KEY_OVERLAY_COUNT];
 int g_iTvBrushLkmEntRef;
 int g_iTvBrushPkmEntRef;
 int g_iTvBrushMouseEntRef;
+char g_sLastQueueHintText[MAXPLAYERS + 1][512];
+float g_fLastQueueHintSentAt[MAXPLAYERS + 1];
 float g_fMonitorHintNextAt[MAXPLAYERS + 1];
+float g_fQueueHintInterval = 0.5;
+float g_fBBallSpinInterval = 0.03;
+float g_fNextArenaActivityScanAt;
+bool g_bHasActiveAmmomodFight;
+bool g_bHasActiveKothFight;
+bool g_bPerfDebug;
 bool g_bCameraMonitorVolumeEnabled;
 int g_iMonitorMicSpeaker1EntRef;
 int g_iMonitorNoSoundBrush1EntRef;
 int g_iMonitorNoSoundBrush2EntRef;
+StringMap g_smNamedEntityCache;
 
 // Modules
 #include "mge/elo.sp"
@@ -174,8 +184,11 @@ public void OnPluginStart()
     gcvar_debugWadd = new Convar("mgemod_debug_wadd", "0", "Debug wadd logic to mgemod.log? (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
     gcvar_debugTeleport = new Convar("mgemod_debug_teleport", "0", "Debug arena teleport reasons to logs? (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
     gcvar_debugWeaponRules = new Convar("mgemod_debug_weaponrules", "0", "Debug weapon block/replace rule matches to logs? (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
+    gcvar_perfDebug = new Convar("mgemod_perf_debug", "0", "Enable verbose performance/debug logs for hot paths. (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
     gcvar_allowUnverifiedPlayers = new Convar("mgemod_allow_unverified_players", "0", "Allow players with unverified ELO to play? ELO calculations will be skipped for them. (0 = Block unverified, 1 = Allow but skip ELO)", FCVAR_NONE, true, 0.0, true, 1.0);
     gcvar_vipQueuePriority = new Convar("mgemod_vip_queue_priority", "0", "Enable VIP queue priority? Players with 'a' or 'z' admin flags will be placed at the front of the queue. (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
+    gcvar_queueHintInterval = new Convar("mgemod_queuehint_interval", "0.5", "Queue KeyHint update interval in seconds.", FCVAR_NONE, true, 0.2, true, 2.0);
+    gcvar_bballSpinInterval = new Convar("mgemod_bball_spin_interval", "0.03", "BBall intel spin timer interval in seconds.", FCVAR_NONE, true, 0.01, true, 0.2);
     gcvar_mapWorldText = new Convar("mgemod_map_worldtext", "0", "Enable map worldtext integration (top/MVP/camera arena text). (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
 
     // Create config file
@@ -196,8 +209,11 @@ public void OnPluginStart()
     g_bDebugWadd = gcvar_debugWadd.IntValue ? true : false;
     g_bDebugTeleport = gcvar_debugTeleport.IntValue ? true : false;
     g_bDebugWeaponRules = gcvar_debugWeaponRules.IntValue ? true : false;
+    g_bPerfDebug = gcvar_perfDebug.IntValue ? true : false;
     g_bAllowUnverifiedPlayers = gcvar_allowUnverifiedPlayers.IntValue ? true : false;
     g_bVipQueuePriority = gcvar_vipQueuePriority.IntValue ? true : false;
+    g_fQueueHintInterval = gcvar_queueHintInterval.FloatValue;
+    g_fBBallSpinInterval = gcvar_bballSpinInterval.FloatValue;
 
     gcvar_dbConfig.GetString(g_sDBConfig, sizeof(g_sDBConfig));
     gcvar_bballParticle_red.GetString(g_sBBallParticleRed, sizeof(g_sBBallParticleRed));
@@ -245,8 +261,11 @@ public void OnPluginStart()
     gcvar_debugWadd.AddChangeHook(handler_ConVarChange);
     gcvar_debugTeleport.AddChangeHook(handler_ConVarChange);
     gcvar_debugWeaponRules.AddChangeHook(handler_ConVarChange);
+    gcvar_perfDebug.AddChangeHook(handler_ConVarChange);
     gcvar_allowUnverifiedPlayers.AddChangeHook(handler_ConVarChange);
     gcvar_vipQueuePriority.AddChangeHook(handler_ConVarChange);
+    gcvar_queueHintInterval.AddChangeHook(handler_ConVarChange);
+    gcvar_bballSpinInterval.AddChangeHook(handler_ConVarChange);
     gcvar_mapWorldText.AddChangeHook(handler_ConVarChange);
 
     // Sound control convar
@@ -302,6 +321,7 @@ public void OnPluginStart()
     RegAdminCmd("sm_mge_camera_scan_relays", Command_MgeCameraScanRelays, ADMFLAG_BAN, "List sg_sm* logic_relay entities and disabled state");
     RegAdminCmd("sm_mge_camera_trigger_pov", Command_MgeCameraTriggerPov, ADMFLAG_BAN, "Force Trigger on logic_relay sg_sm_camera_pov");
     RegAdminCmd("sm_mge_show_spawns", Command_MgeShowSpawns, ADMFLAG_BAN, "Show nearby (3000u) arena spawns via show_annotation; persists until re-run");
+    RegAdminCmd("sm_mge_bball_scoreboard_debug", Command_MgeBballScoreboardDebug, ADMFLAG_BAN, "Print BBall scoreboard entities and show markers near current/selected arena");
     RegAdminCmd("sm_mge_weapon_reload", Command_MgeWeaponReload, ADMFLAG_BAN, "Reload weapon profile config and arena weapon bindings without plugin reload");
     RegAdminCmd("sm_setspawn", Command_SetSpawn, ADMFLAG_BAN, "Edit spawns in your current arena. Usage: sm_setspawn [red|blue]");
     RegAdminCmd("arena_restart", Command_ArenaRestart, ADMFLAG_BAN, "Restart current arena fight");
@@ -418,15 +438,53 @@ void HandleHotReload()
     g_bLate = false;
 }
 
+void RestartQueueHintTimer()
+{
+    delete g_hQueueKeyHintTimer;
+
+    float interval = g_fQueueHintInterval;
+    if (interval < 0.2)
+        interval = 0.2;
+    else if (interval > 2.0)
+        interval = 2.0;
+
+    g_hQueueKeyHintTimer = CreateTimer(interval, Timer_UpdateQueueKeyHint, _, TIMER_FLAG_NO_MAPCHANGE | TIMER_REPEAT);
+}
+
+void RefreshActiveArenaProcessingFlags(bool force = false)
+{
+    float now = GetGameTime();
+    if (!force && now < g_fNextArenaActivityScanAt)
+        return;
+
+    g_fNextArenaActivityScanAt = now + 0.5;
+    g_bHasActiveAmmomodFight = false;
+    g_bHasActiveKothFight = false;
+
+    for (int arena_index = 1; arena_index <= g_iArenaCount; arena_index++)
+    {
+        if (g_iArenaStatus[arena_index] != AS_FIGHT)
+            continue;
+
+        if (g_bArenaKoth[arena_index])
+            g_bHasActiveKothFight = true;
+
+        if (!g_bArenaBBall[arena_index] && !g_bArenaMGE[arena_index] && !g_bArenaKoth[arena_index])
+            g_bHasActiveAmmomodFight = true;
+
+        if (g_bHasActiveAmmomodFight && g_bHasActiveKothFight)
+            break;
+    }
+}
+
 // Ensure HUD and queue timers are running
 void EnsureHudTimers()
 {
     if (g_hSpecHudTimer == null)
         g_hSpecHudTimer = CreateTimer(1.0, Timer_SpecHudToAllArenas, _, TIMER_FLAG_NO_MAPCHANGE | TIMER_REPEAT);
     if (g_hQueueKeyHintTimer == null)
-        g_hQueueKeyHintTimer = CreateTimer(0.1, Timer_UpdateQueueKeyHint, _, TIMER_FLAG_NO_MAPCHANGE | TIMER_REPEAT);
-    if (g_hQueueDisplayTimer == null)
-        g_hQueueDisplayTimer = CreateTimer(10.0, Timer_UpdateQueueDisplay, _, TIMER_FLAG_NO_MAPCHANGE | TIMER_REPEAT);
+        RestartQueueHintTimer();
+
 }
 
 // Save arena and queue state for hot reload
@@ -745,6 +803,19 @@ bool RestoreHotReloadState()
 
 public void OnPluginEnd()
 {
+    delete g_hSpecHudTimer;
+    delete g_hQueueKeyHintTimer;
+    delete g_hTopRatingTimer;
+    delete g_hMapWorldTextTimer;
+    delete g_hMapWorldTextApplyTimer;
+    delete g_hCameraPovFollowTimer;
+    delete g_hBBallScoreboardTimer;
+
+    for (int arena = 0; arena <= MAXARENAS; arena++)
+        delete g_hBBallIntelSpinTimer[arena];
+
+    delete g_smNamedEntityCache;
+
     for (int client = 1; client <= MaxClients; client++)
     {
         if (g_hPlayerWaitingSpecTimer[client] != null)
@@ -762,6 +833,11 @@ public void OnPluginEnd()
 // Initialize map-specific systems, precache models, hook events, and set up arenas
 public void OnMapStart()
 {
+    if (g_smNamedEntityCache == null)
+        g_smNamedEntityCache = new StringMap();
+    else
+        g_smNamedEntityCache.Clear();
+
     for (int i = 0; i < sizeof(stockSounds); i++) {
         PrecacheSound(stockSounds[i], true);
     }
@@ -783,6 +859,9 @@ public void OnMapStart()
     g_sLastTvText[0] = '\0';
     g_sLastTopMvpText[0] = '\0';
     g_fNextTopMvpWorldTextUpdate = 0.0;
+    g_fNextArenaActivityScanAt = 0.0;
+    g_bHasActiveAmmomodFight = false;
+    g_bHasActiveKothFight = false;
     g_bMapWorldTextApplyPending = false;
     g_bTvTextVisible = true;
     g_bTvKeysVisible = false;
@@ -803,6 +882,8 @@ public void OnMapStart()
     {
         g_iPlayerRespawnroomTouchDepth[i] = 0;
         g_fMonitorHintNextAt[i] = 0.0;
+        g_sLastQueueHintText[i][0] = '\0';
+        g_fLastQueueHintSentAt[i] = 0.0;
     }
     for (int i = 0; i < TV_KEY_OVERLAY_COUNT; i++)
         g_bTvKeyPressed[i] = false;
@@ -819,6 +900,7 @@ public void OnMapStart()
     {
         for (int i = 0; i <= g_iArenaCount; i++)
         {
+            ResetBBallScoreboardCache(i);
             if (g_bArenaBBall[i])
             {
                 g_iBBallHoop[i][SLOT_ONE] = -1;
@@ -826,13 +908,16 @@ public void OnMapStart()
                 g_iBBallIntel[i] = -1;
                 g_iBBallIntelWorldParticle[i] = 0;
                 g_iBBallIntelSkinTeam[i] = 0; // 0 = RED (default)
-                g_hBBallIntelSpinTimer[i] = null;
+                delete g_hBBallIntelSpinTimer[i];
             }
             if (g_bArenaKoth[i])
             {
                 g_iCapturePoint[i] = -1;
             }
         }
+
+        CacheBBallScoreboardEntities();
+        StartBBallScoreboardTimer();
 
         EnsureHudTimers();
 
@@ -843,10 +928,6 @@ public void OnMapStart()
         RequestMapTop10WorldTextData();
         ApplyTvKeyOverlayVisibility();
         UpdateMonitorMicrophonesPlacement();
-
-        // Create timer to update queue display every 10 seconds
-        if (g_hQueueDisplayTimer == null)
-            g_hQueueDisplayTimer = CreateTimer(10.0, Timer_UpdateQueueDisplay, _, TIMER_FLAG_NO_MAPCHANGE | TIMER_REPEAT);
 
         if (g_bAutoCvar)
         {
@@ -869,6 +950,8 @@ public void OnMapStart()
     } else {
         SetFailState("Map not supported. MGEMod disabled.");
     }
+
+    RefreshActiveArenaProcessingFlags(true);
 
     for (int i = 0; i < MAXPLAYERS; i++)
     {
@@ -925,6 +1008,9 @@ public void OnMapStart()
 // Clean up resources and unhook events when map ends
 public void OnMapEnd()
 {
+    if (g_smNamedEntityCache != null)
+        g_smNamedEntityCache.Clear();
+
     g_bCameraMonitorVolumeEnabled = true;
     g_iMonitorMicSpeaker1EntRef = INVALID_ENT_REFERENCE;
     g_iMonitorNoSoundBrush1EntRef = INVALID_ENT_REFERENCE;
@@ -932,15 +1018,20 @@ public void OnMapEnd()
     CleanupWeaponRuleSystem();
     delete g_hDBReconnectTimer;
     delete g_hTopRatingTimer;
+    delete g_hSpecHudTimer;
+    delete g_hQueueKeyHintTimer;
     delete g_hMapWorldTextTimer;
     delete g_hMapWorldTextApplyTimer;
     delete g_hCameraPovFollowTimer;
+    delete g_hBBallScoreboardTimer;
     for (int i = 0; i <= MAXARENAS; i++)
-        g_hBBallIntelSpinTimer[i] = null;
+        delete g_hBBallIntelSpinTimer[i];
     g_bCameraPovCameraPoseSaved = false;
     g_iCameraPovMovedCameraEnt = -1;
     g_iCameraPovAttachedTargetSpectate = 0;
     g_iCameraPovAttachedTargetArenaCam = 0;
+    g_bHasActiveAmmomodFight = false;
+    g_bHasActiveKothFight = false;
     g_bNoStats = gcvar_stats.BoolValue ? false : true;
 
     UnhookEvent("player_death", Event_PlayerDeath, EventHookMode_Pre);
@@ -949,10 +1040,13 @@ public void OnMapEnd()
     UnhookEvent("player_hurt", Event_PlayerHurt, EventHookMode_Pre);
     UnhookEvent("teamplay_round_start", Event_RoundStart, EventHookMode_Post);
     UnhookEvent("teamplay_win_panel", Event_WinPanel, EventHookMode_Post);
+    UnhookEvent("player_team", Event_Suppress, EventHookMode_Pre);
+    UnhookEvent("player_team", Event_PlayerTeam, EventHookMode_Pre);
+    UnhookEvent("player_class", Event_Suppress, EventHookMode_Pre);
 
     RemoveNormalSoundHook(Sound_BlockSound);
 
-    for (int arena_index = 1; arena_index < g_iArenaCount; arena_index++)
+    for (int arena_index = 1; arena_index <= g_iArenaCount; arena_index++)
     {
         if (g_bTimerRunning[arena_index])
         {
@@ -1019,6 +1113,8 @@ public void OnClientCookiesCached(int client)
 // Initialize basic client data when they connect (regardless of Steam status)
 public void OnClientPutInServer(int client)
 {
+    g_sLastQueueHintText[client][0] = '\0';
+    g_fLastQueueHintSentAt[client] = 0.0;
     HandleClientConnection(client);
 }
 
@@ -1032,6 +1128,8 @@ public void OnClientPostAdminCheck(int client)
 public void OnClientDisconnect(int client)
 {
     ClearClientSpawnAnnotations(client, false);
+    g_sLastQueueHintText[client][0] = '\0';
+    g_fLastQueueHintSentAt[client] = 0.0;
     HandleClientDisconnection(client);
 }
 
@@ -1041,8 +1139,13 @@ public void OnClientDisconnect(int client)
 // Process continuous game mechanics like ammomod health and KOTH capture points
 public void OnGameFrame()
 {
-    ProcessAmmomodHealthManagement();
-    ProcessKothCapturePoints();
+    RefreshActiveArenaProcessingFlags();
+
+    if (g_bHasActiveAmmomodFight)
+        ProcessAmmomodHealthManagement();
+
+    if (g_bHasActiveKothFight)
+        ProcessKothCapturePoints();
 }
 
 // Handle damage modifications including fall damage blocking
@@ -1064,6 +1167,8 @@ Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, in
 // Process infinite ammo restoration for ammomod arenas
 public Action OnPlayerRunCmd(int client, int& buttons, int& impulse, float vel[3], float angles[3], int& weapon, int& subtype, int& cmdnum, int& tickcount, int& seed, int mouse[2])
 {
+    int arena_index = g_iPlayerArena[client];
+
     bool is_scoreboard_open = (buttons & IN_SCORE) != 0;
     if (is_scoreboard_open != g_bScoreboardOpen[client])
     {
@@ -1071,10 +1176,16 @@ public Action OnPlayerRunCmd(int client, int& buttons, int& impulse, float vel[3
         if (!is_scoreboard_open)
         {
             UpdateHud(client);
+
+            if (arena_index > 0 && arena_index <= g_iArenaCount && g_bShowQueue[client] && !g_bArenaNoFight[arena_index])
+            {
+                // Force immediate queue hint re-show after scoreboard closes.
+                g_fLastQueueHintSentAt[client] = 0.0;
+                ShowQueueInKeyHintText(client, arena_index);
+            }
         }
     }
 
-    int arena_index = g_iPlayerArena[client];
     if (g_bArenaInfAmmo[arena_index])
     {
         if (!g_bPlayerRestoringAmmo[client] && (buttons & IN_ATTACK))
@@ -1148,10 +1259,20 @@ void handler_ConVarChange(Handle convar, const char[] oldValue, const char[] new
         g_bDebugTeleport = boolValue;
     else if (convar == gcvar_debugWeaponRules)
         g_bDebugWeaponRules = boolValue;
+    else if (convar == gcvar_perfDebug)
+        g_bPerfDebug = boolValue;
     else if (convar == gcvar_allowUnverifiedPlayers)
         g_bAllowUnverifiedPlayers = boolValue;
     else if (convar == gcvar_vipQueuePriority)
         g_bVipQueuePriority = boolValue;
+    else if (convar == gcvar_queueHintInterval)
+    {
+        g_fQueueHintInterval = floatValue;
+        if (g_hQueueKeyHintTimer != null)
+            RestartQueueHintTimer();
+    }
+    else if (convar == gcvar_bballSpinInterval)
+        g_fBBallSpinInterval = floatValue;
     else if (convar == gcvar_mapWorldText)
     {
         if (boolValue)
@@ -1437,6 +1558,12 @@ public void OnSgCameraPovSignal(const char[] output, int caller, int activator, 
 
 public void OnSgRelayDebugTrace(const char[] output, int caller, int activator, float delay)
 {
+    #pragma unused output
+    #pragma unused delay
+
+    if (!g_bPerfDebug)
+        return;
+
     int relayEnt = ResolveOutputEntity(caller);
     if (relayEnt == -1)
         return;
@@ -1626,7 +1753,7 @@ bool TryResolveMonitorAudioSource(float sourcePos[3], float sourceAng[3])
     if (g_sCurrentCameraName[0] == '\0')
         return false;
 
-    int cameraEnt = FindEntityByTargetName("point_camera", g_sCurrentCameraName);
+    int cameraEnt = GetCachedEntityByTargetName("point_camera", g_sCurrentCameraName);
     if (cameraEnt == -1 || !IsValidEntity(cameraEnt))
         return false;
 
@@ -1656,6 +1783,11 @@ void UpdateMonitorMicrophonesPlacement()
         // Keep microphones enabled at their current map positions until camera source resolves.
         SetMonitorMicrophonesEnabled(true);
         return;
+    }
+
+    if (g_bCameraPovMode && IsValidClient(g_iCameraPovTarget))
+    {
+        sourcePos[2] += 10.0;
     }
 
     if (mic1 != -1)
@@ -1932,7 +2064,7 @@ void EnterCameraPovMode(int arenaIndex, int target, int listIndex)
     g_iCameraPovAttachedTargetSpectate = 0;
     g_iCameraPovAttachedTargetArenaCam = 0;
 
-    int activeArenaCam = FindEntityByTargetName("point_camera", g_sCurrentCameraName);
+    int activeArenaCam = GetCachedEntityByTargetName("point_camera", g_sCurrentCameraName);
     if (activeArenaCam != -1)
     {
         GetEntPropVector(activeArenaCam, Prop_Data, "m_vecOrigin", g_fCameraPovSavedOrigin);
@@ -2000,7 +2132,7 @@ void ExitCameraPovModeToCamera(const char[] restoreCameraName, bool fromPovFollo
     g_iCameraPovAttachedTargetSpectate = 0;
     g_iCameraPovAttachedTargetArenaCam = 0;
 
-    int arenaCam = FindEntityByTargetName("point_camera", restoreCameraName);
+    int arenaCam = GetCachedEntityByTargetName("point_camera", restoreCameraName);
     if (arenaCam != -1)
     {
         SetVariantString("1");
@@ -2223,7 +2355,7 @@ bool ShouldSuppressTvTextForCurrentCamera()
     if (g_sCurrentCameraName[0] == '\0')
         return false;
 
-    int cameraEnt = FindEntityByTargetName("point_camera", g_sCurrentCameraName);
+    int cameraEnt = GetCachedEntityByTargetName("point_camera", g_sCurrentCameraName);
     if (cameraEnt == -1 || !IsValidEntity(cameraEnt))
         return false;
 
@@ -2408,7 +2540,7 @@ void SetMapTextAlphaByTargetName(const char[] targetName, int alpha)
 
 void SetMapTextColorByTargetName(const char[] targetName, int red, int green, int blue, int alpha)
 {
-    int entity = FindEntityByTargetName("point_worldtext", targetName);
+    int entity = GetCachedEntityByTargetName("point_worldtext", targetName);
     if (entity == -1)
         return;
 
@@ -2417,6 +2549,34 @@ void SetMapTextColorByTargetName(const char[] targetName, int red, int green, in
     DispatchKeyValue(entity, "color", color);
     SetVariantString(color);
     AcceptEntityInput(entity, "SetColor");
+}
+
+int GetCachedEntityByTargetName(const char[] classname, const char[] targetName)
+{
+    if (targetName[0] == '\0')
+        return -1;
+
+    if (g_smNamedEntityCache == null)
+        g_smNamedEntityCache = new StringMap();
+
+    char cacheKey[128];
+    Format(cacheKey, sizeof(cacheKey), "%s|%s", classname, targetName);
+
+    int entRef = INVALID_ENT_REFERENCE;
+    if (g_smNamedEntityCache.GetValue(cacheKey, entRef))
+    {
+        int cached = EntRefToEntIndex(entRef);
+        if (cached > MaxClients && IsValidEntity(cached))
+            return cached;
+
+        g_smNamedEntityCache.Remove(cacheKey);
+    }
+
+    int entity = FindEntityByTargetName(classname, targetName);
+    if (entity != -1)
+        g_smNamedEntityCache.SetValue(cacheKey, EntIndexToEntRef(entity), true);
+
+    return entity;
 }
 
 int FindEntityByTargetName(const char[] classname, const char[] targetName)
@@ -2439,7 +2599,7 @@ int FindEntityByTargetName(const char[] classname, const char[] targetName)
 
 void SetMapTextByTargetName(const char[] targetName, const char[] rawText)
 {
-    int entity = FindEntityByTargetName("point_worldtext", targetName);
+    int entity = GetCachedEntityByTargetName("point_worldtext", targetName);
     if (entity == -1)
         return;
 
@@ -2695,6 +2855,23 @@ bool AddStoredSpawnAnnotation(int client, int arena, int spawnType, int spawnNum
     return true;
 }
 
+bool AddAndShowSpawnAnnotationMarker(int client, int arena, const char[] label, const float origin[3])
+{
+    int index = g_iSpawnAnnotationCount[client];
+    if (index >= MAX_SPAWN_ANNOTATIONS)
+        return false;
+
+    g_iSpawnAnnotationArena[client][index] = arena;
+    g_iSpawnAnnotationType[client][index] = SPAWN_ANN_TYPE_NEUTRAL;
+    g_iSpawnAnnotationNumber[client][index] = 0;
+    g_fSpawnAnnotationOrigin[client][index][0] = origin[0];
+    g_fSpawnAnnotationOrigin[client][index][1] = origin[1];
+    g_fSpawnAnnotationOrigin[client][index][2] = origin[2];
+    g_iSpawnAnnotationCount[client] = index + 1;
+    SendSpawnAnnotationToClient(client, GetSpawnAnnotationId(client, index), label, origin, SPAWN_ANNOTATION_LIFETIME);
+    return true;
+}
+
 void BuildStoredSpawnAnnotationText(int client, int index, char[] text, int textLen)
 {
     int spawnType = g_iSpawnAnnotationType[client][index];
@@ -2709,6 +2886,148 @@ void BuildStoredSpawnAnnotationText(int client, int index, char[] text, int text
     }
 
     Format(text, textLen, "%s #%d", typeName, spawnNumber);
+}
+
+Action Command_MgeBballScoreboardDebug(int client, int args)
+{
+    if (!IsValidClient(client))
+    {
+        PrintToServer("[MGE] Command is in-game only: sm_mge_bball_scoreboard_debug");
+        return Plugin_Handled;
+    }
+
+    int arena = 0;
+    if (args >= 1)
+    {
+        char arg[16];
+        GetCmdArg(1, arg, sizeof(arg));
+        arena = StringToInt(arg);
+    }
+    else
+    {
+        arena = g_iPlayerArena[client];
+    }
+
+    if (arena <= 0 || arena > g_iArenaCount)
+    {
+        PrintToConsole(client, "[MGE] Usage: sm_mge_bball_scoreboard_debug <arena> (or join arena and run without args)");
+        PrintToChat(client, "[MGE] Invalid arena. Join an arena or pass a valid arena index.");
+        return Plugin_Handled;
+    }
+
+    if (!g_bArenaBBall[arena])
+    {
+        PrintToConsole(client, "[MGE] Arena %d (%s) is not BBall.", arena, g_sArenaName[arena]);
+        PrintToChat(client, "[MGE] Arena %d is not BBall.", arena);
+        return Plugin_Handled;
+    }
+
+    ClearClientSpawnAnnotations(client, true);
+    CacheBBallScoreboardEntities();
+
+    char mappedMode[4];
+    GetBBallScoreboardModeForArena(arena, mappedMode, sizeof(mappedMode));
+    PrintToConsole(client, "===== MGE BBall Scoreboard Debug =====");
+    PrintToConsole(client, "arena=%d name=%s type=%s mapped_mode=%s", arena, g_sArenaName[arena], g_bFourPersonArena[arena] ? "2v2" : "1v1", mappedMode);
+
+    static const char labels[][] =
+    {
+        "timer_m10",
+        "timer_m1",
+        "timer_s10",
+        "timer_s1",
+        "red_10",
+        "red_1",
+        "blue_10",
+        "blue_1"
+    };
+
+    int foundCached = 0;
+    int missingCached = 0;
+    int dropped = 0;
+
+    for (int i = 0; i < sizeof(labels); i++)
+    {
+        int entRef = INVALID_ENT_REFERENCE;
+        switch (i)
+        {
+            case 0: entRef = g_iBBallTimerEntRef[arena][BBALL_TIMER_MIN_TENS];
+            case 1: entRef = g_iBBallTimerEntRef[arena][BBALL_TIMER_MIN_ONES];
+            case 2: entRef = g_iBBallTimerEntRef[arena][BBALL_TIMER_SEC_TENS];
+            case 3: entRef = g_iBBallTimerEntRef[arena][BBALL_TIMER_SEC_ONES];
+            case 4: entRef = g_iBBallScoreEntRef[arena][BBALL_SCORE_TEAM_RED][BBALL_SCORE_TENS];
+            case 5: entRef = g_iBBallScoreEntRef[arena][BBALL_SCORE_TEAM_RED][BBALL_SCORE_ONES];
+            case 6: entRef = g_iBBallScoreEntRef[arena][BBALL_SCORE_TEAM_BLU][BBALL_SCORE_TENS];
+            case 7: entRef = g_iBBallScoreEntRef[arena][BBALL_SCORE_TEAM_BLU][BBALL_SCORE_ONES];
+        }
+
+        int entity = EntRefToEntIndex(entRef);
+        if (entity > MaxClients && IsValidEntity(entity))
+        {
+            char classname[64];
+            char targetName[64];
+            float pos[3];
+            GetEntityClassname(entity, classname, sizeof(classname));
+            GetEntPropString(entity, Prop_Data, "m_iName", targetName, sizeof(targetName));
+            GetEntPropVector(entity, Prop_Data, "m_vecOrigin", pos);
+
+            float distSqr = GetArenaClosestSpawnDistSqr(arena, pos);
+            float dist = (distSqr >= 0.0) ? SquareRoot(distSqr) : -1.0;
+
+            PrintToConsole(client, "[cached] %s ent=%d class=%s target=%s dist=%.1f pos=(%.1f %.1f %.1f)",
+                labels[i], entity, classname, targetName, dist, pos[0], pos[1], pos[2]);
+
+            if (!AddAndShowSpawnAnnotationMarker(client, arena, labels[i], pos))
+                dropped++;
+
+            foundCached++;
+        }
+        else
+        {
+            PrintToConsole(client, "[cached] %s MISSING (entref=%d)", labels[i], entRef);
+            missingCached++;
+        }
+    }
+
+    int listedCandidates = 0;
+    int markedCandidates = 0;
+    int entity = -1;
+    while ((entity = FindEntityByClassname(entity, "env_texturetoggle")) != -1)
+    {
+        if (!IsValidEntity(entity))
+            continue;
+
+        char targetName[64];
+        GetEntPropString(entity, Prop_Data, "m_iName", targetName, sizeof(targetName));
+        bool isTimer = (StrContains(targetName, "skin_bball_count_", false) == 0);
+        bool isScore = (StrContains(targetName, "skin_count_bball_", false) == 0);
+        if (!isTimer && !isScore)
+            continue;
+
+        char classname[64];
+        float pos[3];
+        GetEntityClassname(entity, classname, sizeof(classname));
+        GetEntPropVector(entity, Prop_Data, "m_vecOrigin", pos);
+        float distSqr = GetArenaClosestSpawnDistSqr(arena, pos);
+        float dist = (distSqr >= 0.0) ? SquareRoot(distSqr) : -1.0;
+
+        PrintToConsole(client, "[scan] ent=%d class=%s target=%s dist=%.1f pos=(%.1f %.1f %.1f)",
+            entity, classname, targetName, dist, pos[0], pos[1], pos[2]);
+        listedCandidates++;
+
+        if (dist >= 0.0 && dist <= 3000.0)
+        {
+            if (AddAndShowSpawnAnnotationMarker(client, arena, targetName, pos))
+                markedCandidates++;
+            else
+                dropped++;
+        }
+    }
+
+    PrintToConsole(client, "[MGE] BBall scoreboard debug summary: cached_found=%d cached_missing=%d scanned=%d markers=%d dropped=%d",
+        foundCached, missingCached, listedCandidates, g_iSpawnAnnotationCount[client], dropped);
+    PrintToChat(client, "[MGE] BBall debug: cached %d/%d, scanned %d, markers %d. Re-run to refresh/hide.", foundCached, foundCached + missingCached, listedCandidates, g_iSpawnAnnotationCount[client]);
+    return Plugin_Handled;
 }
 
 Action Command_MgeShowSpawns(int client, int args)
@@ -3076,6 +3395,8 @@ Action Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
 
     // BBall
     SetupBBallHoops();
+    CacheBBallScoreboardEntities();
+    UpdateBBallScoreboards();
 
     // KOTH
     SetupKothCapturePoints();

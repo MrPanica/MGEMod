@@ -3006,6 +3006,8 @@ Action Timer_StartDuel(Handle timer, any arena_index)
 
     g_iArenaScore[arena_index][SLOT_ONE] = 0;
     g_iArenaScore[arena_index][SLOT_TWO] = 0;
+    if (g_bArenaBBall[arena_index])
+        UpdateBBallScoreboardForArena(arena_index);
     // Don't reset duel start time here - it should persist across rounds until match completion
     UpdateHudForArena(arena_index);
     
