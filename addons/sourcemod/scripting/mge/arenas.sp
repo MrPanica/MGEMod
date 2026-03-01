@@ -11,19 +11,412 @@ public Action Timer_InitializePublicInvites(Handle timer)
     return Plugin_Stop;
 }
 
-// Load and parse spawn point configurations from map-specific config files
-bool LoadSpawnPoints()
+int g_iArenaConfigBackupCount;
+char g_sArenaConfigBackupName[MAXARENAS + 1][64];
+char g_sArenaConfigBackupOriginalName[MAXARENAS + 1][64];
+char g_sArenaConfigBackupCap[MAXARENAS + 1][64];
+char g_sArenaConfigBackupCapTrigger[MAXARENAS + 1][64];
+float g_fArenaConfigBackupSpawnOrigin[MAXARENAS + 1][MAXSPAWNS + 1][3];
+float g_fArenaConfigBackupSpawnAngles[MAXARENAS + 1][MAXSPAWNS + 1][3];
+float g_fArenaConfigBackupRedSpawnOrigin[MAXARENAS + 1][MAXSPAWNS + 1][3];
+float g_fArenaConfigBackupRedSpawnAngles[MAXARENAS + 1][MAXSPAWNS + 1][3];
+float g_fArenaConfigBackupBluSpawnOrigin[MAXARENAS + 1][MAXSPAWNS + 1][3];
+float g_fArenaConfigBackupBluSpawnAngles[MAXARENAS + 1][MAXSPAWNS + 1][3];
+float g_fArenaConfigBackupBBallIntelSpawn[MAXARENAS + 1][3];
+float g_fArenaConfigBackupBBallIntelSpawnRed[MAXARENAS + 1][3];
+float g_fArenaConfigBackupBBallIntelSpawnBlu[MAXARENAS + 1][3];
+float g_fArenaConfigBackupBBallHoopSpawn[MAXARENAS + 1][3];
+float g_fArenaConfigBackupBBallHoopSpawnRed[MAXARENAS + 1][3];
+float g_fArenaConfigBackupBBallHoopSpawnBlu[MAXARENAS + 1][3];
+float g_fArenaConfigBackupHPRatio[MAXARENAS + 1];
+float g_fArenaConfigBackupClassHPRatio[MAXARENAS + 1][10];
+float g_fArenaConfigBackupMinSpawnDist[MAXARENAS + 1];
+float g_fArenaConfigBackupRespawnTime[MAXARENAS + 1];
+bool g_bArenaConfigBackupAllowedClasses[MAXARENAS + 1][10];
+bool g_bArenaConfigBackupAmmomod[MAXARENAS + 1];
+bool g_bArenaConfigBackupMidair[MAXARENAS + 1];
+bool g_bArenaConfigBackupMGE[MAXARENAS + 1];
+bool g_bArenaConfigBackupEndif[MAXARENAS + 1];
+bool g_bArenaConfigBackupBBall[MAXARENAS + 1];
+bool g_bArenaConfigBackupVisibleHoops[MAXARENAS + 1];
+bool g_bArenaConfigBackupInfAmmo[MAXARENAS + 1];
+bool g_bArenaConfigBackupFourPerson[MAXARENAS + 1];
+bool g_bArenaConfigBackupAllowChange[MAXARENAS + 1];
+bool g_bArenaConfigBackupAllowKoth[MAXARENAS + 1];
+bool g_bArenaConfigBackupKothTeamSpawn[MAXARENAS + 1];
+bool g_bArenaConfigBackupShowHP[MAXARENAS + 1];
+bool g_bArenaConfigBackupUltiduo[MAXARENAS + 1];
+bool g_bArenaConfigBackupKoth[MAXARENAS + 1];
+bool g_bArenaConfigBackupTurris[MAXARENAS + 1];
+bool g_bArenaConfigBackupHasCap[MAXARENAS + 1];
+bool g_bArenaConfigBackupHasCapTrigger[MAXARENAS + 1];
+bool g_bArenaConfigBackupBoostVectors[MAXARENAS + 1];
+bool g_bArenaConfigBackupClassChange[MAXARENAS + 1];
+bool g_bArenaConfigBackupNoFight[MAXARENAS + 1];
+bool g_bArenaConfigBackupBBallIntelSpawnSet[MAXARENAS + 1];
+bool g_bArenaConfigBackupBBallIntelSpawnRedSet[MAXARENAS + 1];
+bool g_bArenaConfigBackupBBallIntelSpawnBluSet[MAXARENAS + 1];
+bool g_bArenaConfigBackupBBallHoopSpawnSet[MAXARENAS + 1];
+bool g_bArenaConfigBackupBBallHoopSpawnRedSet[MAXARENAS + 1];
+bool g_bArenaConfigBackupBBallHoopSpawnBluSet[MAXARENAS + 1];
+bool g_bArenaConfigBackupUseTeamSpawns[MAXARENAS + 1];
+bool g_bArenaConfigBackupNearSpawn[MAXARENAS + 1];
+int g_iArenaConfigBackupAirshotHeight[MAXARENAS + 1];
+int g_iArenaConfigBackupDefaultCapTime[MAXARENAS + 1];
+int g_iArenaConfigBackupFraglimit[MAXARENAS + 1];
+int g_iArenaConfigBackupMgelimit[MAXARENAS + 1];
+int g_iArenaConfigBackupCaplimit[MAXARENAS + 1];
+int g_iArenaConfigBackupMinRating[MAXARENAS + 1];
+int g_iArenaConfigBackupMaxRating[MAXARENAS + 1];
+int g_iArenaConfigBackupCdTime[MAXARENAS + 1];
+int g_iArenaConfigBackupSpawns[MAXARENAS + 1];
+int g_iArenaConfigBackupRedSpawns[MAXARENAS + 1];
+int g_iArenaConfigBackupBluSpawns[MAXARENAS + 1];
+int g_iArenaConfigBackupEarlyLeave[MAXARENAS + 1];
+
+bool FailMapConfigLoad(bool failHard, char[] error, int errorLen, const char[] message)
 {
+    if (errorLen > 0)
+        strcopy(error, errorLen, message);
+
+    if (!failHard)
+        LogError("%s", message);
+    else
+        SetFailState("%s", message);
+
+    return false;
+}
+
+void CaptureArenaConfigSnapshot()
+{
+    g_iArenaConfigBackupCount = g_iArenaCount;
+
+    for (int arena = 0; arena <= MAXARENAS; arena++)
+    {
+        strcopy(g_sArenaConfigBackupName[arena], sizeof(g_sArenaConfigBackupName[]), g_sArenaName[arena]);
+        strcopy(g_sArenaConfigBackupOriginalName[arena], sizeof(g_sArenaConfigBackupOriginalName[]), g_sArenaOriginalName[arena]);
+        strcopy(g_sArenaConfigBackupCap[arena], sizeof(g_sArenaConfigBackupCap[]), g_sArenaCap[arena]);
+        strcopy(g_sArenaConfigBackupCapTrigger[arena], sizeof(g_sArenaConfigBackupCapTrigger[]), g_sArenaCapTrigger[arena]);
+
+        g_fArenaConfigBackupHPRatio[arena] = g_fArenaHPRatio[arena];
+        g_fArenaConfigBackupMinSpawnDist[arena] = g_fArenaMinSpawnDist[arena];
+        g_fArenaConfigBackupRespawnTime[arena] = g_fArenaRespawnTime[arena];
+
+        g_bArenaConfigBackupAmmomod[arena] = g_bArenaAmmomod[arena];
+        g_bArenaConfigBackupMidair[arena] = g_bArenaMidair[arena];
+        g_bArenaConfigBackupMGE[arena] = g_bArenaMGE[arena];
+        g_bArenaConfigBackupEndif[arena] = g_bArenaEndif[arena];
+        g_bArenaConfigBackupBBall[arena] = g_bArenaBBall[arena];
+        g_bArenaConfigBackupVisibleHoops[arena] = g_bVisibleHoops[arena];
+        g_bArenaConfigBackupInfAmmo[arena] = g_bArenaInfAmmo[arena];
+        g_bArenaConfigBackupFourPerson[arena] = g_bFourPersonArena[arena];
+        g_bArenaConfigBackupAllowChange[arena] = g_bArenaAllowChange[arena];
+        g_bArenaConfigBackupAllowKoth[arena] = g_bArenaAllowKoth[arena];
+        g_bArenaConfigBackupKothTeamSpawn[arena] = g_bArenaKothTeamSpawn[arena];
+        g_bArenaConfigBackupShowHP[arena] = g_bArenaShowHPToPlayers[arena];
+        g_bArenaConfigBackupUltiduo[arena] = g_bArenaUltiduo[arena];
+        g_bArenaConfigBackupKoth[arena] = g_bArenaKoth[arena];
+        g_bArenaConfigBackupTurris[arena] = g_bArenaTurris[arena];
+        g_bArenaConfigBackupHasCap[arena] = g_bArenaHasCap[arena];
+        g_bArenaConfigBackupHasCapTrigger[arena] = g_bArenaHasCapTrigger[arena];
+        g_bArenaConfigBackupBoostVectors[arena] = g_bArenaBoostVectors[arena];
+        g_bArenaConfigBackupClassChange[arena] = g_bArenaClassChange[arena];
+        g_bArenaConfigBackupNoFight[arena] = g_bArenaNoFight[arena];
+        g_bArenaConfigBackupBBallIntelSpawnSet[arena] = g_bArenaBBallIntelSpawnSet[arena];
+        g_bArenaConfigBackupBBallIntelSpawnRedSet[arena] = g_bArenaBBallIntelSpawnRedSet[arena];
+        g_bArenaConfigBackupBBallIntelSpawnBluSet[arena] = g_bArenaBBallIntelSpawnBluSet[arena];
+        g_bArenaConfigBackupBBallHoopSpawnSet[arena] = g_bArenaBBallHoopSpawnSet[arena];
+        g_bArenaConfigBackupBBallHoopSpawnRedSet[arena] = g_bArenaBBallHoopSpawnRedSet[arena];
+        g_bArenaConfigBackupBBallHoopSpawnBluSet[arena] = g_bArenaBBallHoopSpawnBluSet[arena];
+        g_bArenaConfigBackupUseTeamSpawns[arena] = g_bArenaUseTeamSpawns[arena];
+        g_bArenaConfigBackupNearSpawn[arena] = g_bArenaNearSpawn[arena];
+
+        g_iArenaConfigBackupAirshotHeight[arena] = g_iArenaAirshotHeight[arena];
+        g_iArenaConfigBackupDefaultCapTime[arena] = g_iDefaultCapTime[arena];
+        g_iArenaConfigBackupFraglimit[arena] = g_iArenaFraglimit[arena];
+        g_iArenaConfigBackupMgelimit[arena] = g_iArenaMgelimit[arena];
+        g_iArenaConfigBackupCaplimit[arena] = g_iArenaCaplimit[arena];
+        g_iArenaConfigBackupMinRating[arena] = g_iArenaMinRating[arena];
+        g_iArenaConfigBackupMaxRating[arena] = g_iArenaMaxRating[arena];
+        g_iArenaConfigBackupCdTime[arena] = g_iArenaCdTime[arena];
+        g_iArenaConfigBackupSpawns[arena] = g_iArenaSpawns[arena];
+        g_iArenaConfigBackupRedSpawns[arena] = g_iArenaRedSpawns[arena];
+        g_iArenaConfigBackupBluSpawns[arena] = g_iArenaBluSpawns[arena];
+        g_iArenaConfigBackupEarlyLeave[arena] = g_iArenaEarlyLeave[arena];
+
+        for (int axis = 0; axis < 3; axis++)
+        {
+            g_fArenaConfigBackupBBallIntelSpawn[arena][axis] = g_fArenaBBallIntelSpawn[arena][axis];
+            g_fArenaConfigBackupBBallIntelSpawnRed[arena][axis] = g_fArenaBBallIntelSpawnRed[arena][axis];
+            g_fArenaConfigBackupBBallIntelSpawnBlu[arena][axis] = g_fArenaBBallIntelSpawnBlu[arena][axis];
+            g_fArenaConfigBackupBBallHoopSpawn[arena][axis] = g_fArenaBBallHoopSpawn[arena][axis];
+            g_fArenaConfigBackupBBallHoopSpawnRed[arena][axis] = g_fArenaBBallHoopSpawnRed[arena][axis];
+            g_fArenaConfigBackupBBallHoopSpawnBlu[arena][axis] = g_fArenaBBallHoopSpawnBlu[arena][axis];
+        }
+
+        for (int classId = 0; classId <= 9; classId++)
+        {
+            g_fArenaConfigBackupClassHPRatio[arena][classId] = g_fArenaClassHPRatio[arena][classId];
+            g_bArenaConfigBackupAllowedClasses[arena][classId] = g_tfctArenaAllowedClasses[arena][classId];
+        }
+
+        for (int spawnIndex = 0; spawnIndex <= MAXSPAWNS; spawnIndex++)
+        {
+            for (int axis = 0; axis < 3; axis++)
+            {
+                g_fArenaConfigBackupSpawnOrigin[arena][spawnIndex][axis] = g_fArenaSpawnOrigin[arena][spawnIndex][axis];
+                g_fArenaConfigBackupSpawnAngles[arena][spawnIndex][axis] = g_fArenaSpawnAngles[arena][spawnIndex][axis];
+                g_fArenaConfigBackupRedSpawnOrigin[arena][spawnIndex][axis] = g_fArenaRedSpawnOrigin[arena][spawnIndex][axis];
+                g_fArenaConfigBackupRedSpawnAngles[arena][spawnIndex][axis] = g_fArenaRedSpawnAngles[arena][spawnIndex][axis];
+                g_fArenaConfigBackupBluSpawnOrigin[arena][spawnIndex][axis] = g_fArenaBluSpawnOrigin[arena][spawnIndex][axis];
+                g_fArenaConfigBackupBluSpawnAngles[arena][spawnIndex][axis] = g_fArenaBluSpawnAngles[arena][spawnIndex][axis];
+            }
+        }
+    }
+}
+
+void RestoreArenaConfigSnapshot()
+{
+    g_iArenaCount = g_iArenaConfigBackupCount;
+
+    for (int arena = 0; arena <= MAXARENAS; arena++)
+    {
+        strcopy(g_sArenaName[arena], sizeof(g_sArenaName[]), g_sArenaConfigBackupName[arena]);
+        strcopy(g_sArenaOriginalName[arena], sizeof(g_sArenaOriginalName[]), g_sArenaConfigBackupOriginalName[arena]);
+        strcopy(g_sArenaCap[arena], sizeof(g_sArenaCap[]), g_sArenaConfigBackupCap[arena]);
+        strcopy(g_sArenaCapTrigger[arena], sizeof(g_sArenaCapTrigger[]), g_sArenaConfigBackupCapTrigger[arena]);
+
+        g_fArenaHPRatio[arena] = g_fArenaConfigBackupHPRatio[arena];
+        g_fArenaMinSpawnDist[arena] = g_fArenaConfigBackupMinSpawnDist[arena];
+        g_fArenaRespawnTime[arena] = g_fArenaConfigBackupRespawnTime[arena];
+
+        g_bArenaAmmomod[arena] = g_bArenaConfigBackupAmmomod[arena];
+        g_bArenaMidair[arena] = g_bArenaConfigBackupMidair[arena];
+        g_bArenaMGE[arena] = g_bArenaConfigBackupMGE[arena];
+        g_bArenaEndif[arena] = g_bArenaConfigBackupEndif[arena];
+        g_bArenaBBall[arena] = g_bArenaConfigBackupBBall[arena];
+        g_bVisibleHoops[arena] = g_bArenaConfigBackupVisibleHoops[arena];
+        g_bArenaInfAmmo[arena] = g_bArenaConfigBackupInfAmmo[arena];
+        g_bFourPersonArena[arena] = g_bArenaConfigBackupFourPerson[arena];
+        g_bArenaAllowChange[arena] = g_bArenaConfigBackupAllowChange[arena];
+        g_bArenaAllowKoth[arena] = g_bArenaConfigBackupAllowKoth[arena];
+        g_bArenaKothTeamSpawn[arena] = g_bArenaConfigBackupKothTeamSpawn[arena];
+        g_bArenaShowHPToPlayers[arena] = g_bArenaConfigBackupShowHP[arena];
+        g_bArenaUltiduo[arena] = g_bArenaConfigBackupUltiduo[arena];
+        g_bArenaKoth[arena] = g_bArenaConfigBackupKoth[arena];
+        g_bArenaTurris[arena] = g_bArenaConfigBackupTurris[arena];
+        g_bArenaHasCap[arena] = g_bArenaConfigBackupHasCap[arena];
+        g_bArenaHasCapTrigger[arena] = g_bArenaConfigBackupHasCapTrigger[arena];
+        g_bArenaBoostVectors[arena] = g_bArenaConfigBackupBoostVectors[arena];
+        g_bArenaClassChange[arena] = g_bArenaConfigBackupClassChange[arena];
+        g_bArenaNoFight[arena] = g_bArenaConfigBackupNoFight[arena];
+        g_bArenaBBallIntelSpawnSet[arena] = g_bArenaConfigBackupBBallIntelSpawnSet[arena];
+        g_bArenaBBallIntelSpawnRedSet[arena] = g_bArenaConfigBackupBBallIntelSpawnRedSet[arena];
+        g_bArenaBBallIntelSpawnBluSet[arena] = g_bArenaConfigBackupBBallIntelSpawnBluSet[arena];
+        g_bArenaBBallHoopSpawnSet[arena] = g_bArenaConfigBackupBBallHoopSpawnSet[arena];
+        g_bArenaBBallHoopSpawnRedSet[arena] = g_bArenaConfigBackupBBallHoopSpawnRedSet[arena];
+        g_bArenaBBallHoopSpawnBluSet[arena] = g_bArenaConfigBackupBBallHoopSpawnBluSet[arena];
+        g_bArenaUseTeamSpawns[arena] = g_bArenaConfigBackupUseTeamSpawns[arena];
+        g_bArenaNearSpawn[arena] = g_bArenaConfigBackupNearSpawn[arena];
+
+        g_iArenaAirshotHeight[arena] = g_iArenaConfigBackupAirshotHeight[arena];
+        g_iDefaultCapTime[arena] = g_iArenaConfigBackupDefaultCapTime[arena];
+        g_iArenaFraglimit[arena] = g_iArenaConfigBackupFraglimit[arena];
+        g_iArenaMgelimit[arena] = g_iArenaConfigBackupMgelimit[arena];
+        g_iArenaCaplimit[arena] = g_iArenaConfigBackupCaplimit[arena];
+        g_iArenaMinRating[arena] = g_iArenaConfigBackupMinRating[arena];
+        g_iArenaMaxRating[arena] = g_iArenaConfigBackupMaxRating[arena];
+        g_iArenaCdTime[arena] = g_iArenaConfigBackupCdTime[arena];
+        g_iArenaSpawns[arena] = g_iArenaConfigBackupSpawns[arena];
+        g_iArenaRedSpawns[arena] = g_iArenaConfigBackupRedSpawns[arena];
+        g_iArenaBluSpawns[arena] = g_iArenaConfigBackupBluSpawns[arena];
+        g_iArenaEarlyLeave[arena] = g_iArenaConfigBackupEarlyLeave[arena];
+
+        for (int axis = 0; axis < 3; axis++)
+        {
+            g_fArenaBBallIntelSpawn[arena][axis] = g_fArenaConfigBackupBBallIntelSpawn[arena][axis];
+            g_fArenaBBallIntelSpawnRed[arena][axis] = g_fArenaConfigBackupBBallIntelSpawnRed[arena][axis];
+            g_fArenaBBallIntelSpawnBlu[arena][axis] = g_fArenaConfigBackupBBallIntelSpawnBlu[arena][axis];
+            g_fArenaBBallHoopSpawn[arena][axis] = g_fArenaConfigBackupBBallHoopSpawn[arena][axis];
+            g_fArenaBBallHoopSpawnRed[arena][axis] = g_fArenaConfigBackupBBallHoopSpawnRed[arena][axis];
+            g_fArenaBBallHoopSpawnBlu[arena][axis] = g_fArenaConfigBackupBBallHoopSpawnBlu[arena][axis];
+        }
+
+        for (int classId = 0; classId <= 9; classId++)
+        {
+            g_fArenaClassHPRatio[arena][classId] = g_fArenaConfigBackupClassHPRatio[arena][classId];
+            g_tfctArenaAllowedClasses[arena][classId] = g_bArenaConfigBackupAllowedClasses[arena][classId];
+        }
+
+        for (int spawnIndex = 0; spawnIndex <= MAXSPAWNS; spawnIndex++)
+        {
+            for (int axis = 0; axis < 3; axis++)
+            {
+                g_fArenaSpawnOrigin[arena][spawnIndex][axis] = g_fArenaConfigBackupSpawnOrigin[arena][spawnIndex][axis];
+                g_fArenaSpawnAngles[arena][spawnIndex][axis] = g_fArenaConfigBackupSpawnAngles[arena][spawnIndex][axis];
+                g_fArenaRedSpawnOrigin[arena][spawnIndex][axis] = g_fArenaConfigBackupRedSpawnOrigin[arena][spawnIndex][axis];
+                g_fArenaRedSpawnAngles[arena][spawnIndex][axis] = g_fArenaConfigBackupRedSpawnAngles[arena][spawnIndex][axis];
+                g_fArenaBluSpawnOrigin[arena][spawnIndex][axis] = g_fArenaConfigBackupBluSpawnOrigin[arena][spawnIndex][axis];
+                g_fArenaBluSpawnAngles[arena][spawnIndex][axis] = g_fArenaConfigBackupBluSpawnAngles[arena][spawnIndex][axis];
+            }
+        }
+    }
+}
+
+bool FailArenaReloadCompatibility(int arena_index, const char[] field, char[] error, int errorLen)
+{
+    char message[192];
+    Format(message, sizeof(message), "Arena '%s' changed '%s'; hot reload only supports non-structural config changes.",
+        g_sArenaConfigBackupOriginalName[arena_index], field);
+    strcopy(error, errorLen, message);
+    return false;
+}
+
+bool ValidateArenaHotReloadCompatibility(char[] error, int errorLen)
+{
+    if (g_iArenaCount != g_iArenaConfigBackupCount)
+    {
+        Format(error, errorLen, "Arena count changed from %d to %d; hot reload requires the same arenas in the same order.",
+            g_iArenaConfigBackupCount, g_iArenaCount);
+        return false;
+    }
+
+    for (int arena = 1; arena <= g_iArenaCount; arena++)
+    {
+        if (!StrEqual(g_sArenaOriginalName[arena], g_sArenaConfigBackupOriginalName[arena], true))
+        {
+            Format(error, errorLen, "Arena order changed at slot %d ('%s' -> '%s'); hot reload requires stable arena order.",
+                arena, g_sArenaConfigBackupOriginalName[arena], g_sArenaOriginalName[arena]);
+            return false;
+        }
+
+        if (g_bFourPersonArena[arena] != g_bArenaConfigBackupFourPerson[arena])
+            return FailArenaReloadCompatibility(arena, "4player", error, errorLen);
+        if (g_bArenaBBall[arena] != g_bArenaConfigBackupBBall[arena])
+            return FailArenaReloadCompatibility(arena, "bball", error, errorLen);
+        if (g_bArenaKoth[arena] != g_bArenaConfigBackupKoth[arena])
+            return FailArenaReloadCompatibility(arena, "koth", error, errorLen);
+        if (g_bArenaMGE[arena] != g_bArenaConfigBackupMGE[arena])
+            return FailArenaReloadCompatibility(arena, "mge", error, errorLen);
+        if (g_bArenaUltiduo[arena] != g_bArenaConfigBackupUltiduo[arena])
+            return FailArenaReloadCompatibility(arena, "ultiduo", error, errorLen);
+        if (g_bArenaNoFight[arena] != g_bArenaConfigBackupNoFight[arena])
+            return FailArenaReloadCompatibility(arena, "nofight", error, errorLen);
+        if (g_bArenaAmmomod[arena] != g_bArenaConfigBackupAmmomod[arena])
+            return FailArenaReloadCompatibility(arena, "ammomod", error, errorLen);
+        if (g_bArenaMidair[arena] != g_bArenaConfigBackupMidair[arena])
+            return FailArenaReloadCompatibility(arena, "midair", error, errorLen);
+        if (g_bArenaEndif[arena] != g_bArenaConfigBackupEndif[arena])
+            return FailArenaReloadCompatibility(arena, "endif", error, errorLen);
+        if (g_bArenaTurris[arena] != g_bArenaConfigBackupTurris[arena])
+            return FailArenaReloadCompatibility(arena, "turris", error, errorLen);
+        if (g_bArenaBoostVectors[arena] != g_bArenaConfigBackupBoostVectors[arena])
+            return FailArenaReloadCompatibility(arena, "boostvectors", error, errorLen);
+        if (g_bArenaAllowKoth[arena] != g_bArenaConfigBackupAllowKoth[arena])
+            return FailArenaReloadCompatibility(arena, "allowkoth", error, errorLen);
+        if (g_bArenaKothTeamSpawn[arena] != g_bArenaConfigBackupKothTeamSpawn[arena])
+            return FailArenaReloadCompatibility(arena, "kothteamspawn", error, errorLen);
+    }
+
+    return true;
+}
+
+void ApplyArenaConfigReloadToLiveWorld(int &deferredBball, int &deferredKoth)
+{
+    deferredBball = 0;
+    deferredKoth = 0;
+
+    CacheBBallScoreboardEntities();
+    StartBBallScoreboardTimer();
+
+    for (int arena = 1; arena <= g_iArenaCount; arena++)
+    {
+        bool isActive = (g_iArenaStatus[arena] == AS_COUNTDOWN || g_iArenaStatus[arena] == AS_FIGHT);
+
+        if (g_bArenaBBall[arena])
+        {
+            if (isActive)
+            {
+                g_bArenaPendingBBallEntityRefresh[arena] = true;
+                deferredBball++;
+            }
+            else
+            {
+                g_bArenaPendingBBallEntityRefresh[arena] = false;
+                RemoveBBallArenaEntities(arena);
+                RebuildBBallArenaHoops(arena);
+            }
+
+            UpdateBBallScoreboardForArena(arena);
+        }
+        else
+        {
+            g_bArenaPendingBBallEntityRefresh[arena] = false;
+        }
+
+        if (g_bArenaKoth[arena])
+        {
+            if (isActive)
+            {
+                g_bArenaPendingKothEntityRefresh[arena] = true;
+                deferredKoth++;
+            }
+            else
+            {
+                g_bArenaPendingKothEntityRefresh[arena] = false;
+                RefreshKothCapturePointForArena(arena);
+            }
+        }
+        else
+        {
+            g_bArenaPendingKothEntityRefresh[arena] = false;
+        }
+
+        UpdateHudForArena(arena);
+    }
+}
+
+bool ReloadMapArenaConfigSafely(int &deferredBball, int &deferredKoth, char[] error, int errorLen)
+{
+    CaptureArenaConfigSnapshot();
+
+    if (!LoadSpawnPointsFromMapConfig(false, false, error, errorLen))
+    {
+        RestoreArenaConfigSnapshot();
+        return false;
+    }
+
+    if (!ValidateArenaHotReloadCompatibility(error, errorLen))
+    {
+        RestoreArenaConfigSnapshot();
+        return false;
+    }
+
+    if (!ReloadArenaWeaponRuleBindingsFromMapConfig())
+    {
+        RestoreArenaConfigSnapshot();
+        strcopy(error, errorLen, "Map config parsed, but weapon rule bindings could not be reloaded.");
+        return false;
+    }
+
+    ApplyArenaConfigReloadToLiveWorld(deferredBball, deferredKoth);
+    return true;
+}
+
+// Load and parse spawn point configurations from map-specific config files
+bool LoadSpawnPointsFromMapConfig(bool failHard, bool parseWeaponRules, char[] error, int errorLen)
+{
+    error[0] = '\0';
+
     char txtfile[256];
     GetCurrentMap(g_sMapName, sizeof(g_sMapName));
 
-    //  "workshop/mge_training_v8_beta4b.ugc1996603816"
     if (StrContains(g_sMapName, "workshop/", false) != -1)
     {
         char nonWorkshopName[256];
         if (!GetMapDisplayName(g_sMapName, nonWorkshopName, sizeof(nonWorkshopName)))
         {
-            LogError("Failed to convert workshop map name %s to pretty name! This map will probably not work!");
+            LogError("Failed to convert workshop map name %s to pretty name! This map will probably not work!", g_sMapName);
         }
         else
         {
@@ -31,7 +424,6 @@ bool LoadSpawnPoints()
         }
     }
 
-    // Build path to map-specific config file: configs/mge/{mapname}.cfg
     Format(txtfile, sizeof(txtfile), "configs/mge/%s.cfg", g_sMapName);
     BuildPath(Path_SM, txtfile, sizeof(txtfile), txtfile);
 
@@ -54,21 +446,31 @@ bool LoadSpawnPoints()
 
     if (!kv.ImportFromFile(txtfile))
     {
-        LogError("Error. Can't find cfg file: %s", txtfile);
+        char message[256];
+        Format(message, sizeof(message), "Error. Can't find cfg file: %s", txtfile);
         delete kv;
-        return false;
+        return FailMapConfigLoad(failHard, error, errorLen, message);
     }
-    
+
     if (!kv.GotoFirstSubKey())
     {
-        LogError("Error in cfg file: %s", txtfile);
+        char message[256];
+        Format(message, sizeof(message), "Error in cfg file: %s", txtfile);
         delete kv;
-        return false;
+        return FailMapConfigLoad(failHard, error, errorLen, message);
     }
-    
+
     do
     {
         g_iArenaCount++;
+        if (g_iArenaCount > MAXARENAS)
+        {
+            char message[192];
+            Format(message, sizeof(message), "Error in cfg file. Too many arenas in %s (max: %d).", txtfile, MAXARENAS);
+            delete kv;
+            return FailMapConfigLoad(failHard, error, errorLen, message);
+        }
+
         g_bArenaBBallIntelSpawnSet[g_iArenaCount] = false;
         g_bArenaBBallIntelSpawnRedSet[g_iArenaCount] = false;
         g_bArenaBBallIntelSpawnBluSet[g_iArenaCount] = false;
@@ -80,6 +482,7 @@ bool LoadSpawnPoints()
         g_bArenaUseTeamSpawns[g_iArenaCount] = false;
         g_bArenaNearSpawn[g_iArenaCount] = false;
         kv.GetSectionName(g_sArenaOriginalName[g_iArenaCount], 64);
+
         int id;
         if (kv.GetNameSymbol("1", id))
         {
@@ -89,51 +492,66 @@ bool LoadSpawnPoints()
             {
                 g_iArenaSpawns[g_iArenaCount]++;
                 IntToString(g_iArenaSpawns[g_iArenaCount], intstr, sizeof(intstr));
-                IntToString(g_iArenaSpawns[g_iArenaCount]+1, intstr2, sizeof(intstr2));
+                IntToString(g_iArenaSpawns[g_iArenaCount] + 1, intstr2, sizeof(intstr2));
                 kv.GetString(intstr, spawn, sizeof(spawn));
                 count = ExplodeString(spawn, " ", spawnCo, 6, 16);
-                if (count==6)
+
+                if (count == 6)
                 {
-                    for (i=0; i<3; i++)
-                    {
+                    for (i = 0; i < 3; i++)
                         g_fArenaSpawnOrigin[g_iArenaCount][g_iArenaSpawns[g_iArenaCount]][i] = StringToFloat(spawnCo[i]);
-                    }
-                    for (i=3; i<6; i++)
-                    {
-                        g_fArenaSpawnAngles[g_iArenaCount][g_iArenaSpawns[g_iArenaCount]][i-3] = StringToFloat(spawnCo[i]);
-                    }
-                } else if(count==4) {
-                    for (i=0; i<3; i++)
-                    {
+                    for (i = 3; i < 6; i++)
+                        g_fArenaSpawnAngles[g_iArenaCount][g_iArenaSpawns[g_iArenaCount]][i - 3] = StringToFloat(spawnCo[i]);
+                }
+                else if (count == 4)
+                {
+                    for (i = 0; i < 3; i++)
                         g_fArenaSpawnOrigin[g_iArenaCount][g_iArenaSpawns[g_iArenaCount]][i] = StringToFloat(spawnCo[i]);
-                    }
+
                     g_fArenaSpawnAngles[g_iArenaCount][g_iArenaSpawns[g_iArenaCount]][0] = 0.0;
                     g_fArenaSpawnAngles[g_iArenaCount][g_iArenaSpawns[g_iArenaCount]][1] = StringToFloat(spawnCo[3]);
                     g_fArenaSpawnAngles[g_iArenaCount][g_iArenaSpawns[g_iArenaCount]][2] = 0.0;
-                } else {
-                    SetFailState("Error in cfg file. Wrong number of parameters (%d) on spawn <%i> in arena <%s>",count,g_iArenaSpawns[g_iArenaCount],g_sArenaOriginalName[g_iArenaCount]);
+                }
+                else
+                {
+                    char message[192];
+                    Format(message, sizeof(message), "Error in cfg file. Wrong number of parameters (%d) on spawn <%i> in arena <%s>.",
+                        count, g_iArenaSpawns[g_iArenaCount], g_sArenaOriginalName[g_iArenaCount]);
+                    delete kv;
+                    return FailMapConfigLoad(failHard, error, errorLen, message);
                 }
             } while (kv.GetNameSymbol(intstr2, id));
-        } else {
+        }
+        else
+        {
             bool hasRedSection = HasSpawnSection(kv, "RedSpawns") || HasSpawnSection(kv, "redspawns");
             bool hasBluSection = HasSpawnSection(kv, "BluSpawns") || HasSpawnSection(kv, "bluspawns");
             if (!hasRedSection && !hasBluSection)
                 LogError("Could not load spawns on arena %s.", g_sArenaOriginalName[g_iArenaCount]);
         }
 
-        if (kv.GetNameSymbol("cap", id)) {
-            kv.GetString("cap",  g_sArenaCap[g_iArenaCount], 64);
+        if (kv.GetNameSymbol("cap", id))
+        {
+            kv.GetString("cap", g_sArenaCap[g_iArenaCount], 64);
             g_bArenaHasCap[g_iArenaCount] = true;
-        } else {
+        }
+        else
+        {
             g_bArenaHasCap[g_iArenaCount] = false;
+            g_sArenaCap[g_iArenaCount][0] = '\0';
         }
 
-        if (kv.GetNameSymbol("cap_trigger", id)) {
-            kv.GetString("cap_trigger",  g_sArenaCapTrigger[g_iArenaCount], 64);
+        if (kv.GetNameSymbol("cap_trigger", id))
+        {
+            kv.GetString("cap_trigger", g_sArenaCapTrigger[g_iArenaCount], 64);
             g_bArenaHasCapTrigger[g_iArenaCount] = true;
         }
+        else
+        {
+            g_bArenaHasCapTrigger[g_iArenaCount] = false;
+            g_sArenaCapTrigger[g_iArenaCount][0] = '\0';
+        }
 
-        // Optional parameters
         g_iArenaMgelimit[g_iArenaCount] = kv.GetNum("fraglimit", g_iDefaultFragLimit);
         g_iArenaCaplimit[g_iArenaCount] = kv.GetNum("caplimit", g_iDefaultFragLimit);
         g_iArenaMinRating[g_iArenaCount] = kv.GetNum("minrating", -1);
@@ -173,40 +591,80 @@ bool LoadSpawnPoints()
         g_bArenaBBallHoopSpawnSet[g_iArenaCount] = ParseVector3Key(kv, "hoopspawn", g_fArenaBBallHoopSpawn[g_iArenaCount]);
         g_bArenaBBallHoopSpawnRedSet[g_iArenaCount] = ParseVector3Key(kv, "hoopspawn_red", g_fArenaBBallHoopSpawnRed[g_iArenaCount]);
         g_bArenaBBallHoopSpawnBluSet[g_iArenaCount] = ParseVector3Key(kv, "hoopspawn_blu", g_fArenaBBallHoopSpawnBlu[g_iArenaCount]);
-        bool hasRedSpawns = ParseSpawnSection(kv, "RedSpawns", g_fArenaRedSpawnOrigin[g_iArenaCount], g_fArenaRedSpawnAngles[g_iArenaCount], g_iArenaRedSpawns[g_iArenaCount], g_sArenaOriginalName[g_iArenaCount]);
-        if (!hasRedSpawns)
-            hasRedSpawns = ParseSpawnSection(kv, "redspawns", g_fArenaRedSpawnOrigin[g_iArenaCount], g_fArenaRedSpawnAngles[g_iArenaCount], g_iArenaRedSpawns[g_iArenaCount], g_sArenaOriginalName[g_iArenaCount]);
 
-        bool hasBluSpawns = ParseSpawnSection(kv, "BluSpawns", g_fArenaBluSpawnOrigin[g_iArenaCount], g_fArenaBluSpawnAngles[g_iArenaCount], g_iArenaBluSpawns[g_iArenaCount], g_sArenaOriginalName[g_iArenaCount]);
+        bool hasRedSpawns = ParseSpawnSection(kv, "RedSpawns", g_fArenaRedSpawnOrigin[g_iArenaCount], g_fArenaRedSpawnAngles[g_iArenaCount],
+            g_iArenaRedSpawns[g_iArenaCount], g_sArenaOriginalName[g_iArenaCount], failHard, error, errorLen);
+        if (error[0] != '\0')
+        {
+            delete kv;
+            return false;
+        }
+        if (!hasRedSpawns)
+        {
+            hasRedSpawns = ParseSpawnSection(kv, "redspawns", g_fArenaRedSpawnOrigin[g_iArenaCount], g_fArenaRedSpawnAngles[g_iArenaCount],
+                g_iArenaRedSpawns[g_iArenaCount], g_sArenaOriginalName[g_iArenaCount], failHard, error, errorLen);
+            if (error[0] != '\0')
+            {
+                delete kv;
+                return false;
+            }
+        }
+
+        bool hasBluSpawns = ParseSpawnSection(kv, "BluSpawns", g_fArenaBluSpawnOrigin[g_iArenaCount], g_fArenaBluSpawnAngles[g_iArenaCount],
+            g_iArenaBluSpawns[g_iArenaCount], g_sArenaOriginalName[g_iArenaCount], failHard, error, errorLen);
+        if (error[0] != '\0')
+        {
+            delete kv;
+            return false;
+        }
         if (!hasBluSpawns)
-            hasBluSpawns = ParseSpawnSection(kv, "bluspawns", g_fArenaBluSpawnOrigin[g_iArenaCount], g_fArenaBluSpawnAngles[g_iArenaCount], g_iArenaBluSpawns[g_iArenaCount], g_sArenaOriginalName[g_iArenaCount]);
+        {
+            hasBluSpawns = ParseSpawnSection(kv, "bluspawns", g_fArenaBluSpawnOrigin[g_iArenaCount], g_fArenaBluSpawnAngles[g_iArenaCount],
+                g_iArenaBluSpawns[g_iArenaCount], g_sArenaOriginalName[g_iArenaCount], failHard, error, errorLen);
+            if (error[0] != '\0')
+            {
+                delete kv;
+                return false;
+            }
+        }
 
         if (hasRedSpawns != hasBluSpawns)
         {
-            SetFailState("Error in cfg file. Arena <%s> must define both RedSpawns and BluSpawns sections.", g_sArenaOriginalName[g_iArenaCount]);
+            char message[192];
+            Format(message, sizeof(message), "Error in cfg file. Arena <%s> must define both RedSpawns and BluSpawns sections.",
+                g_sArenaOriginalName[g_iArenaCount]);
+            delete kv;
+            return FailMapConfigLoad(failHard, error, errorLen, message);
         }
 
         g_bArenaUseTeamSpawns[g_iArenaCount] = (hasRedSpawns && hasBluSpawns);
 
-        // Parsing allowed classes for current arena
         char sAllowedClasses[128];
         kv.GetString("classes", sAllowedClasses, sizeof(sAllowedClasses));
-        ParseAllowedClasses(sAllowedClasses,g_tfctArenaAllowedClasses[g_iArenaCount]);
-        ParseArenaWeaponRuleSettings(kv, g_iArenaCount);
+        ParseAllowedClasses(sAllowedClasses, g_tfctArenaAllowedClasses[g_iArenaCount]);
+        if (parseWeaponRules)
+            ParseArenaWeaponRuleSettings(kv, g_iArenaCount);
         g_iArenaFraglimit[g_iArenaCount] = g_iArenaMgelimit[g_iArenaCount];
         UpdateArenaName(g_iArenaCount);
     } while (kv.GotoNextKey());
-    
+
+    delete kv;
+
     if (g_iArenaCount)
     {
         LogMessage("Loaded %d arenas from %s. MGEMod enabled.", g_iArenaCount, txtfile);
-        delete kv;
         return true;
-    } else {
-        LogMessage("No arenas found in %s.", txtfile);
-        delete kv;
-        return false;
     }
+
+    Format(error, errorLen, "No arenas found in %s.", txtfile);
+    LogMessage("%s", error);
+    return false;
+}
+
+bool LoadSpawnPoints()
+{
+    char error[192];
+    return LoadSpawnPointsFromMapConfig(true, true, error, sizeof(error));
 }
 
 bool ParseVector3Key(KeyValues kv, const char[] key, float outVec[3])
@@ -240,7 +698,7 @@ bool HasSpawnSection(KeyValues kv, const char[] sectionName)
     return true;
 }
 
-bool ParseSpawnSection(KeyValues kv, const char[] sectionName, float outOrigin[MAXSPAWNS + 1][3], float outAngles[MAXSPAWNS + 1][3], int &outCount, const char[] arenaName)
+bool ParseSpawnSection(KeyValues kv, const char[] sectionName, float outOrigin[MAXSPAWNS + 1][3], float outAngles[MAXSPAWNS + 1][3], int &outCount, const char[] arenaName, bool failHard, char[] error, int errorLen)
 {
     outCount = 0;
 
@@ -264,7 +722,9 @@ bool ParseSpawnSection(KeyValues kv, const char[] sectionName, float outOrigin[M
         if (outCount > MAXSPAWNS)
         {
             kv.GoBack();
-            SetFailState("Error in cfg file. Too many spawns in section <%s> for arena <%s> (max: %d).", sectionName, arenaName, MAXSPAWNS);
+            char message[192];
+            Format(message, sizeof(message), "Error in cfg file. Too many spawns in section <%s> for arena <%s> (max: %d).", sectionName, arenaName, MAXSPAWNS);
+            return FailMapConfigLoad(failHard, error, errorLen, message);
         }
 
         int count = ExplodeString(spawn, " ", spawnCo, 6, 16);
@@ -286,7 +746,9 @@ bool ParseSpawnSection(KeyValues kv, const char[] sectionName, float outOrigin[M
         else
         {
             kv.GoBack();
-            SetFailState("Error in cfg file. Wrong number of parameters (%d) in section <%s> on key <%d> in arena <%s>.", count, sectionName, keyIndex, arenaName);
+            char message[192];
+            Format(message, sizeof(message), "Error in cfg file. Wrong number of parameters (%d) in section <%s> on key <%d> in arena <%s>.", count, sectionName, keyIndex, arenaName);
+            return FailMapConfigLoad(failHard, error, errorLen, message);
         }
     }
 
@@ -1606,7 +2068,7 @@ void PrintToChatArena(int arena_index, const char[] message, any ...)
         int client = g_iArenaQueue[arena_index][i];
         if (client)
         {
-            PrintToChat(client, buffer);
+            MC_PrintToChat(client, "%s", buffer);
         }
     }
 }
@@ -1896,12 +2358,94 @@ void WaddToArena(int client, int arena_index, bool show_menu)
 #define SETSPAWN_MODE_NEUTRAL 0
 #define SETSPAWN_MODE_RED 1
 #define SETSPAWN_MODE_BLU 2
+#define SETSPAWN_MODE_BBALL_INTEL 3
+#define SETSPAWN_MODE_BBALL_INTEL_RED 4
+#define SETSPAWN_MODE_BBALL_INTEL_BLU 5
+#define SETSPAWN_MODE_BBALL_HOOP 6
+#define SETSPAWN_MODE_BBALL_HOOP_RED 7
+#define SETSPAWN_MODE_BBALL_HOOP_BLU 8
 
 void ClearSetSpawnState(int client)
 {
     g_bSetSpawnAwaitInput[client] = false;
     g_iSetSpawnArena[client] = 0;
     g_iSetSpawnMode[client] = SETSPAWN_MODE_NEUTRAL;
+}
+
+bool IsSinglePointSetSpawnMode(int mode)
+{
+    return (mode >= SETSPAWN_MODE_BBALL_INTEL);
+}
+
+bool TryResolveSinglePointSetSpawnMode(const char[] token1, const char[] token2, bool hasToken2, int &mode, int &consumedArgs)
+{
+    consumedArgs = 0;
+
+    if (StrEqual(token1, "intel", false) || StrEqual(token1, "intelspawn", false))
+    {
+        mode = SETSPAWN_MODE_BBALL_INTEL;
+        consumedArgs = 1;
+    }
+    else if (StrEqual(token1, "intel_red", false) || StrEqual(token1, "intelred", false) || StrEqual(token1, "intelspawn_red", false))
+    {
+        mode = SETSPAWN_MODE_BBALL_INTEL_RED;
+        consumedArgs = 1;
+    }
+    else if (StrEqual(token1, "intel_blu", false) || StrEqual(token1, "intelblu", false) || StrEqual(token1, "intel_blue", false) || StrEqual(token1, "intelspawn_blu", false))
+    {
+        mode = SETSPAWN_MODE_BBALL_INTEL_BLU;
+        consumedArgs = 1;
+    }
+    else if (StrEqual(token1, "hoop", false) || StrEqual(token1, "hoopspawn", false))
+    {
+        mode = SETSPAWN_MODE_BBALL_HOOP;
+        consumedArgs = 1;
+    }
+    else if (StrEqual(token1, "hoop_red", false) || StrEqual(token1, "hoopred", false) || StrEqual(token1, "hoopspawn_red", false))
+    {
+        mode = SETSPAWN_MODE_BBALL_HOOP_RED;
+        consumedArgs = 1;
+    }
+    else if (StrEqual(token1, "hoop_blu", false) || StrEqual(token1, "hoopblu", false) || StrEqual(token1, "hoop_blue", false) || StrEqual(token1, "hoopspawn_blu", false))
+    {
+        mode = SETSPAWN_MODE_BBALL_HOOP_BLU;
+        consumedArgs = 1;
+    }
+
+    if (consumedArgs == 0)
+        return false;
+
+    if (!hasToken2)
+        return true;
+
+    if (StrEqual(token1, "intel", false) || StrEqual(token1, "intelspawn", false))
+    {
+        if (StrEqual(token2, "red", false))
+        {
+            mode = SETSPAWN_MODE_BBALL_INTEL_RED;
+            consumedArgs = 2;
+        }
+        else if (StrEqual(token2, "blue", false) || StrEqual(token2, "blu", false))
+        {
+            mode = SETSPAWN_MODE_BBALL_INTEL_BLU;
+            consumedArgs = 2;
+        }
+    }
+    else if (StrEqual(token1, "hoop", false) || StrEqual(token1, "hoopspawn", false))
+    {
+        if (StrEqual(token2, "red", false))
+        {
+            mode = SETSPAWN_MODE_BBALL_HOOP_RED;
+            consumedArgs = 2;
+        }
+        else if (StrEqual(token2, "blue", false) || StrEqual(token2, "blu", false))
+        {
+            mode = SETSPAWN_MODE_BBALL_HOOP_BLU;
+            consumedArgs = 2;
+        }
+    }
+
+    return true;
 }
 
 bool IsPositiveIntegerToken(const char[] token)
@@ -1983,12 +2527,125 @@ bool ParseSetSpawnInput(const char[] text, int &index, bool &deleteSpawn, char[]
     return true;
 }
 
+bool TryResolveIndexedSetSpawnModeToken(const char[] token, int &mode)
+{
+    if (StrEqual(token, "neutral", false) || StrEqual(token, "n", false))
+    {
+        mode = SETSPAWN_MODE_NEUTRAL;
+        return true;
+    }
+
+    if (StrEqual(token, "red", false))
+    {
+        mode = SETSPAWN_MODE_RED;
+        return true;
+    }
+
+    if (StrEqual(token, "blue", false) || StrEqual(token, "blu", false))
+    {
+        mode = SETSPAWN_MODE_BLU;
+        return true;
+    }
+
+    return false;
+}
+
+bool ParseSetSpawnChatCommand(const char[] text, int currentMode, int &resolvedMode, int &index, bool &deleteSpawn, char[] error, int errorLen)
+{
+    char rawParts[8][64];
+    int rawCount = ExplodeString(text, " ", rawParts, sizeof(rawParts), sizeof(rawParts[]));
+
+    char parts[8][64];
+    int partCount = 0;
+    for (int i = 0; i < rawCount && partCount < sizeof(parts); i++)
+    {
+        TrimString(rawParts[i]);
+        if (rawParts[i][0] == '\0')
+            continue;
+
+        strcopy(parts[partCount], sizeof(parts[]), rawParts[i]);
+        partCount++;
+    }
+
+    if (partCount <= 0)
+    {
+        strcopy(error, errorLen, "Empty input.");
+        return false;
+    }
+
+    resolvedMode = currentMode;
+    index = 1;
+    deleteSpawn = false;
+
+    int consumedArgs = 0;
+    int singleMode = currentMode;
+    if (TryResolveSinglePointSetSpawnMode(parts[0], (partCount > 1) ? parts[1] : "", partCount > 1, singleMode, consumedArgs))
+    {
+        resolvedMode = singleMode;
+
+        if (partCount == consumedArgs)
+            return true;
+
+        if (partCount == consumedArgs + 1 && (StrEqual(parts[consumedArgs], "del", false) || StrEqual(parts[consumedArgs], "delete", false)))
+        {
+            deleteSpawn = true;
+            return true;
+        }
+
+        strcopy(error, errorLen, "Usage: <intel|hoop> [red|blu] [del|delete]");
+        return false;
+    }
+
+    int indexedMode = currentMode;
+    if (TryResolveIndexedSetSpawnModeToken(parts[0], indexedMode))
+    {
+        if (partCount < 2)
+        {
+            strcopy(error, errorLen, "Missing spawn number after type.");
+            return false;
+        }
+
+        resolvedMode = indexedMode;
+
+        char remainder[128];
+        remainder[0] = '\0';
+        for (int i = 1; i < partCount; i++)
+        {
+            if (i > 1)
+                StrCat(remainder, sizeof(remainder), " ");
+            StrCat(remainder, sizeof(remainder), parts[i]);
+        }
+
+        return ParseSetSpawnInput(remainder, index, deleteSpawn, error, errorLen);
+    }
+
+    if (IsSinglePointSetSpawnMode(currentMode))
+    {
+        if (partCount == 1 && (StrEqual(parts[0], "del", false) || StrEqual(parts[0], "delete", false)))
+        {
+            deleteSpawn = true;
+            return true;
+        }
+
+        strcopy(error, errorLen, "Type the point type in chat (e.g. 'intel red' or 'hoop blu'), or add 'del' to clear.");
+        return false;
+    }
+
+    return ParseSetSpawnInput(text, index, deleteSpawn, error, errorLen);
+}
+
 void GetSetSpawnModeName(int mode, char[] output, int outputLen)
 {
     switch (mode)
     {
         case SETSPAWN_MODE_RED: strcopy(output, outputLen, "RED");
         case SETSPAWN_MODE_BLU: strcopy(output, outputLen, "BLU");
+        case SETSPAWN_MODE_BBALL_INTEL: strcopy(output, outputLen, "INTEL");
+        case SETSPAWN_MODE_BBALL_INTEL_RED: strcopy(output, outputLen, "INTEL RED");
+        case SETSPAWN_MODE_BBALL_INTEL_BLU: strcopy(output, outputLen, "INTEL BLU");
+        case SETSPAWN_MODE_BBALL_HOOP: strcopy(output, outputLen, "HOOP");
+        case SETSPAWN_MODE_BBALL_HOOP_RED: strcopy(output, outputLen, "HOOP RED");
+        case SETSPAWN_MODE_BBALL_HOOP_BLU: strcopy(output, outputLen, "HOOP BLU");
         default: strcopy(output, outputLen, "NEUTRAL");
     }
 }
@@ -1999,6 +2656,12 @@ int GetArenaSpawnCountByMode(int arena_index, int mode)
     {
         case SETSPAWN_MODE_RED: return g_iArenaRedSpawns[arena_index];
         case SETSPAWN_MODE_BLU: return g_iArenaBluSpawns[arena_index];
+        case SETSPAWN_MODE_BBALL_INTEL: return g_bArenaBBallIntelSpawnSet[arena_index] ? 1 : 0;
+        case SETSPAWN_MODE_BBALL_INTEL_RED: return g_bArenaBBallIntelSpawnRedSet[arena_index] ? 1 : 0;
+        case SETSPAWN_MODE_BBALL_INTEL_BLU: return g_bArenaBBallIntelSpawnBluSet[arena_index] ? 1 : 0;
+        case SETSPAWN_MODE_BBALL_HOOP: return g_bArenaBBallHoopSpawnSet[arena_index] ? 1 : 0;
+        case SETSPAWN_MODE_BBALL_HOOP_RED: return g_bArenaBBallHoopSpawnRedSet[arena_index] ? 1 : 0;
+        case SETSPAWN_MODE_BBALL_HOOP_BLU: return g_bArenaBBallHoopSpawnBluSet[arena_index] ? 1 : 0;
     }
     return g_iArenaSpawns[arena_index];
 }
@@ -2027,6 +2690,54 @@ void GetArenaSpawnByMode(int arena_index, int mode, int index, float origin[3], 
         return;
     }
 
+    if (IsSinglePointSetSpawnMode(mode))
+    {
+        switch (mode)
+        {
+            case SETSPAWN_MODE_BBALL_INTEL:
+            {
+                origin[0] = g_fArenaBBallIntelSpawn[arena_index][0];
+                origin[1] = g_fArenaBBallIntelSpawn[arena_index][1];
+                origin[2] = g_fArenaBBallIntelSpawn[arena_index][2];
+            }
+            case SETSPAWN_MODE_BBALL_INTEL_RED:
+            {
+                origin[0] = g_fArenaBBallIntelSpawnRed[arena_index][0];
+                origin[1] = g_fArenaBBallIntelSpawnRed[arena_index][1];
+                origin[2] = g_fArenaBBallIntelSpawnRed[arena_index][2];
+            }
+            case SETSPAWN_MODE_BBALL_INTEL_BLU:
+            {
+                origin[0] = g_fArenaBBallIntelSpawnBlu[arena_index][0];
+                origin[1] = g_fArenaBBallIntelSpawnBlu[arena_index][1];
+                origin[2] = g_fArenaBBallIntelSpawnBlu[arena_index][2];
+            }
+            case SETSPAWN_MODE_BBALL_HOOP:
+            {
+                origin[0] = g_fArenaBBallHoopSpawn[arena_index][0];
+                origin[1] = g_fArenaBBallHoopSpawn[arena_index][1];
+                origin[2] = g_fArenaBBallHoopSpawn[arena_index][2];
+            }
+            case SETSPAWN_MODE_BBALL_HOOP_RED:
+            {
+                origin[0] = g_fArenaBBallHoopSpawnRed[arena_index][0];
+                origin[1] = g_fArenaBBallHoopSpawnRed[arena_index][1];
+                origin[2] = g_fArenaBBallHoopSpawnRed[arena_index][2];
+            }
+            case SETSPAWN_MODE_BBALL_HOOP_BLU:
+            {
+                origin[0] = g_fArenaBBallHoopSpawnBlu[arena_index][0];
+                origin[1] = g_fArenaBBallHoopSpawnBlu[arena_index][1];
+                origin[2] = g_fArenaBBallHoopSpawnBlu[arena_index][2];
+            }
+        }
+
+        angles[0] = 0.0;
+        angles[1] = 0.0;
+        angles[2] = 0.0;
+        return;
+    }
+
     origin[0] = g_fArenaSpawnOrigin[arena_index][index][0];
     origin[1] = g_fArenaSpawnOrigin[arena_index][index][1];
     origin[2] = g_fArenaSpawnOrigin[arena_index][index][2];
@@ -2037,6 +2748,63 @@ void GetArenaSpawnByMode(int arena_index, int mode, int index, float origin[3], 
 
 bool SetArenaSpawnByMode(int arena_index, int mode, int index, const float origin[3], const float angles[3], char[] error, int errorLen)
 {
+    if (IsSinglePointSetSpawnMode(mode))
+    {
+        if (!g_bArenaBBall[arena_index])
+        {
+            strcopy(error, errorLen, "This arena is not BBall.");
+            return false;
+        }
+
+        switch (mode)
+        {
+            case SETSPAWN_MODE_BBALL_INTEL:
+            {
+                g_fArenaBBallIntelSpawn[arena_index][0] = origin[0];
+                g_fArenaBBallIntelSpawn[arena_index][1] = origin[1];
+                g_fArenaBBallIntelSpawn[arena_index][2] = origin[2];
+                g_bArenaBBallIntelSpawnSet[arena_index] = true;
+            }
+            case SETSPAWN_MODE_BBALL_INTEL_RED:
+            {
+                g_fArenaBBallIntelSpawnRed[arena_index][0] = origin[0];
+                g_fArenaBBallIntelSpawnRed[arena_index][1] = origin[1];
+                g_fArenaBBallIntelSpawnRed[arena_index][2] = origin[2];
+                g_bArenaBBallIntelSpawnRedSet[arena_index] = true;
+            }
+            case SETSPAWN_MODE_BBALL_INTEL_BLU:
+            {
+                g_fArenaBBallIntelSpawnBlu[arena_index][0] = origin[0];
+                g_fArenaBBallIntelSpawnBlu[arena_index][1] = origin[1];
+                g_fArenaBBallIntelSpawnBlu[arena_index][2] = origin[2];
+                g_bArenaBBallIntelSpawnBluSet[arena_index] = true;
+            }
+            case SETSPAWN_MODE_BBALL_HOOP:
+            {
+                g_fArenaBBallHoopSpawn[arena_index][0] = origin[0];
+                g_fArenaBBallHoopSpawn[arena_index][1] = origin[1];
+                g_fArenaBBallHoopSpawn[arena_index][2] = origin[2];
+                g_bArenaBBallHoopSpawnSet[arena_index] = true;
+            }
+            case SETSPAWN_MODE_BBALL_HOOP_RED:
+            {
+                g_fArenaBBallHoopSpawnRed[arena_index][0] = origin[0];
+                g_fArenaBBallHoopSpawnRed[arena_index][1] = origin[1];
+                g_fArenaBBallHoopSpawnRed[arena_index][2] = origin[2];
+                g_bArenaBBallHoopSpawnRedSet[arena_index] = true;
+            }
+            case SETSPAWN_MODE_BBALL_HOOP_BLU:
+            {
+                g_fArenaBBallHoopSpawnBlu[arena_index][0] = origin[0];
+                g_fArenaBBallHoopSpawnBlu[arena_index][1] = origin[1];
+                g_fArenaBBallHoopSpawnBlu[arena_index][2] = origin[2];
+                g_bArenaBBallHoopSpawnBluSet[arena_index] = true;
+            }
+        }
+
+        return true;
+    }
+
     if (index < 1 || index > MAXSPAWNS)
     {
         Format(error, errorLen, "Index must be between 1 and %d.", MAXSPAWNS);
@@ -2093,6 +2861,27 @@ bool SetArenaSpawnByMode(int arena_index, int mode, int index, const float origi
 
 bool DeleteArenaSpawnByMode(int arena_index, int mode, int index, char[] error, int errorLen)
 {
+    if (IsSinglePointSetSpawnMode(mode))
+    {
+        if (!g_bArenaBBall[arena_index])
+        {
+            strcopy(error, errorLen, "This arena is not BBall.");
+            return false;
+        }
+
+        switch (mode)
+        {
+            case SETSPAWN_MODE_BBALL_INTEL: g_bArenaBBallIntelSpawnSet[arena_index] = false;
+            case SETSPAWN_MODE_BBALL_INTEL_RED: g_bArenaBBallIntelSpawnRedSet[arena_index] = false;
+            case SETSPAWN_MODE_BBALL_INTEL_BLU: g_bArenaBBallIntelSpawnBluSet[arena_index] = false;
+            case SETSPAWN_MODE_BBALL_HOOP: g_bArenaBBallHoopSpawnSet[arena_index] = false;
+            case SETSPAWN_MODE_BBALL_HOOP_RED: g_bArenaBBallHoopSpawnRedSet[arena_index] = false;
+            case SETSPAWN_MODE_BBALL_HOOP_BLU: g_bArenaBBallHoopSpawnBluSet[arena_index] = false;
+        }
+
+        return true;
+    }
+
     int count = GetArenaSpawnCountByMode(arena_index, mode);
     if (index < 1 || index > count)
     {
@@ -2154,6 +2943,36 @@ void ClearNumericSpawnKeysInCurrentSection(KeyValues kv)
     }
 }
 
+bool JumpToArenaConfigSectionExact(KeyValues kv, const char[] arenaName)
+{
+    if (!kv.GotoFirstSubKey())
+        return false;
+
+    do
+    {
+        char currentName[64];
+        kv.GetSectionName(currentName, sizeof(currentName));
+        if (StrEqual(currentName, arenaName, true))
+            return true;
+    }
+    while (kv.GotoNextKey());
+
+    return false;
+}
+
+void WriteOptionalVector3Key(KeyValues kv, const char[] key, bool enabled, const float vec[3])
+{
+    if (!enabled)
+    {
+        kv.DeleteKey(key);
+        return;
+    }
+
+    char value[96];
+    Format(value, sizeof(value), "%.6f %.6f %.6f", vec[0], vec[1], vec[2]);
+    kv.SetString(key, value);
+}
+
 void WriteSpawnSectionToKv(KeyValues kv, const char[] sectionName, float spawnOrigin[MAXSPAWNS + 1][3], float spawnAngles[MAXSPAWNS + 1][3], int spawnCount)
 {
     kv.DeleteKey(sectionName);
@@ -2199,7 +3018,7 @@ bool SaveArenaSpawnsToConfig(int arena_index, char[] error, int errorLen)
         return false;
     }
 
-    if (!kv.JumpToKey(g_sArenaOriginalName[arena_index], false))
+    if (!JumpToArenaConfigSectionExact(kv, g_sArenaOriginalName[arena_index]))
     {
         Format(error, errorLen, "Arena section '%s' not found in config.", g_sArenaOriginalName[arena_index]);
         delete kv;
@@ -2223,6 +3042,12 @@ bool SaveArenaSpawnsToConfig(int arena_index, char[] error, int errorLen)
     kv.DeleteKey("bluspawns");
     WriteSpawnSectionToKv(kv, "RedSpawns", g_fArenaRedSpawnOrigin[arena_index], g_fArenaRedSpawnAngles[arena_index], g_iArenaRedSpawns[arena_index]);
     WriteSpawnSectionToKv(kv, "BluSpawns", g_fArenaBluSpawnOrigin[arena_index], g_fArenaBluSpawnAngles[arena_index], g_iArenaBluSpawns[arena_index]);
+    WriteOptionalVector3Key(kv, "intelspawn", g_bArenaBBallIntelSpawnSet[arena_index], g_fArenaBBallIntelSpawn[arena_index]);
+    WriteOptionalVector3Key(kv, "intelspawn_red", g_bArenaBBallIntelSpawnRedSet[arena_index], g_fArenaBBallIntelSpawnRed[arena_index]);
+    WriteOptionalVector3Key(kv, "intelspawn_blu", g_bArenaBBallIntelSpawnBluSet[arena_index], g_fArenaBBallIntelSpawnBlu[arena_index]);
+    WriteOptionalVector3Key(kv, "hoopspawn", g_bArenaBBallHoopSpawnSet[arena_index], g_fArenaBBallHoopSpawn[arena_index]);
+    WriteOptionalVector3Key(kv, "hoopspawn_red", g_bArenaBBallHoopSpawnRedSet[arena_index], g_fArenaBBallHoopSpawnRed[arena_index]);
+    WriteOptionalVector3Key(kv, "hoopspawn_blu", g_bArenaBBallHoopSpawnBluSet[arena_index], g_fArenaBBallHoopSpawnBlu[arena_index]);
 
     kv.GoBack();
 
@@ -2268,6 +3093,44 @@ void PrintArenaSpawnsToClient(int client, int arena_index, int mode)
     }
 }
 
+Action Command_MgeMapReload(int client, int args)
+{
+    int deferredBball;
+    int deferredKoth;
+    char error[192];
+
+    if (!ReloadMapArenaConfigSafely(deferredBball, deferredKoth, error, sizeof(error)))
+    {
+        if (client > 0 && IsValidClient(client))
+        {
+            MC_PrintToChat(client, "[MGE] Map config reload failed: %s", error);
+            PrintToConsole(client, "[MGE] Map config reload failed: %s", error);
+        }
+        else
+        {
+            PrintToServer("[MGE] Map config reload failed: %s", error);
+        }
+        return Plugin_Handled;
+    }
+
+    ReapplyWeaponRulesToOnlineArenaPlayers();
+
+    if (client > 0 && IsValidClient(client))
+    {
+        MC_PrintToChat(client, "[MGE] Map config reloaded. arenas=%d deferred_bball=%d deferred_koth=%d",
+            g_iArenaCount, deferredBball, deferredKoth);
+        PrintToConsole(client, "[MGE] Map config reloaded. arenas=%d deferred_bball=%d deferred_koth=%d",
+            g_iArenaCount, deferredBball, deferredKoth);
+    }
+    else
+    {
+        PrintToServer("[MGE] Map config reloaded. arenas=%d deferred_bball=%d deferred_koth=%d",
+            g_iArenaCount, deferredBball, deferredKoth);
+    }
+
+    return Plugin_Handled;
+}
+
 Action Command_SetSpawn(int client, int args)
 {
     if (!IsValidClient(client))
@@ -2282,22 +3145,121 @@ Action Command_SetSpawn(int client, int args)
 
     int mode = SETSPAWN_MODE_NEUTRAL;
     int inputArgPos = 1;
+    bool singlePointMode = false;
 
     if (args >= 1)
     {
         char arg1[32];
+        char arg2[32];
         GetCmdArg(1, arg1, sizeof(arg1));
+        bool hasArg2 = (args >= 2);
+        arg2[0] = '\0';
+        if (hasArg2)
+            GetCmdArg(2, arg2, sizeof(arg2));
 
-        if (StrEqual(arg1, "red", false))
+        int consumedArgs = 0;
+        if (TryResolveSinglePointSetSpawnMode(arg1, arg2, hasArg2, mode, consumedArgs))
         {
-            mode = SETSPAWN_MODE_RED;
-            inputArgPos = 2;
+            singlePointMode = true;
+            inputArgPos = 1 + consumedArgs;
         }
-        else if (StrEqual(arg1, "blue", false) || StrEqual(arg1, "blu", false))
+        else
         {
-            mode = SETSPAWN_MODE_BLU;
-            inputArgPos = 2;
+            if (StrEqual(arg1, "red", false))
+            {
+                mode = SETSPAWN_MODE_RED;
+                inputArgPos = 2;
+            }
+            else if (StrEqual(arg1, "blue", false) || StrEqual(arg1, "blu", false))
+            {
+                mode = SETSPAWN_MODE_BLU;
+                inputArgPos = 2;
+            }
         }
+    }
+
+    if (singlePointMode)
+    {
+        bool deleteSpawn = false;
+        char error[192];
+
+        if (args > inputArgPos)
+        {
+            MC_PrintToChat(client, "[MGE] Usage: sm_setspawn <intel|hoop> [red|blu] [del|delete]");
+            PrintToConsole(client, "[MGE] Usage: sm_setspawn <intel|hoop> [red|blu] [del|delete]");
+            return Plugin_Handled;
+        }
+
+        if (args >= inputArgPos)
+        {
+            char actionArg[32];
+            GetCmdArg(inputArgPos, actionArg, sizeof(actionArg));
+            if (StrEqual(actionArg, "del", false) || StrEqual(actionArg, "delete", false))
+                deleteSpawn = true;
+            else
+            {
+                MC_PrintToChat(client, "[MGE] Invalid action. Use del or delete.");
+                PrintToConsole(client, "[MGE] Invalid action. Use del or delete.");
+                return Plugin_Handled;
+            }
+        }
+
+        bool ok;
+        if (deleteSpawn)
+        {
+            ok = DeleteArenaSpawnByMode(arena_index, mode, 1, error, sizeof(error));
+        }
+        else
+        {
+            float origin[3];
+            float angles[3] = {0.0, 0.0, 0.0};
+            GetClientAbsOrigin(client, origin);
+            ok = SetArenaSpawnByMode(arena_index, mode, 1, origin, angles, error, sizeof(error));
+        }
+
+        if (!ok)
+        {
+            MC_PrintToChat(client, "[MGE] %s", error);
+            PrintToConsole(client, "[MGE] %s", error);
+            return Plugin_Handled;
+        }
+
+        if (!SaveArenaSpawnsToConfig(arena_index, error, sizeof(error)))
+        {
+            MC_PrintToChat(client, "[MGE] Save failed: %s", error);
+            PrintToConsole(client, "[MGE] Save failed: %s", error);
+            return Plugin_Handled;
+        }
+
+        if (g_bArenaBBall[arena_index])
+        {
+            if (mode >= SETSPAWN_MODE_BBALL_HOOP)
+            {
+                if (g_iArenaStatus[arena_index] == AS_COUNTDOWN || g_iArenaStatus[arena_index] == AS_FIGHT)
+                    g_bArenaPendingBBallEntityRefresh[arena_index] = true;
+                else
+                    RebuildBBallArenaHoops(arena_index);
+            }
+        }
+
+        RefreshArenaSpawnAnnotationsForViewers(arena_index);
+
+        char modeName[32];
+        GetSetSpawnModeName(mode, modeName, sizeof(modeName));
+
+        if (deleteSpawn)
+        {
+            MC_PrintToChat(client, "[MGE] %s cleared.", modeName);
+            PrintToConsole(client, "[MGE] %s cleared.", modeName);
+        }
+        else
+        {
+            MC_PrintToChat(client, "[MGE] %s saved from your current position.", modeName);
+            PrintToConsole(client, "[MGE] %s saved from your current position.", modeName);
+        }
+
+        PrintArenaSpawnsToClient(client, arena_index, mode);
+        return Plugin_Handled;
     }
 
     // Direct mode: sm_setspawn [red|blue] <number> [del|delete]
@@ -2369,6 +3331,8 @@ Action Command_SetSpawn(int client, int args)
             return Plugin_Handled;
         }
 
+        RefreshArenaSpawnAnnotationsForViewers(arena_index);
+
         if (deleteSpawn)
         {
             MC_PrintToChat(client, "[MGE] Spawn #%d deleted.", index);
@@ -2390,12 +3354,22 @@ Action Command_SetSpawn(int client, int args)
 
     PrintArenaSpawnsToClient(client, arena_index, mode);
 
-    char modeName[16];
+    char modeName[32];
     GetSetSpawnModeName(mode, modeName, sizeof(modeName));
-    MC_PrintToChat(client, "[MGE] Editing %s spawns. Enter: <number> to save current position.", modeName);
-    MC_PrintToChat(client, "[MGE] Or: <number> del (or delete) to remove. Type 'cancel' to exit.");
-    PrintToConsole(client, "[MGE] Editing %s spawns. Enter: <number> to save current position.", modeName);
-    PrintToConsole(client, "[MGE] Or: <number> del (or delete) to remove. Type 'cancel' to exit.");
+    if (IsSinglePointSetSpawnMode(mode))
+    {
+        MC_PrintToChat(client, "[MGE] Editing %s. Type a point type in chat (e.g. 'intel red' or 'hoop blu') to save current position.", modeName);
+        MC_PrintToChat(client, "[MGE] Add 'del' to clear, or type 'cancel' to exit.");
+        PrintToConsole(client, "[MGE] Editing %s. Type a point type in chat (e.g. 'intel red' or 'hoop blu') to save current position.", modeName);
+        PrintToConsole(client, "[MGE] Add 'del' to clear, or type 'cancel' to exit.");
+    }
+    else
+    {
+        MC_PrintToChat(client, "[MGE] Editing %s spawns. Enter <number> to save, or prefix a type like 'red 2' / 'intel red'.", modeName);
+        MC_PrintToChat(client, "[MGE] Add 'del' to delete, or type 'cancel' to exit.");
+        PrintToConsole(client, "[MGE] Editing %s spawns. Enter <number> to save, or prefix a type like 'red 2' / 'intel red'.", modeName);
+        PrintToConsole(client, "[MGE] Add 'del' to delete, or type 'cancel' to exit.");
+    }
     return Plugin_Handled;
 }
 
@@ -2435,26 +3409,47 @@ Action Command_SetSpawnChatInput(int client, const char[] command, int args)
 
     int index;
     bool deleteSpawn;
+    int resolvedMode = mode;
     char error[192];
-    if (!ParseSetSpawnInput(text, index, deleteSpawn, error, sizeof(error)))
+    if (!ParseSetSpawnChatCommand(text, mode, resolvedMode, index, deleteSpawn, error, sizeof(error)))
     {
         MC_PrintToChat(client, "[MGE] %s", error);
         PrintToConsole(client, "[MGE] %s", error);
         return Plugin_Handled;
     }
 
+    mode = resolvedMode;
+    g_iSetSpawnMode[client] = mode;
+
     bool ok;
-    if (deleteSpawn)
+    if (IsSinglePointSetSpawnMode(mode))
     {
-        ok = DeleteArenaSpawnByMode(arena_index, mode, index, error, sizeof(error));
+        if (deleteSpawn)
+        {
+            ok = DeleteArenaSpawnByMode(arena_index, mode, 1, error, sizeof(error));
+        }
+        else
+        {
+            float origin[3];
+            float angles[3] = {0.0, 0.0, 0.0};
+            GetClientAbsOrigin(client, origin);
+            ok = SetArenaSpawnByMode(arena_index, mode, 1, origin, angles, error, sizeof(error));
+        }
     }
     else
     {
-        float origin[3];
-        float angles[3];
-        GetClientAbsOrigin(client, origin);
-        GetClientEyeAngles(client, angles);
-        ok = SetArenaSpawnByMode(arena_index, mode, index, origin, angles, error, sizeof(error));
+        if (deleteSpawn)
+        {
+            ok = DeleteArenaSpawnByMode(arena_index, mode, index, error, sizeof(error));
+        }
+        else
+        {
+            float origin[3];
+            float angles[3];
+            GetClientAbsOrigin(client, origin);
+            GetClientEyeAngles(client, angles);
+            ok = SetArenaSpawnByMode(arena_index, mode, index, origin, angles, error, sizeof(error));
+        }
     }
 
     if (!ok)
@@ -2471,20 +3466,49 @@ Action Command_SetSpawnChatInput(int client, const char[] command, int args)
         return Plugin_Handled;
     }
 
+    if (g_bArenaBBall[arena_index] && mode >= SETSPAWN_MODE_BBALL_HOOP)
+    {
+        if (g_iArenaStatus[arena_index] == AS_COUNTDOWN || g_iArenaStatus[arena_index] == AS_FIGHT)
+            g_bArenaPendingBBallEntityRefresh[arena_index] = true;
+        else
+            RebuildBBallArenaHoops(arena_index);
+    }
+
+    RefreshArenaSpawnAnnotationsForViewers(arena_index);
+
+    char modeName[32];
+    GetSetSpawnModeName(mode, modeName, sizeof(modeName));
+
     if (deleteSpawn)
     {
-        MC_PrintToChat(client, "[MGE] Spawn #%d deleted.", index);
-        PrintToConsole(client, "[MGE] Spawn #%d deleted.", index);
+        if (IsSinglePointSetSpawnMode(mode))
+        {
+            MC_PrintToChat(client, "[MGE] %s cleared.", modeName);
+            PrintToConsole(client, "[MGE] %s cleared.", modeName);
+        }
+        else
+        {
+            MC_PrintToChat(client, "[MGE] Spawn #%d deleted.", index);
+            PrintToConsole(client, "[MGE] Spawn #%d deleted.", index);
+        }
     }
     else
     {
-        MC_PrintToChat(client, "[MGE] Spawn #%d saved from your current position.", index);
-        PrintToConsole(client, "[MGE] Spawn #%d saved from your current position.", index);
+        if (IsSinglePointSetSpawnMode(mode))
+        {
+            MC_PrintToChat(client, "[MGE] %s saved from your current position.", modeName);
+            PrintToConsole(client, "[MGE] %s saved from your current position.", modeName);
+        }
+        else
+        {
+            MC_PrintToChat(client, "[MGE] Spawn #%d saved from your current position.", index);
+            PrintToConsole(client, "[MGE] Spawn #%d saved from your current position.", index);
+        }
     }
 
     PrintArenaSpawnsToClient(client, arena_index, mode);
-    MC_PrintToChat(client, "[MGE] Continue editing or type 'cancel' to exit.");
-    PrintToConsole(client, "[MGE] Continue editing or type 'cancel' to exit.");
+    MC_PrintToChat(client, "[MGE] Continue editing. You can type a type prefix (e.g. 'red 2', 'intel red', 'hoop blu') or 'cancel' to exit.");
+    PrintToConsole(client, "[MGE] Continue editing. You can type a type prefix (e.g. 'red 2', 'intel red', 'hoop blu') or 'cancel' to exit.");
     return Plugin_Handled;
 }
 
@@ -2975,6 +3999,19 @@ Action Timer_StartDuel(Handle timer, any arena_index)
     // Clear public invite for this arena when match starts
     g_iPublicInviteArena[arena_index] = 0;
     g_fPublicInviteTime[arena_index] = 0.0;
+
+    if (g_bArenaPendingBBallEntityRefresh[arena_index] && g_bArenaBBall[arena_index])
+    {
+        RemoveBBallArenaEntities(arena_index);
+        RebuildBBallArenaHoops(arena_index);
+        g_bArenaPendingBBallEntityRefresh[arena_index] = false;
+    }
+
+    if (g_bArenaPendingKothEntityRefresh[arena_index] && g_bArenaKoth[arena_index])
+    {
+        RefreshKothCapturePointForArena(arena_index);
+        g_bArenaPendingKothEntityRefresh[arena_index] = false;
+    }
 
     ResetArena(arena_index);
 

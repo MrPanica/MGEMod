@@ -386,6 +386,115 @@ void ConfigureAndSpawnBBallIntelEntity(int arena_index, float pos[3])
     ApplyBBallIntelVisuals(arena_index);
 }
 
+void RemoveBBallArenaEntities(int arena_index)
+{
+    if (arena_index <= 0 || arena_index > MAXARENAS)
+        return;
+
+    if (IsValidEdict(g_iBBallHoop[arena_index][SLOT_ONE]) && g_iBBallHoop[arena_index][SLOT_ONE] > 0)
+        RemoveEdict(g_iBBallHoop[arena_index][SLOT_ONE]);
+    g_iBBallHoop[arena_index][SLOT_ONE] = -1;
+
+    if (IsValidEdict(g_iBBallHoop[arena_index][SLOT_TWO]) && g_iBBallHoop[arena_index][SLOT_TWO] > 0)
+        RemoveEdict(g_iBBallHoop[arena_index][SLOT_TWO]);
+    g_iBBallHoop[arena_index][SLOT_TWO] = -1;
+
+    if (IsValidEdict(g_iBBallIntel[arena_index]) && g_iBBallIntel[arena_index] > 0)
+        RemoveEdict(g_iBBallIntel[arena_index]);
+    g_iBBallIntel[arena_index] = -1;
+
+    RemoveBBallIntelWorldFx(arena_index);
+    g_iBBallIntelSkinTeam[arena_index] = 0;
+
+    for (int client = 1; client <= MaxClients; client++)
+    {
+        if (!IsClientInGame(client) || g_iPlayerArena[client] != arena_index)
+            continue;
+
+        ClearBBallCarryState(client, true);
+    }
+}
+
+void RebuildBBallArenaHoops(int arena_index)
+{
+    if (arena_index <= 0 || arena_index > g_iArenaCount || !g_bArenaBBall[arena_index])
+        return;
+
+    float hoop_2_loc[3];
+    if (g_bArenaBBallHoopSpawnBluSet[arena_index])
+    {
+        hoop_2_loc[0] = g_fArenaBBallHoopSpawnBlu[arena_index][0];
+        hoop_2_loc[1] = g_fArenaBBallHoopSpawnBlu[arena_index][1];
+        hoop_2_loc[2] = g_fArenaBBallHoopSpawnBlu[arena_index][2];
+    }
+    else if (g_bArenaBBallHoopSpawnSet[arena_index])
+    {
+        hoop_2_loc[0] = g_fArenaBBallHoopSpawn[arena_index][0];
+        hoop_2_loc[1] = g_fArenaBBallHoopSpawn[arena_index][1];
+        hoop_2_loc[2] = g_fArenaBBallHoopSpawn[arena_index][2];
+    }
+    else
+    {
+        hoop_2_loc[0] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index]][0];
+        hoop_2_loc[1] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index]][1];
+        hoop_2_loc[2] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index]][2];
+    }
+
+    float hoop_1_loc[3];
+    if (g_bArenaBBallHoopSpawnRedSet[arena_index])
+    {
+        hoop_1_loc[0] = g_fArenaBBallHoopSpawnRed[arena_index][0];
+        hoop_1_loc[1] = g_fArenaBBallHoopSpawnRed[arena_index][1];
+        hoop_1_loc[2] = g_fArenaBBallHoopSpawnRed[arena_index][2];
+    }
+    else if (g_bArenaBBallHoopSpawnSet[arena_index])
+    {
+        hoop_1_loc[0] = g_fArenaBBallHoopSpawn[arena_index][0];
+        hoop_1_loc[1] = g_fArenaBBallHoopSpawn[arena_index][1];
+        hoop_1_loc[2] = g_fArenaBBallHoopSpawn[arena_index][2];
+    }
+    else
+    {
+        hoop_1_loc[0] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index] - 1][0];
+        hoop_1_loc[1] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index] - 1][1];
+        hoop_1_loc[2] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index] - 1][2];
+    }
+
+    if (IsValidEdict(g_iBBallHoop[arena_index][SLOT_ONE]) && g_iBBallHoop[arena_index][SLOT_ONE] > 0)
+        RemoveEdict(g_iBBallHoop[arena_index][SLOT_ONE]);
+    g_iBBallHoop[arena_index][SLOT_ONE] = -1;
+
+    if (IsValidEdict(g_iBBallHoop[arena_index][SLOT_TWO]) && g_iBBallHoop[arena_index][SLOT_TWO] > 0)
+        RemoveEdict(g_iBBallHoop[arena_index][SLOT_TWO]);
+    g_iBBallHoop[arena_index][SLOT_TWO] = -1;
+
+    g_iBBallHoop[arena_index][SLOT_ONE] = CreateEntityByName("item_ammopack_small");
+    if (g_iBBallHoop[arena_index][SLOT_ONE] != -1)
+    {
+        TeleportEntity(g_iBBallHoop[arena_index][SLOT_ONE], hoop_1_loc, NULL_VECTOR, NULL_VECTOR);
+        DispatchSpawn(g_iBBallHoop[arena_index][SLOT_ONE]);
+        SetEntProp(g_iBBallHoop[arena_index][SLOT_ONE], Prop_Send, "m_iTeamNum", 1, 4);
+        SDKHook(g_iBBallHoop[arena_index][SLOT_ONE], SDKHook_StartTouch, OnTouchHoop);
+    }
+
+    g_iBBallHoop[arena_index][SLOT_TWO] = CreateEntityByName("item_ammopack_small");
+    if (g_iBBallHoop[arena_index][SLOT_TWO] != -1)
+    {
+        TeleportEntity(g_iBBallHoop[arena_index][SLOT_TWO], hoop_2_loc, NULL_VECTOR, NULL_VECTOR);
+        DispatchSpawn(g_iBBallHoop[arena_index][SLOT_TWO]);
+        SetEntProp(g_iBBallHoop[arena_index][SLOT_TWO], Prop_Send, "m_iTeamNum", 1, 4);
+        SDKHook(g_iBBallHoop[arena_index][SLOT_TWO], SDKHook_StartTouch, OnTouchHoop);
+    }
+
+    if (g_bVisibleHoops[arena_index] == false)
+    {
+        if (IsValidEdict(g_iBBallHoop[arena_index][SLOT_ONE]) && g_iBBallHoop[arena_index][SLOT_ONE] > 0)
+            AcceptEntityInput(g_iBBallHoop[arena_index][SLOT_ONE], "Disable");
+        if (IsValidEdict(g_iBBallHoop[arena_index][SLOT_TWO]) && g_iBBallHoop[arena_index][SLOT_TWO] > 0)
+            AcceptEntityInput(g_iBBallHoop[arena_index][SLOT_TWO], "Disable");
+    }
+}
+
 // Setup BBall hoops for all BBall arenas during round start
 void SetupBBallHoops()
 {
@@ -395,89 +504,7 @@ void SetupBBallHoops()
     for (int i = 0; i <= g_iArenaCount; i++)
     {
         if (g_bArenaBBall[i])
-        {
-            float hoop_2_loc[3];
-            if (g_bArenaBBallHoopSpawnBluSet[i])
-            {
-                hoop_2_loc[0] = g_fArenaBBallHoopSpawnBlu[i][0];
-                hoop_2_loc[1] = g_fArenaBBallHoopSpawnBlu[i][1];
-                hoop_2_loc[2] = g_fArenaBBallHoopSpawnBlu[i][2];
-            }
-            else if (g_bArenaBBallHoopSpawnSet[i])
-            {
-                hoop_2_loc[0] = g_fArenaBBallHoopSpawn[i][0];
-                hoop_2_loc[1] = g_fArenaBBallHoopSpawn[i][1];
-                hoop_2_loc[2] = g_fArenaBBallHoopSpawn[i][2];
-            }
-            else
-            {
-                hoop_2_loc[0] = g_fArenaSpawnOrigin[i][g_iArenaSpawns[i]][0];
-                hoop_2_loc[1] = g_fArenaSpawnOrigin[i][g_iArenaSpawns[i]][1];
-                hoop_2_loc[2] = g_fArenaSpawnOrigin[i][g_iArenaSpawns[i]][2];
-            }
-
-            float hoop_1_loc[3];
-            if (g_bArenaBBallHoopSpawnRedSet[i])
-            {
-                hoop_1_loc[0] = g_fArenaBBallHoopSpawnRed[i][0];
-                hoop_1_loc[1] = g_fArenaBBallHoopSpawnRed[i][1];
-                hoop_1_loc[2] = g_fArenaBBallHoopSpawnRed[i][2];
-            }
-            else if (g_bArenaBBallHoopSpawnSet[i])
-            {
-                hoop_1_loc[0] = g_fArenaBBallHoopSpawn[i][0];
-                hoop_1_loc[1] = g_fArenaBBallHoopSpawn[i][1];
-                hoop_1_loc[2] = g_fArenaBBallHoopSpawn[i][2];
-            }
-            else
-            {
-                hoop_1_loc[0] = g_fArenaSpawnOrigin[i][g_iArenaSpawns[i] - 1][0];
-                hoop_1_loc[1] = g_fArenaSpawnOrigin[i][g_iArenaSpawns[i] - 1][1];
-                hoop_1_loc[2] = g_fArenaSpawnOrigin[i][g_iArenaSpawns[i] - 1][2];
-            }
-
-            if (IsValidEdict(g_iBBallHoop[i][SLOT_ONE]) && g_iBBallHoop[i][SLOT_ONE] > 0)
-            {
-                RemoveEdict(g_iBBallHoop[i][SLOT_ONE]);
-                g_iBBallHoop[i][SLOT_ONE] = -1;
-            } else if (g_iBBallHoop[i][SLOT_ONE] != -1) {
-                g_iBBallHoop[i][SLOT_ONE] = -1;
-            }
-
-            if (IsValidEdict(g_iBBallHoop[i][SLOT_TWO]) && g_iBBallHoop[i][SLOT_TWO] > 0)
-            {
-                RemoveEdict(g_iBBallHoop[i][SLOT_TWO]);
-                g_iBBallHoop[i][SLOT_TWO] = -1;
-            } else if (g_iBBallHoop[i][SLOT_TWO] != -1) {
-                g_iBBallHoop[i][SLOT_TWO] = -1;
-            }
-
-            if (g_iBBallHoop[i][SLOT_ONE] == -1)
-            {
-                g_iBBallHoop[i][SLOT_ONE] = CreateEntityByName("item_ammopack_small");
-                TeleportEntity(g_iBBallHoop[i][SLOT_ONE], hoop_1_loc, NULL_VECTOR, NULL_VECTOR);
-                DispatchSpawn(g_iBBallHoop[i][SLOT_ONE]);
-                SetEntProp(g_iBBallHoop[i][SLOT_ONE], Prop_Send, "m_iTeamNum", 1, 4);
-
-                SDKHook(g_iBBallHoop[i][SLOT_ONE], SDKHook_StartTouch, OnTouchHoop);
-            }
-
-            if (g_iBBallHoop[i][SLOT_TWO] == -1)
-            {
-                g_iBBallHoop[i][SLOT_TWO] = CreateEntityByName("item_ammopack_small");
-                TeleportEntity(g_iBBallHoop[i][SLOT_TWO], hoop_2_loc, NULL_VECTOR, NULL_VECTOR);
-                DispatchSpawn(g_iBBallHoop[i][SLOT_TWO]);
-                SetEntProp(g_iBBallHoop[i][SLOT_TWO], Prop_Send, "m_iTeamNum", 1, 4);
-
-                SDKHook(g_iBBallHoop[i][SLOT_TWO], SDKHook_StartTouch, OnTouchHoop);
-            }
-
-            if (g_bVisibleHoops[i] == false)
-            {
-                AcceptEntityInput(g_iBBallHoop[i][SLOT_ONE], "Disable");
-                AcceptEntityInput(g_iBBallHoop[i][SLOT_TWO], "Disable");
-            }
-        }
+            RebuildBBallArenaHoops(i);
     }
 }
 

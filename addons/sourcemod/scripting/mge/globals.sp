@@ -170,6 +170,8 @@ bool g_bArenaBBallHoopSpawnRedSet [MAXARENAS + 1];
 bool g_bArenaBBallHoopSpawnBluSet [MAXARENAS + 1];
 bool g_bArenaUseTeamSpawns [MAXARENAS + 1];
 bool g_bArenaNearSpawn     [MAXARENAS + 1];
+bool g_bArenaPendingBBallEntityRefresh [MAXARENAS + 1];
+bool g_bArenaPendingKothEntityRefresh [MAXARENAS + 1];
 
 int
     g_iArenaCount,

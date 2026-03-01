@@ -26,6 +26,12 @@
 #define SPAWN_ANN_TYPE_NEUTRAL 0
 #define SPAWN_ANN_TYPE_RED 1
 #define SPAWN_ANN_TYPE_BLU 2
+#define SPAWN_ANN_TYPE_BBALL_INTEL 3
+#define SPAWN_ANN_TYPE_BBALL_INTEL_RED 4
+#define SPAWN_ANN_TYPE_BBALL_INTEL_BLU 5
+#define SPAWN_ANN_TYPE_BBALL_HOOP 6
+#define SPAWN_ANN_TYPE_BBALL_HOOP_RED 7
+#define SPAWN_ANN_TYPE_BBALL_HOOP_BLU 8
 #define TV_KEY_OVERLAY_COUNT 8
 #define MONITOR_HINT_COOLDOWN 5.0
 #define QUEUE_KEYHINT_KEEPALIVE_SEC 0.25
@@ -45,6 +51,7 @@ int g_iSpawnAnnotationArena[MAXPLAYERS + 1][MAX_SPAWN_ANNOTATIONS];
 int g_iSpawnAnnotationType[MAXPLAYERS + 1][MAX_SPAWN_ANNOTATIONS];
 int g_iSpawnAnnotationNumber[MAXPLAYERS + 1][MAX_SPAWN_ANNOTATIONS];
 float g_fSpawnAnnotationOrigin[MAXPLAYERS + 1][MAX_SPAWN_ANNOTATIONS][3];
+bool g_bShowSpawnAnnotationsActive[MAXPLAYERS + 1];
 
 enum TvKeyOverlay
 {
@@ -323,7 +330,8 @@ public void OnPluginStart()
     RegAdminCmd("sm_mge_show_spawns", Command_MgeShowSpawns, ADMFLAG_BAN, "Show nearby (3000u) arena spawns via show_annotation; persists until re-run");
     RegAdminCmd("sm_mge_bball_scoreboard_debug", Command_MgeBballScoreboardDebug, ADMFLAG_BAN, "Print BBall scoreboard entities and show markers near current/selected arena");
     RegAdminCmd("sm_mge_weapon_reload", Command_MgeWeaponReload, ADMFLAG_BAN, "Reload weapon profile config and arena weapon bindings without plugin reload");
-    RegAdminCmd("sm_setspawn", Command_SetSpawn, ADMFLAG_BAN, "Edit spawns in your current arena. Usage: sm_setspawn [red|blue]");
+    RegAdminCmd("sm_mge_map_reload", Command_MgeMapReload, ADMFLAG_BAN, "Reload the current map arena config without plugin reload");
+    RegAdminCmd("sm_setspawn", Command_SetSpawn, ADMFLAG_BAN, "Edit player or BBall spawns in your current arena. Usage: sm_setspawn [red|blue|intel|hoop]");
     RegAdminCmd("arena_restart", Command_ArenaRestart, ADMFLAG_BAN, "Restart current arena fight");
     RegAdminCmd("sm_arena_restart", Command_ArenaRestart, ADMFLAG_BAN, "Restart current arena fight");
     RegAdminCmd("sm_force_remove", Command_ForceRemove, ADMFLAG_BAN, "Force remove a player from their arena. Usage: sm_force_remove <player>");
@@ -2827,6 +2835,7 @@ void StopSpawnAnnotationRefresh(int client)
 void ClearClientSpawnAnnotations(int client, bool hideCurrent)
 {
     StopSpawnAnnotationRefresh(client);
+    g_bShowSpawnAnnotationsActive[client] = false;
 
     if (hideCurrent && IsValidClient(client))
     {
@@ -2877,15 +2886,173 @@ void BuildStoredSpawnAnnotationText(int client, int index, char[] text, int text
     int spawnType = g_iSpawnAnnotationType[client][index];
     int spawnNumber = g_iSpawnAnnotationNumber[client][index];
 
-    char typeName[16];
+    char typeName[24];
     switch (spawnType)
     {
         case SPAWN_ANN_TYPE_RED: strcopy(typeName, sizeof(typeName), "RED");
         case SPAWN_ANN_TYPE_BLU: strcopy(typeName, sizeof(typeName), "BLU");
+        case SPAWN_ANN_TYPE_BBALL_INTEL: strcopy(typeName, sizeof(typeName), "INTEL");
+        case SPAWN_ANN_TYPE_BBALL_INTEL_RED: strcopy(typeName, sizeof(typeName), "INTEL RED");
+        case SPAWN_ANN_TYPE_BBALL_INTEL_BLU: strcopy(typeName, sizeof(typeName), "INTEL BLU");
+        case SPAWN_ANN_TYPE_BBALL_HOOP: strcopy(typeName, sizeof(typeName), "HOOP");
+        case SPAWN_ANN_TYPE_BBALL_HOOP_RED: strcopy(typeName, sizeof(typeName), "HOOP RED");
+        case SPAWN_ANN_TYPE_BBALL_HOOP_BLU: strcopy(typeName, sizeof(typeName), "HOOP BLU");
         default: strcopy(typeName, sizeof(typeName), "NEUTRAL");
     }
 
-    Format(text, textLen, "%s #%d", typeName, spawnNumber);
+    if (spawnNumber > 0)
+        Format(text, textLen, "%s #%d", typeName, spawnNumber);
+    else
+        strcopy(text, textLen, typeName);
+}
+
+void RebuildArenaSpawnAnnotationsForClient(int client, int arena)
+{
+    ClearClientSpawnAnnotations(client, true);
+
+    int shownNeutral = 0;
+    int shownRed = 0;
+    int shownBlu = 0;
+    int shownBball = 0;
+    int dropped = 0;
+    float pos[3];
+
+    for (int i = 1; i <= g_iArenaSpawns[arena]; i++)
+    {
+        pos[0] = g_fArenaSpawnOrigin[arena][i][0];
+        pos[1] = g_fArenaSpawnOrigin[arena][i][1];
+        pos[2] = g_fArenaSpawnOrigin[arena][i][2];
+        if (!AddStoredSpawnAnnotation(client, arena, SPAWN_ANN_TYPE_NEUTRAL, i, pos))
+        {
+            dropped++;
+            continue;
+        }
+        shownNeutral++;
+    }
+
+    for (int i = 1; i <= g_iArenaRedSpawns[arena]; i++)
+    {
+        pos[0] = g_fArenaRedSpawnOrigin[arena][i][0];
+        pos[1] = g_fArenaRedSpawnOrigin[arena][i][1];
+        pos[2] = g_fArenaRedSpawnOrigin[arena][i][2];
+        if (!AddStoredSpawnAnnotation(client, arena, SPAWN_ANN_TYPE_RED, i, pos))
+        {
+            dropped++;
+            continue;
+        }
+        shownRed++;
+    }
+
+    for (int i = 1; i <= g_iArenaBluSpawns[arena]; i++)
+    {
+        pos[0] = g_fArenaBluSpawnOrigin[arena][i][0];
+        pos[1] = g_fArenaBluSpawnOrigin[arena][i][1];
+        pos[2] = g_fArenaBluSpawnOrigin[arena][i][2];
+        if (!AddStoredSpawnAnnotation(client, arena, SPAWN_ANN_TYPE_BLU, i, pos))
+        {
+            dropped++;
+            continue;
+        }
+        shownBlu++;
+    }
+
+    if (g_bArenaBBall[arena])
+    {
+        if (g_bArenaBBallIntelSpawnSet[arena])
+        {
+            pos[0] = g_fArenaBBallIntelSpawn[arena][0];
+            pos[1] = g_fArenaBBallIntelSpawn[arena][1];
+            pos[2] = g_fArenaBBallIntelSpawn[arena][2];
+            if (AddStoredSpawnAnnotation(client, arena, SPAWN_ANN_TYPE_BBALL_INTEL, 0, pos))
+                shownBball++;
+            else
+                dropped++;
+        }
+
+        if (g_bArenaBBallIntelSpawnRedSet[arena])
+        {
+            pos[0] = g_fArenaBBallIntelSpawnRed[arena][0];
+            pos[1] = g_fArenaBBallIntelSpawnRed[arena][1];
+            pos[2] = g_fArenaBBallIntelSpawnRed[arena][2];
+            if (AddStoredSpawnAnnotation(client, arena, SPAWN_ANN_TYPE_BBALL_INTEL_RED, 0, pos))
+                shownBball++;
+            else
+                dropped++;
+        }
+
+        if (g_bArenaBBallIntelSpawnBluSet[arena])
+        {
+            pos[0] = g_fArenaBBallIntelSpawnBlu[arena][0];
+            pos[1] = g_fArenaBBallIntelSpawnBlu[arena][1];
+            pos[2] = g_fArenaBBallIntelSpawnBlu[arena][2];
+            if (AddStoredSpawnAnnotation(client, arena, SPAWN_ANN_TYPE_BBALL_INTEL_BLU, 0, pos))
+                shownBball++;
+            else
+                dropped++;
+        }
+
+        if (g_bArenaBBallHoopSpawnSet[arena])
+        {
+            pos[0] = g_fArenaBBallHoopSpawn[arena][0];
+            pos[1] = g_fArenaBBallHoopSpawn[arena][1];
+            pos[2] = g_fArenaBBallHoopSpawn[arena][2];
+            if (AddStoredSpawnAnnotation(client, arena, SPAWN_ANN_TYPE_BBALL_HOOP, 0, pos))
+                shownBball++;
+            else
+                dropped++;
+        }
+
+        if (g_bArenaBBallHoopSpawnRedSet[arena])
+        {
+            pos[0] = g_fArenaBBallHoopSpawnRed[arena][0];
+            pos[1] = g_fArenaBBallHoopSpawnRed[arena][1];
+            pos[2] = g_fArenaBBallHoopSpawnRed[arena][2];
+            if (AddStoredSpawnAnnotation(client, arena, SPAWN_ANN_TYPE_BBALL_HOOP_RED, 0, pos))
+                shownBball++;
+            else
+                dropped++;
+        }
+
+        if (g_bArenaBBallHoopSpawnBluSet[arena])
+        {
+            pos[0] = g_fArenaBBallHoopSpawnBlu[arena][0];
+            pos[1] = g_fArenaBBallHoopSpawnBlu[arena][1];
+            pos[2] = g_fArenaBBallHoopSpawnBlu[arena][2];
+            if (AddStoredSpawnAnnotation(client, arena, SPAWN_ANN_TYPE_BBALL_HOOP_BLU, 0, pos))
+                shownBball++;
+            else
+                dropped++;
+        }
+    }
+
+    char text[128];
+    for (int i = 0; i < g_iSpawnAnnotationCount[client]; i++)
+    {
+        BuildStoredSpawnAnnotationText(client, i, text, sizeof(text));
+        SendSpawnAnnotationToClient(client, GetSpawnAnnotationId(client, i), text, g_fSpawnAnnotationOrigin[client][i], SPAWN_ANNOTATION_LIFETIME);
+    }
+
+    g_bShowSpawnAnnotationsActive[client] = true;
+
+    int total = shownNeutral + shownRed + shownBlu + shownBball;
+    PrintToConsole(client, "[MGE] Arena %d (%s) spawns shown: total=%d, neutral=%d, red=%d, blu=%d, bball=%d, dropped=%d",
+        arena, g_sArenaOriginalName[arena], total, shownNeutral, shownRed, shownBlu, shownBball, dropped);
+    PrintToChat(client, "[MGE] Arena spawns shown: %d (N %d / R %d / B %d / BB %d). Re-run to refresh/hide previous.",
+        total, shownNeutral, shownRed, shownBlu, shownBball);
+}
+
+void RefreshArenaSpawnAnnotationsForViewers(int arena)
+{
+    for (int client = 1; client <= MaxClients; client++)
+    {
+        if (!IsValidClient(client) || !g_bShowSpawnAnnotationsActive[client] || g_iSpawnAnnotationCount[client] <= 0)
+            continue;
+
+        if (g_iSpawnAnnotationArena[client][0] != arena)
+            continue;
+
+        RebuildArenaSpawnAnnotationsForClient(client, arena);
+    }
 }
 
 Action Command_MgeBballScoreboardDebug(int client, int args)
@@ -3046,63 +3213,7 @@ Action Command_MgeShowSpawns(int client, int args)
         return Plugin_Handled;
     }
 
-    ClearClientSpawnAnnotations(client, true);
-
-    int shownNeutral = 0;
-    int shownRed = 0;
-    int shownBlu = 0;
-    int dropped = 0;
-    float pos[3];
-
-    for (int i = 1; i <= g_iArenaSpawns[arena]; i++)
-    {
-        pos[0] = g_fArenaSpawnOrigin[arena][i][0];
-        pos[1] = g_fArenaSpawnOrigin[arena][i][1];
-        pos[2] = g_fArenaSpawnOrigin[arena][i][2];
-        if (!AddStoredSpawnAnnotation(client, arena, SPAWN_ANN_TYPE_NEUTRAL, i, pos))
-        {
-            dropped++;
-            continue;
-        }
-        shownNeutral++;
-    }
-
-    for (int i = 1; i <= g_iArenaRedSpawns[arena]; i++)
-    {
-        pos[0] = g_fArenaRedSpawnOrigin[arena][i][0];
-        pos[1] = g_fArenaRedSpawnOrigin[arena][i][1];
-        pos[2] = g_fArenaRedSpawnOrigin[arena][i][2];
-        if (!AddStoredSpawnAnnotation(client, arena, SPAWN_ANN_TYPE_RED, i, pos))
-        {
-            dropped++;
-            continue;
-        }
-        shownRed++;
-    }
-
-    for (int i = 1; i <= g_iArenaBluSpawns[arena]; i++)
-    {
-        pos[0] = g_fArenaBluSpawnOrigin[arena][i][0];
-        pos[1] = g_fArenaBluSpawnOrigin[arena][i][1];
-        pos[2] = g_fArenaBluSpawnOrigin[arena][i][2];
-        if (!AddStoredSpawnAnnotation(client, arena, SPAWN_ANN_TYPE_BLU, i, pos))
-        {
-            dropped++;
-            continue;
-        }
-        shownBlu++;
-    }
-
-    char text[128];
-    for (int i = 0; i < g_iSpawnAnnotationCount[client]; i++)
-    {
-        BuildStoredSpawnAnnotationText(client, i, text, sizeof(text));
-        SendSpawnAnnotationToClient(client, GetSpawnAnnotationId(client, i), text, g_fSpawnAnnotationOrigin[client][i], SPAWN_ANNOTATION_LIFETIME);
-    }
-
-    int total = shownNeutral + shownRed + shownBlu;
-    PrintToConsole(client, "[MGE] Arena %d (%s) spawns shown: total=%d, neutral=%d, red=%d, blu=%d, dropped=%d", arena, g_sArenaOriginalName[arena], total, shownNeutral, shownRed, shownBlu, dropped);
-    PrintToChat(client, "[MGE] Arena spawns shown: %d (N %d / R %d / B %d). Re-run to refresh/hide previous.", total, shownNeutral, shownRed, shownBlu);
+    RebuildArenaSpawnAnnotationsForClient(client, arena);
     return Plugin_Handled;
 }
 

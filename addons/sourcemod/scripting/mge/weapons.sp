@@ -649,7 +649,7 @@ int FindArenaIndexByOriginalName(const char[] arenaName)
 {
     for (int i = 1; i <= g_iArenaCount; i++)
     {
-        if (StrEqual(g_sArenaOriginalName[i], arenaName, false))
+        if (StrEqual(g_sArenaOriginalName[i], arenaName, true))
             return i;
     }
     return 0;
@@ -675,8 +675,6 @@ bool BuildCurrentMapConfigPath(char[] output, int outputSize)
 
 bool ReloadArenaWeaponRuleBindingsFromMapConfig()
 {
-    ResetArenaWeaponRuleBindings();
-
     char mapCfgPath[PLATFORM_MAX_PATH];
     BuildCurrentMapConfigPath(mapCfgPath, sizeof(mapCfgPath));
 
@@ -694,6 +692,8 @@ bool ReloadArenaWeaponRuleBindingsFromMapConfig()
         delete kv;
         return false;
     }
+
+    ResetArenaWeaponRuleBindings();
 
     int bound = 0;
     do
