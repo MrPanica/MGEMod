@@ -913,6 +913,8 @@ public void OnMapStart()
             {
                 g_iBBallHoop[i][SLOT_ONE] = -1;
                 g_iBBallHoop[i][SLOT_TWO] = -1;
+                g_iBBallHoopTrigger[i][SLOT_ONE] = INVALID_ENT_REFERENCE;
+                g_iBBallHoopTrigger[i][SLOT_TWO] = INVALID_ENT_REFERENCE;
                 g_iBBallIntel[i] = -1;
                 g_iBBallIntelWorldParticle[i] = 0;
                 g_iBBallIntelSkinTeam[i] = 0; // 0 = RED (default)

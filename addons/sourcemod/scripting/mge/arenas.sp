@@ -16,6 +16,8 @@ char g_sArenaConfigBackupName[MAXARENAS + 1][64];
 char g_sArenaConfigBackupOriginalName[MAXARENAS + 1][64];
 char g_sArenaConfigBackupCap[MAXARENAS + 1][64];
 char g_sArenaConfigBackupCapTrigger[MAXARENAS + 1][64];
+char g_sArenaConfigBackupBBallHoopTriggerRed[MAXARENAS + 1][64];
+char g_sArenaConfigBackupBBallHoopTriggerBlu[MAXARENAS + 1][64];
 float g_fArenaConfigBackupSpawnOrigin[MAXARENAS + 1][MAXSPAWNS + 1][3];
 float g_fArenaConfigBackupSpawnAngles[MAXARENAS + 1][MAXSPAWNS + 1][3];
 float g_fArenaConfigBackupRedSpawnOrigin[MAXARENAS + 1][MAXSPAWNS + 1][3];
@@ -59,6 +61,8 @@ bool g_bArenaConfigBackupBBallIntelSpawnBluSet[MAXARENAS + 1];
 bool g_bArenaConfigBackupBBallHoopSpawnSet[MAXARENAS + 1];
 bool g_bArenaConfigBackupBBallHoopSpawnRedSet[MAXARENAS + 1];
 bool g_bArenaConfigBackupBBallHoopSpawnBluSet[MAXARENAS + 1];
+bool g_bArenaConfigBackupBBallHoopTriggerRedSet[MAXARENAS + 1];
+bool g_bArenaConfigBackupBBallHoopTriggerBluSet[MAXARENAS + 1];
 bool g_bArenaConfigBackupUseTeamSpawns[MAXARENAS + 1];
 bool g_bArenaConfigBackupNearSpawn[MAXARENAS + 1];
 int g_iArenaConfigBackupAirshotHeight[MAXARENAS + 1];
@@ -97,6 +101,8 @@ void CaptureArenaConfigSnapshot()
         strcopy(g_sArenaConfigBackupOriginalName[arena], sizeof(g_sArenaConfigBackupOriginalName[]), g_sArenaOriginalName[arena]);
         strcopy(g_sArenaConfigBackupCap[arena], sizeof(g_sArenaConfigBackupCap[]), g_sArenaCap[arena]);
         strcopy(g_sArenaConfigBackupCapTrigger[arena], sizeof(g_sArenaConfigBackupCapTrigger[]), g_sArenaCapTrigger[arena]);
+        strcopy(g_sArenaConfigBackupBBallHoopTriggerRed[arena], sizeof(g_sArenaConfigBackupBBallHoopTriggerRed[]), g_sArenaBBallHoopTriggerRed[arena]);
+        strcopy(g_sArenaConfigBackupBBallHoopTriggerBlu[arena], sizeof(g_sArenaConfigBackupBBallHoopTriggerBlu[]), g_sArenaBBallHoopTriggerBlu[arena]);
 
         g_fArenaConfigBackupHPRatio[arena] = g_fArenaHPRatio[arena];
         g_fArenaConfigBackupMinSpawnDist[arena] = g_fArenaMinSpawnDist[arena];
@@ -128,6 +134,8 @@ void CaptureArenaConfigSnapshot()
         g_bArenaConfigBackupBBallHoopSpawnSet[arena] = g_bArenaBBallHoopSpawnSet[arena];
         g_bArenaConfigBackupBBallHoopSpawnRedSet[arena] = g_bArenaBBallHoopSpawnRedSet[arena];
         g_bArenaConfigBackupBBallHoopSpawnBluSet[arena] = g_bArenaBBallHoopSpawnBluSet[arena];
+        g_bArenaConfigBackupBBallHoopTriggerRedSet[arena] = g_bArenaBBallHoopTriggerRedSet[arena];
+        g_bArenaConfigBackupBBallHoopTriggerBluSet[arena] = g_bArenaBBallHoopTriggerBluSet[arena];
         g_bArenaConfigBackupUseTeamSpawns[arena] = g_bArenaUseTeamSpawns[arena];
         g_bArenaConfigBackupNearSpawn[arena] = g_bArenaNearSpawn[arena];
 
@@ -185,6 +193,8 @@ void RestoreArenaConfigSnapshot()
         strcopy(g_sArenaOriginalName[arena], sizeof(g_sArenaOriginalName[]), g_sArenaConfigBackupOriginalName[arena]);
         strcopy(g_sArenaCap[arena], sizeof(g_sArenaCap[]), g_sArenaConfigBackupCap[arena]);
         strcopy(g_sArenaCapTrigger[arena], sizeof(g_sArenaCapTrigger[]), g_sArenaConfigBackupCapTrigger[arena]);
+        strcopy(g_sArenaBBallHoopTriggerRed[arena], sizeof(g_sArenaBBallHoopTriggerRed[]), g_sArenaConfigBackupBBallHoopTriggerRed[arena]);
+        strcopy(g_sArenaBBallHoopTriggerBlu[arena], sizeof(g_sArenaBBallHoopTriggerBlu[]), g_sArenaConfigBackupBBallHoopTriggerBlu[arena]);
 
         g_fArenaHPRatio[arena] = g_fArenaConfigBackupHPRatio[arena];
         g_fArenaMinSpawnDist[arena] = g_fArenaConfigBackupMinSpawnDist[arena];
@@ -216,6 +226,8 @@ void RestoreArenaConfigSnapshot()
         g_bArenaBBallHoopSpawnSet[arena] = g_bArenaConfigBackupBBallHoopSpawnSet[arena];
         g_bArenaBBallHoopSpawnRedSet[arena] = g_bArenaConfigBackupBBallHoopSpawnRedSet[arena];
         g_bArenaBBallHoopSpawnBluSet[arena] = g_bArenaConfigBackupBBallHoopSpawnBluSet[arena];
+        g_bArenaBBallHoopTriggerRedSet[arena] = g_bArenaConfigBackupBBallHoopTriggerRedSet[arena];
+        g_bArenaBBallHoopTriggerBluSet[arena] = g_bArenaConfigBackupBBallHoopTriggerBluSet[arena];
         g_bArenaUseTeamSpawns[arena] = g_bArenaConfigBackupUseTeamSpawns[arena];
         g_bArenaNearSpawn[arena] = g_bArenaConfigBackupNearSpawn[arena];
 
@@ -477,6 +489,10 @@ bool LoadSpawnPointsFromMapConfig(bool failHard, bool parseWeaponRules, char[] e
         g_bArenaBBallHoopSpawnSet[g_iArenaCount] = false;
         g_bArenaBBallHoopSpawnRedSet[g_iArenaCount] = false;
         g_bArenaBBallHoopSpawnBluSet[g_iArenaCount] = false;
+        g_bArenaBBallHoopTriggerRedSet[g_iArenaCount] = false;
+        g_bArenaBBallHoopTriggerBluSet[g_iArenaCount] = false;
+        g_sArenaBBallHoopTriggerRed[g_iArenaCount][0] = '\0';
+        g_sArenaBBallHoopTriggerBlu[g_iArenaCount][0] = '\0';
         g_iArenaRedSpawns[g_iArenaCount] = 0;
         g_iArenaBluSpawns[g_iArenaCount] = 0;
         g_bArenaUseTeamSpawns[g_iArenaCount] = false;
@@ -550,6 +566,28 @@ bool LoadSpawnPointsFromMapConfig(bool failHard, bool parseWeaponRules, char[] e
         {
             g_bArenaHasCapTrigger[g_iArenaCount] = false;
             g_sArenaCapTrigger[g_iArenaCount][0] = '\0';
+        }
+
+        if (kv.GetNameSymbol("hooptrigger_red", id))
+        {
+            kv.GetString("hooptrigger_red", g_sArenaBBallHoopTriggerRed[g_iArenaCount], 64);
+            g_bArenaBBallHoopTriggerRedSet[g_iArenaCount] = true;
+        }
+        else
+        {
+            g_bArenaBBallHoopTriggerRedSet[g_iArenaCount] = false;
+            g_sArenaBBallHoopTriggerRed[g_iArenaCount][0] = '\0';
+        }
+
+        if (kv.GetNameSymbol("hooptrigger_blu", id))
+        {
+            kv.GetString("hooptrigger_blu", g_sArenaBBallHoopTriggerBlu[g_iArenaCount], 64);
+            g_bArenaBBallHoopTriggerBluSet[g_iArenaCount] = true;
+        }
+        else
+        {
+            g_bArenaBBallHoopTriggerBluSet[g_iArenaCount] = false;
+            g_sArenaBBallHoopTriggerBlu[g_iArenaCount][0] = '\0';
         }
 
         g_iArenaMgelimit[g_iArenaCount] = kv.GetNum("fraglimit", g_iDefaultFragLimit);

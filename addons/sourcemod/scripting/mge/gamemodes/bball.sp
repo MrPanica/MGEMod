@@ -90,6 +90,151 @@ float GetArenaClosestSpawnDistSqr(int arena_index, float origin[3])
     return bestDistSqr;
 }
 
+void GetBBallHoopGoalOrigin(int arena_index, int goalSlot, float origin[3])
+{
+    if (goalSlot == SLOT_ONE)
+    {
+        if (g_bArenaBBallHoopSpawnRedSet[arena_index])
+        {
+            origin[0] = g_fArenaBBallHoopSpawnRed[arena_index][0];
+            origin[1] = g_fArenaBBallHoopSpawnRed[arena_index][1];
+            origin[2] = g_fArenaBBallHoopSpawnRed[arena_index][2];
+        }
+        else if (g_bArenaBBallHoopSpawnSet[arena_index])
+        {
+            origin[0] = g_fArenaBBallHoopSpawn[arena_index][0];
+            origin[1] = g_fArenaBBallHoopSpawn[arena_index][1];
+            origin[2] = g_fArenaBBallHoopSpawn[arena_index][2];
+        }
+        else
+        {
+            int spawnIndex = g_iArenaSpawns[arena_index] - 1;
+            origin[0] = g_fArenaSpawnOrigin[arena_index][spawnIndex][0];
+            origin[1] = g_fArenaSpawnOrigin[arena_index][spawnIndex][1];
+            origin[2] = g_fArenaSpawnOrigin[arena_index][spawnIndex][2];
+        }
+    }
+    else
+    {
+        if (g_bArenaBBallHoopSpawnBluSet[arena_index])
+        {
+            origin[0] = g_fArenaBBallHoopSpawnBlu[arena_index][0];
+            origin[1] = g_fArenaBBallHoopSpawnBlu[arena_index][1];
+            origin[2] = g_fArenaBBallHoopSpawnBlu[arena_index][2];
+        }
+        else if (g_bArenaBBallHoopSpawnSet[arena_index])
+        {
+            origin[0] = g_fArenaBBallHoopSpawn[arena_index][0];
+            origin[1] = g_fArenaBBallHoopSpawn[arena_index][1];
+            origin[2] = g_fArenaBBallHoopSpawn[arena_index][2];
+        }
+        else
+        {
+            int spawnIndex = g_iArenaSpawns[arena_index];
+            origin[0] = g_fArenaSpawnOrigin[arena_index][spawnIndex][0];
+            origin[1] = g_fArenaSpawnOrigin[arena_index][spawnIndex][1];
+            origin[2] = g_fArenaSpawnOrigin[arena_index][spawnIndex][2];
+        }
+    }
+}
+
+int FindNearestBBallGoalTriggerForArena(int arena_index, const char[] targetName, int goalSlot)
+{
+    if (arena_index <= 0 || arena_index > g_iArenaCount || targetName[0] == '\0')
+        return INVALID_ENT_REFERENCE;
+
+    int entity = -1;
+    int bestEntity = -1;
+    float bestDistSqr = -1.0;
+    float goalOrigin[3];
+    float origin[3];
+    char nameBuf[64];
+
+    GetBBallHoopGoalOrigin(arena_index, goalSlot, goalOrigin);
+
+    while ((entity = FindEntityByClassname(entity, "trigger_capture_area")) != -1)
+    {
+        if (!IsValidEntity(entity))
+            continue;
+
+        GetEntPropString(entity, Prop_Data, "m_iName", nameBuf, sizeof(nameBuf));
+        if (!StrEqual(nameBuf, targetName, false))
+            continue;
+
+        GetEntPropVector(entity, Prop_Data, "m_vecOrigin", origin);
+        float distSqr = GetVectorDistance(goalOrigin, origin, true);
+        if (bestEntity == -1 || distSqr < bestDistSqr)
+        {
+            bestEntity = entity;
+            bestDistSqr = distSqr;
+        }
+    }
+
+    if (bestEntity == -1)
+        return INVALID_ENT_REFERENCE;
+
+    return EntIndexToEntRef(bestEntity);
+}
+
+void UnhookBBallArenaGoalTriggers(int arena_index)
+{
+    if (arena_index <= 0 || arena_index > MAXARENAS)
+        return;
+
+    int redTrigger = EntRefToEntIndex(g_iBBallHoopTrigger[arena_index][SLOT_ONE]);
+    int bluTrigger = EntRefToEntIndex(g_iBBallHoopTrigger[arena_index][SLOT_TWO]);
+
+    if (redTrigger > MaxClients && IsValidEntity(redTrigger))
+        SDKUnhook(redTrigger, SDKHook_StartTouch, OnTouchHoopTrigger);
+
+    if (bluTrigger > MaxClients && bluTrigger != redTrigger && IsValidEntity(bluTrigger))
+        SDKUnhook(bluTrigger, SDKHook_StartTouch, OnTouchHoopTrigger);
+
+    g_iBBallHoopTrigger[arena_index][SLOT_ONE] = INVALID_ENT_REFERENCE;
+    g_iBBallHoopTrigger[arena_index][SLOT_TWO] = INVALID_ENT_REFERENCE;
+}
+
+void RefreshBBallArenaGoalTriggers(int arena_index)
+{
+    if (arena_index <= 0 || arena_index > g_iArenaCount || !g_bArenaBBall[arena_index])
+        return;
+
+    UnhookBBallArenaGoalTriggers(arena_index);
+
+    int redTrigger = -1;
+    int bluTrigger = -1;
+
+    if (g_bArenaBBallHoopTriggerRedSet[arena_index] && g_sArenaBBallHoopTriggerRed[arena_index][0] != '\0')
+    {
+        g_iBBallHoopTrigger[arena_index][SLOT_ONE] = FindNearestBBallGoalTriggerForArena(arena_index, g_sArenaBBallHoopTriggerRed[arena_index], SLOT_ONE);
+        redTrigger = EntRefToEntIndex(g_iBBallHoopTrigger[arena_index][SLOT_ONE]);
+        if (redTrigger <= MaxClients || !IsValidEntity(redTrigger))
+        {
+            g_iBBallHoopTrigger[arena_index][SLOT_ONE] = INVALID_ENT_REFERENCE;
+            LogError("[%s] Could not find trigger_capture_area '%s' for hooptrigger_red.", g_sArenaName[arena_index], g_sArenaBBallHoopTriggerRed[arena_index]);
+            redTrigger = -1;
+        }
+    }
+
+    if (g_bArenaBBallHoopTriggerBluSet[arena_index] && g_sArenaBBallHoopTriggerBlu[arena_index][0] != '\0')
+    {
+        g_iBBallHoopTrigger[arena_index][SLOT_TWO] = FindNearestBBallGoalTriggerForArena(arena_index, g_sArenaBBallHoopTriggerBlu[arena_index], SLOT_TWO);
+        bluTrigger = EntRefToEntIndex(g_iBBallHoopTrigger[arena_index][SLOT_TWO]);
+        if (bluTrigger <= MaxClients || !IsValidEntity(bluTrigger))
+        {
+            g_iBBallHoopTrigger[arena_index][SLOT_TWO] = INVALID_ENT_REFERENCE;
+            LogError("[%s] Could not find trigger_capture_area '%s' for hooptrigger_blu.", g_sArenaName[arena_index], g_sArenaBBallHoopTriggerBlu[arena_index]);
+            bluTrigger = -1;
+        }
+    }
+
+    if (redTrigger > MaxClients && IsValidEntity(redTrigger))
+        SDKHook(redTrigger, SDKHook_StartTouch, OnTouchHoopTrigger);
+
+    if (bluTrigger > MaxClients && bluTrigger != redTrigger && IsValidEntity(bluTrigger))
+        SDKHook(bluTrigger, SDKHook_StartTouch, OnTouchHoopTrigger);
+}
+
 int FindNearestBBallTextureToggleForArena(int arena_index, const char[] targetName)
 {
     if (arena_index <= 0 || arena_index > g_iArenaCount || targetName[0] == '\0')
@@ -391,6 +536,8 @@ void RemoveBBallArenaEntities(int arena_index)
     if (arena_index <= 0 || arena_index > MAXARENAS)
         return;
 
+    UnhookBBallArenaGoalTriggers(arena_index);
+
     if (IsValidEdict(g_iBBallHoop[arena_index][SLOT_ONE]) && g_iBBallHoop[arena_index][SLOT_ONE] > 0)
         RemoveEdict(g_iBBallHoop[arena_index][SLOT_ONE]);
     g_iBBallHoop[arena_index][SLOT_ONE] = -1;
@@ -421,44 +568,10 @@ void RebuildBBallArenaHoops(int arena_index)
         return;
 
     float hoop_2_loc[3];
-    if (g_bArenaBBallHoopSpawnBluSet[arena_index])
-    {
-        hoop_2_loc[0] = g_fArenaBBallHoopSpawnBlu[arena_index][0];
-        hoop_2_loc[1] = g_fArenaBBallHoopSpawnBlu[arena_index][1];
-        hoop_2_loc[2] = g_fArenaBBallHoopSpawnBlu[arena_index][2];
-    }
-    else if (g_bArenaBBallHoopSpawnSet[arena_index])
-    {
-        hoop_2_loc[0] = g_fArenaBBallHoopSpawn[arena_index][0];
-        hoop_2_loc[1] = g_fArenaBBallHoopSpawn[arena_index][1];
-        hoop_2_loc[2] = g_fArenaBBallHoopSpawn[arena_index][2];
-    }
-    else
-    {
-        hoop_2_loc[0] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index]][0];
-        hoop_2_loc[1] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index]][1];
-        hoop_2_loc[2] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index]][2];
-    }
+    GetBBallHoopGoalOrigin(arena_index, SLOT_TWO, hoop_2_loc);
 
     float hoop_1_loc[3];
-    if (g_bArenaBBallHoopSpawnRedSet[arena_index])
-    {
-        hoop_1_loc[0] = g_fArenaBBallHoopSpawnRed[arena_index][0];
-        hoop_1_loc[1] = g_fArenaBBallHoopSpawnRed[arena_index][1];
-        hoop_1_loc[2] = g_fArenaBBallHoopSpawnRed[arena_index][2];
-    }
-    else if (g_bArenaBBallHoopSpawnSet[arena_index])
-    {
-        hoop_1_loc[0] = g_fArenaBBallHoopSpawn[arena_index][0];
-        hoop_1_loc[1] = g_fArenaBBallHoopSpawn[arena_index][1];
-        hoop_1_loc[2] = g_fArenaBBallHoopSpawn[arena_index][2];
-    }
-    else
-    {
-        hoop_1_loc[0] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index] - 1][0];
-        hoop_1_loc[1] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index] - 1][1];
-        hoop_1_loc[2] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index] - 1][2];
-    }
+    GetBBallHoopGoalOrigin(arena_index, SLOT_ONE, hoop_1_loc);
 
     if (IsValidEdict(g_iBBallHoop[arena_index][SLOT_ONE]) && g_iBBallHoop[arena_index][SLOT_ONE] > 0)
         RemoveEdict(g_iBBallHoop[arena_index][SLOT_ONE]);
@@ -493,6 +606,8 @@ void RebuildBBallArenaHoops(int arena_index)
         if (IsValidEdict(g_iBBallHoop[arena_index][SLOT_TWO]) && g_iBBallHoop[arena_index][SLOT_TWO] > 0)
             AcceptEntityInput(g_iBBallHoop[arena_index][SLOT_TWO], "Disable");
     }
+
+    RefreshBBallArenaGoalTriggers(arena_index);
 }
 
 // Setup BBall hoops for all BBall arenas during round start
@@ -659,23 +774,25 @@ Action OnTouchIntel(int entity, int other)
     return Plugin_Continue;
 }
 
-// When a hoop is touched by a player in BBall.
-Action OnTouchHoop(int entity, int other)
+bool TryHandleBBallGoalTouch(int client, int entity)
 {
-    int client = other;
-
     if (!IsValidClient(client))
-        return Plugin_Continue;
+        return false;
 
     int arena_index = g_iPlayerArena[client];
+    if (arena_index <= 0 || arena_index > g_iArenaCount || !g_bArenaBBall[arena_index] || !g_bPlayerHasIntel[client])
+        return false;
+
     int fraglimit = g_iArenaFraglimit[arena_index];
     int client_slot = g_iPlayerSlot[client];
     int foe_slot = (client_slot == SLOT_ONE || client_slot == SLOT_THREE) ? SLOT_TWO : SLOT_ONE;
     int foe = g_iArenaQueue[arena_index][foe_slot];
-    int client_teammate;
-    int foe_teammate;
+    int client_teammate = 0;
+    int foe_teammate = 0;
     int foe_team_slot = (foe_slot > 2) ? (foe_slot - 2) : foe_slot;
     int client_team_slot = (client_slot > 2) ? (client_slot - 2) : client_slot;
+    int goalTrigger = EntRefToEntIndex(g_iBBallHoopTrigger[arena_index][foe_slot]);
+    bool touchedGoal = (entity == g_iBBallHoop[arena_index][foe_slot]);
 
     if (g_bFourPersonArena[arena_index])
     {
@@ -683,125 +800,142 @@ Action OnTouchHoop(int entity, int other)
         foe_teammate = GetPlayerTeammate(foe_slot, arena_index);
     }
 
-    if (!IsValidClient(foe) || !g_bArenaBBall[arena_index])
-        return Plugin_Continue;
+    if (!touchedGoal && goalTrigger > MaxClients && IsValidEntity(goalTrigger))
+        touchedGoal = (entity == goalTrigger);
 
-    if (entity == g_iBBallHoop[arena_index][foe_slot] && g_bPlayerHasIntel[client])
+    if (!IsValidClient(foe) || !touchedGoal)
+        return false;
+
+    // Drop carry visuals immediately on dunk.
+    ClearBBallCarryState(client, true);
+
+    char foe_name[MAX_NAME_LENGTH];
+    GetClientName(foe, foe_name, sizeof(foe_name));
+    char client_name[MAX_NAME_LENGTH];
+    GetClientName(client, client_name, sizeof(client_name));
+
+    MC_PrintToChat(client, "%t", "bballdunk", foe_name);
+
+    g_iArenaScore[arena_index][client_team_slot] += 1;
+    g_iBBallIntelSkinTeam[arena_index] = (client_team_slot == SLOT_ONE) ? 0 : 1;
+    UpdateBBallScoreboardForArena(arena_index);
+
+    if (fraglimit > 0 && g_iArenaScore[arena_index][client_team_slot] >= fraglimit && g_iArenaStatus[arena_index] >= AS_FIGHT && g_iArenaStatus[arena_index] < AS_REPORTED)
     {
-        // Drop carry visuals immediately on dunk.
-        ClearBBallCarryState(client, true);
-
-        char foe_name[MAX_NAME_LENGTH];
-        GetClientName(foe, foe_name, sizeof(foe_name));
-        char client_name[MAX_NAME_LENGTH];
+        g_iArenaStatus[arena_index] = AS_REPORTED;
         GetClientName(client, client_name, sizeof(client_name));
 
-        MC_PrintToChat(client, "%t", "bballdunk", foe_name);
-
-        g_iArenaScore[arena_index][client_team_slot] += 1;
-        g_iBBallIntelSkinTeam[arena_index] = (client_team_slot == SLOT_ONE) ? 0 : 1;
-        UpdateBBallScoreboardForArena(arena_index);
-
-        if (fraglimit > 0 && g_iArenaScore[arena_index][client_team_slot] >= fraglimit && g_iArenaStatus[arena_index] >= AS_FIGHT && g_iArenaStatus[arena_index] < AS_REPORTED)
-        {
-            g_iArenaStatus[arena_index] = AS_REPORTED;
-            GetClientName(client, client_name, sizeof(client_name));
-
-            if (g_bFourPersonArena[arena_index])
-            {
-                char client_teammate_name[128];
-                char foe_teammate_name[128];
-
-                GetClientName(client_teammate, client_teammate_name, sizeof(client_teammate_name));
-                GetClientName(foe_teammate, foe_teammate_name, sizeof(foe_teammate_name));
-
-                Format(client_name, sizeof(client_name), "%s and %s", client_name, client_teammate_name);
-                Format(foe_name, sizeof(foe_name), "%s and %s", foe_name, foe_teammate_name);
-            }
-
-            char duel_time[32] = "";
-            if (g_iArenaDuelStartTime[arena_index] > 0)
-            {
-                int currentTime = GetTime();
-                int elapsedTime = currentTime - g_iArenaDuelStartTime[arena_index];
-                int minutes = elapsedTime / 60;
-                int seconds = elapsedTime % 60;
-                Format(duel_time, sizeof(duel_time), "%02d:%02d", minutes, seconds);
-            }
-
-            MC_PrintToChatAll("%t", "XdefeatsY", client_name, g_iArenaScore[arena_index][client_team_slot], foe_name, g_iArenaScore[arena_index][foe_team_slot], fraglimit, g_sArenaName[arena_index], duel_time);
-
-            if (!g_bNoStats && !g_bFourPersonArena[arena_index])
-                CalcELO(client, foe);
-
-            else if (!g_bNoStats)
-                CalcELO2(client, client_teammate, foe, foe_teammate);
-
-            g_iArenaDuelStartTime[arena_index] = 0;
-
-            if (IsValidEdict(g_iBBallIntel[arena_index]) && g_iBBallIntel[arena_index] > -1)
-            {
-                // SDKUnhook(g_iBBallIntel[arena_index], SDKHook_StartTouch, OnTouchIntel);
-                RemoveEdict(g_iBBallIntel[arena_index]);
-                g_iBBallIntel[arena_index] = -1;
-                RemoveBBallIntelWorldFx(arena_index);
-            }
-            if (g_bFourPersonArena[arena_index] && IsValidClient(g_iArenaQueue[arena_index][SLOT_FOUR + 1]))
-            {
-                RemoveFromQueue(foe, false);
-                RemoveFromQueue(foe_teammate, false);
-                AddInQueue(foe, arena_index, false, 0, false);
-                AddInQueue(foe_teammate, arena_index, false, 0, false);
-            }
-            else if (IsValidClient(g_iArenaQueue[arena_index][SLOT_TWO + 1]))
-            {
-                RemoveFromQueue(foe, false);
-                AddInQueue(foe, arena_index, false, 0, false);
-            } else {
-                if (!IsValidClient(g_iArenaQueue[arena_index][SLOT_TWO + 1]))
-                    g_iArenaQueue[arena_index][SLOT_TWO + 1] = 0;
-                if (!IsValidClient(g_iArenaQueue[arena_index][SLOT_FOUR + 1]))
-                    g_iArenaQueue[arena_index][SLOT_FOUR + 1] = 0;
-                CreateTimer(3.0, Timer_StartDuel, arena_index);
-            }
-        } else {
-            ResetPlayer(client);
-            ResetPlayer(foe);
-
-            if (g_bFourPersonArena[arena_index])
-            {
-                ResetPlayer(client_teammate);
-                ResetPlayer(foe_teammate);
-            }
-
-            CreateTimer(0.15, Timer_ResetIntel, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
-        }
-
-        UpdateBBallScoreboardForArena(arena_index);
-
-        UpdateHud(client);
-        UpdateHud(foe);
-
         if (g_bFourPersonArena[arena_index])
         {
-            UpdateHud(client_teammate);
-            UpdateHud(foe_teammate);
+            char client_teammate_name[128];
+            char foe_teammate_name[128];
+
+            GetClientName(client_teammate, client_teammate_name, sizeof(client_teammate_name));
+            GetClientName(foe_teammate, foe_teammate_name, sizeof(foe_teammate_name));
+
+            Format(client_name, sizeof(client_name), "%s and %s", client_name, client_teammate_name);
+            Format(foe_name, sizeof(foe_name), "%s and %s", foe_name, foe_teammate_name);
         }
 
-        EmitSoundToClient(client, "vo/intel_teamcaptured.mp3");
-        EmitSoundToClient(foe, "vo/intel_enemycaptured.mp3");
-
-        if (g_bFourPersonArena[arena_index])
+        char duel_time[32] = "";
+        if (g_iArenaDuelStartTime[arena_index] > 0)
         {
-            // This shouldn't be necessary but I'm getting invalid clients for some reason.
-            if (IsValidClient(client_teammate))
-                EmitSoundToClient(client_teammate, "vo/intel_teamcaptured.mp3");
-            if (IsValidClient(foe_teammate))
-                EmitSoundToClient(foe_teammate, "vo/intel_enemycaptured.mp3");
+            int currentTime = GetTime();
+            int elapsedTime = currentTime - g_iArenaDuelStartTime[arena_index];
+            int minutes = elapsedTime / 60;
+            int seconds = elapsedTime % 60;
+            Format(duel_time, sizeof(duel_time), "%02d:%02d", minutes, seconds);
         }
 
-        UpdateHudForArena(arena_index);
+        MC_PrintToChatAll("%t", "XdefeatsY", client_name, g_iArenaScore[arena_index][client_team_slot], foe_name, g_iArenaScore[arena_index][foe_team_slot], fraglimit, g_sArenaName[arena_index], duel_time);
+
+        if (!g_bNoStats && !g_bFourPersonArena[arena_index])
+            CalcELO(client, foe);
+
+        else if (!g_bNoStats)
+            CalcELO2(client, client_teammate, foe, foe_teammate);
+
+        g_iArenaDuelStartTime[arena_index] = 0;
+
+        if (IsValidEdict(g_iBBallIntel[arena_index]) && g_iBBallIntel[arena_index] > -1)
+        {
+            // SDKUnhook(g_iBBallIntel[arena_index], SDKHook_StartTouch, OnTouchIntel);
+            RemoveEdict(g_iBBallIntel[arena_index]);
+            g_iBBallIntel[arena_index] = -1;
+            RemoveBBallIntelWorldFx(arena_index);
+        }
+        if (g_bFourPersonArena[arena_index] && IsValidClient(g_iArenaQueue[arena_index][SLOT_FOUR + 1]))
+        {
+            RemoveFromQueue(foe, false);
+            RemoveFromQueue(foe_teammate, false);
+            AddInQueue(foe, arena_index, false, 0, false);
+            AddInQueue(foe_teammate, arena_index, false, 0, false);
+        }
+        else if (IsValidClient(g_iArenaQueue[arena_index][SLOT_TWO + 1]))
+        {
+            RemoveFromQueue(foe, false);
+            AddInQueue(foe, arena_index, false, 0, false);
+        }
+        else
+        {
+            if (!IsValidClient(g_iArenaQueue[arena_index][SLOT_TWO + 1]))
+                g_iArenaQueue[arena_index][SLOT_TWO + 1] = 0;
+            if (!IsValidClient(g_iArenaQueue[arena_index][SLOT_FOUR + 1]))
+                g_iArenaQueue[arena_index][SLOT_FOUR + 1] = 0;
+            CreateTimer(3.0, Timer_StartDuel, arena_index);
+        }
     }
+    else
+    {
+        ResetPlayer(client);
+        ResetPlayer(foe);
+
+        if (g_bFourPersonArena[arena_index])
+        {
+            ResetPlayer(client_teammate);
+            ResetPlayer(foe_teammate);
+        }
+
+        CreateTimer(0.15, Timer_ResetIntel, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
+    }
+
+    UpdateBBallScoreboardForArena(arena_index);
+
+    UpdateHud(client);
+    UpdateHud(foe);
+
+    if (g_bFourPersonArena[arena_index])
+    {
+        UpdateHud(client_teammate);
+        UpdateHud(foe_teammate);
+    }
+
+    EmitSoundToClient(client, "vo/intel_teamcaptured.mp3");
+    EmitSoundToClient(foe, "vo/intel_enemycaptured.mp3");
+
+    if (g_bFourPersonArena[arena_index])
+    {
+        // This shouldn't be necessary but I'm getting invalid clients for some reason.
+        if (IsValidClient(client_teammate))
+            EmitSoundToClient(client_teammate, "vo/intel_teamcaptured.mp3");
+        if (IsValidClient(foe_teammate))
+            EmitSoundToClient(foe_teammate, "vo/intel_enemycaptured.mp3");
+    }
+
+    UpdateHudForArena(arena_index);
+    return true;
+}
+
+// When a hoop is touched by a player in BBall.
+Action OnTouchHoop(int entity, int other)
+{
+    TryHandleBBallGoalTouch(other, entity);
+    return Plugin_Continue;
+}
+
+Action OnTouchHoopTrigger(int entity, int other)
+{
+    TryHandleBBallGoalTouch(other, entity);
     return Plugin_Continue;
 }
 

@@ -115,7 +115,9 @@ char
     // Cap point trggier name for KOTH
     g_sArenaCapTrigger      [MAXARENAS + 1][64],
     // Cap point name for KOTH
-    g_sArenaCap             [MAXARENAS + 1][64];
+    g_sArenaCap             [MAXARENAS + 1][64],
+    g_sArenaBBallHoopTriggerRed [MAXARENAS + 1][64],
+    g_sArenaBBallHoopTriggerBlu [MAXARENAS + 1][64];
 
 float
     g_fArenaSpawnOrigin     [MAXARENAS + 1][MAXSPAWNS+1][3],
@@ -168,6 +170,8 @@ bool g_bArenaBBallIntelSpawnBluSet [MAXARENAS + 1];
 bool g_bArenaBBallHoopSpawnSet [MAXARENAS + 1];
 bool g_bArenaBBallHoopSpawnRedSet [MAXARENAS + 1];
 bool g_bArenaBBallHoopSpawnBluSet [MAXARENAS + 1];
+bool g_bArenaBBallHoopTriggerRedSet [MAXARENAS + 1];
+bool g_bArenaBBallHoopTriggerBluSet [MAXARENAS + 1];
 bool g_bArenaUseTeamSpawns [MAXARENAS + 1];
 bool g_bArenaNearSpawn     [MAXARENAS + 1];
 bool g_bArenaPendingBBallEntityRefresh [MAXARENAS + 1];
@@ -200,6 +204,7 @@ int
     g_iArenaBluSpawns       [MAXARENAS + 1],
     //                      [What arena the hoop is in][Hoop 1 or Hoop 2]
     g_iBBallHoop            [MAXARENAS + 1][3],
+    g_iBBallHoopTrigger     [MAXARENAS + 1][3],
     g_iBBallIntel           [MAXARENAS + 1],
     g_iBBallIntelWorldParticle [MAXARENAS + 1],
     g_iBBallIntelSkinTeam   [MAXARENAS + 1],
