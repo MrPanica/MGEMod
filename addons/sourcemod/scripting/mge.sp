@@ -3424,9 +3424,15 @@ Action Event_PlayerTeam(Event event, const char[] name, bool dontBroadcast)
         if (player_arena > 0 && player_slot > 0)
         {
             int max_active_slot = g_bFourPersonArena[player_arena] ? SLOT_FOUR : SLOT_TWO;
+            bool is_active_slot = (player_slot <= max_active_slot);
+            bool is_waiting_2v2_spec = false;
+            if (g_bFourPersonArena[player_arena] && view_as<bool>(g_iPlayerWaiting[client]))
+            {
+                is_waiting_2v2_spec = true;
+            }
 
-            // Only remove from queue if player was in an active slot (not waiting)
-            if (player_slot <= max_active_slot)
+            // In 2v2, dead players can be parked in spectator temporarily while waiting for the round to finish.
+            if (is_active_slot && !is_waiting_2v2_spec)
             {
                 RemoveFromQueue(client, true, true);
             }

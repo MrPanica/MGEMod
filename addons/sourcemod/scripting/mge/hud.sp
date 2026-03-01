@@ -1,6 +1,10 @@
 
 // ===== HUD DISPLAY CORE =====
 
+#define HUD_LEFT_X 0.01
+#define HUD_LOWER_LEFT_Y 0.80
+#define HUD_BBALL_STATUS_Y 0.74
+
 // Unified HUD update method that handles both players and spectators
 void UpdateHud(int client)
 {
@@ -102,7 +106,7 @@ void ShowCriticalGameInfo(int client, int arena_index)
     {
         // BBall arenas show intel status instead of regular health display
         char hud_text[128];
-        SetHudTextParams(0.01, 0.80, HUDFADEOUTTIME, 255, 255, 255, 255);
+        SetHudTextParams(HUD_LEFT_X, HUD_BBALL_STATUS_Y, HUDFADEOUTTIME, 255, 255, 255, 255);
         if (g_bPlayerHasIntel[client])
         {
             Format(hud_text, sizeof(hud_text), "%T", "YouHaveTheIntel", client);
@@ -135,20 +139,20 @@ void ShowCriticalGameInfo(int client, int arena_index)
         {
             float hp_ratio = ((float(g_iPlayerHP[client])) / (float(g_iPlayerMaxHP[client]) * GetArenaHpRatioForClient(client, arena_index)));
             if (hp_ratio > 0.66)
-                SetHudTextParams(0.01, 0.80, HUDFADEOUTTIME, 0, 255, 0, 255); // Green
+                SetHudTextParams(HUD_LEFT_X, HUD_LOWER_LEFT_Y, HUDFADEOUTTIME, 0, 255, 0, 255); // Green
             else if (hp_ratio >= 0.33)
-                SetHudTextParams(0.01, 0.80, HUDFADEOUTTIME, 255, 255, 0, 255); // Yellow
+                SetHudTextParams(HUD_LEFT_X, HUD_LOWER_LEFT_Y, HUDFADEOUTTIME, 255, 255, 0, 255); // Yellow
             else if (hp_ratio < 0.33)
-                SetHudTextParams(0.01, 0.80, HUDFADEOUTTIME, 255, 0, 0, 255); // Red
+                SetHudTextParams(HUD_LEFT_X, HUD_LOWER_LEFT_Y, HUDFADEOUTTIME, 255, 0, 0, 255); // Red
             else
-                SetHudTextParams(0.01, 0.80, HUDFADEOUTTIME, 255, 255, 255, 255); // White
+                SetHudTextParams(HUD_LEFT_X, HUD_LOWER_LEFT_Y, HUDFADEOUTTIME, 255, 255, 255, 255); // White
 
             ClearSyncHud(client, hm_HP);
             ShowSyncHudText(client, hm_HP, "Health : %d", g_iPlayerHP[client]);
         }
         else
         {
-            SetHudTextParams(0.01, 0.80, HUDFADEOUTTIME, 255, 255, 255, 255);
+            SetHudTextParams(HUD_LEFT_X, HUD_LOWER_LEFT_Y, HUDFADEOUTTIME, 255, 255, 255, 255);
             ClearSyncHud(client, hm_HP);
             ShowSyncHudText(client, hm_HP, "", g_iPlayerHP[client]);
         }
@@ -159,7 +163,7 @@ void ShowCriticalGameInfo(int client, int arena_index)
     {
         char hp_report[128];
         Format(hp_report, sizeof(hp_report), "%N : %d", client_teammate, g_iPlayerHP[client_teammate]);
-        SetHudTextParams(0.01, 0.80, HUDFADEOUTTIME, 255, 255, 255, 255);
+        SetHudTextParams(HUD_LEFT_X, HUD_LOWER_LEFT_Y, HUDFADEOUTTIME, 255, 255, 255, 255);
         ClearSyncHud(client, hm_TeammateHP);
         ShowSyncHudText(client, hm_TeammateHP, hp_report);
     }
@@ -198,7 +202,7 @@ void ShowFullHud(int client, int arena_index, bool is_spectator)
                 Format(hp_report, sizeof(hp_report), "%s\n%N : %d", hp_report, blu_f1, g_iPlayerHP[blu_f1]);
         }
 
-        SetHudTextParams(0.01, 0.80, HUDFADEOUTTIME, 255, 255, 255, 255);
+        SetHudTextParams(HUD_LEFT_X, HUD_LOWER_LEFT_Y, HUDFADEOUTTIME, 255, 255, 255, 255);
         ClearSyncHud(client, hm_HP);
         ShowSyncHudText(client, hm_HP, hp_report);
     }

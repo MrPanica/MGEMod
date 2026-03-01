@@ -1899,13 +1899,33 @@ Action Timer_Tele(Handle timer, int userid, int arena_index, int player_slot, in
             random_int = GetRandomInt(offset_low, offset_high); // BLU side
         }
 
+        int teammate_spawn = -1;
+        if (g_bFourPersonArena[arena_index])
+        {
+            int teammate = GetPlayerTeammate(player_slot, arena_index);
+            if (IsValidClient(teammate) && IsPlayerAlive(teammate))
+                teammate_spawn = GetPlayerCurrentSpawnPoint(teammate, arena_index);
+        }
+
+        int spawn_choices = offset_high - offset_low + 1;
+        if (spawn_choices > 1)
+        {
+            int attempts = 0;
+            do
+            {
+                random_int = GetRandomInt(offset_low, offset_high);
+                attempts++;
+            }
+            while (random_int == teammate_spawn && attempts < 50);
+        }
+
         TeleportEntity(client, g_fArenaSpawnOrigin[arena_index][random_int], g_fArenaSpawnAngles[arena_index][random_int], vel);
         EmitAmbientSound("items/spawn_item.wav", g_fArenaSpawnOrigin[arena_index][random_int], _, SNDLEVEL_NORMAL, _, 1.0);
         UpdateHud(client);
         if (g_bDebugTeleport)
         {
-            LogMessage("[MGE tele][debug] Timer_Tele path=bball client=%N arena=%d spawn=%d range=[%d..%d] total=%d split=%d",
-                client, arena_index, random_int, offset_low, offset_high, playerSpawnCount, split);
+            LogMessage("[MGE tele][debug] Timer_Tele path=bball client=%N arena=%d spawn=%d range=[%d..%d] total=%d split=%d teammate_spawn=%d",
+                client, arena_index, random_int, offset_low, offset_high, playerSpawnCount, split, teammate_spawn);
         }
         return Plugin_Continue;
     }
