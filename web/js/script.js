@@ -1,5 +1,46 @@
 // Add smooth animations and interactions
 document.addEventListener('DOMContentLoaded', function() {
+    const i18n = window.MGE_I18N || {};
+    const locale = window.MGE_LOCALE || 'ru-RU';
+    const tJs = (key, fallback = '') => (typeof i18n[key] === 'string' ? i18n[key] : (fallback || key));
+    const currentLang = window.MGE_LANG || 'ru';
+
+    function withLang(url) {
+        if (!url || typeof url !== 'string' || !url.startsWith('?')) {
+            return url;
+        }
+        const query = url.slice(1);
+        const params = new URLSearchParams(query);
+        if (!params.has('lang')) {
+            params.set('lang', currentLang);
+        }
+        return `?${params.toString()}`;
+    }
+
+    function applyLangToLinks(root = document) {
+        root.querySelectorAll('a[href^="?"]').forEach(link => {
+            const href = link.getAttribute('href');
+            const patched = withLang(href);
+            if (patched && patched !== href) {
+                link.setAttribute('href', patched);
+            }
+        });
+
+        root.querySelectorAll('form[method="get"], form:not([method])').forEach(form => {
+            let input = form.querySelector('input[name="lang"]');
+            if (!input) {
+                input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'lang';
+                form.appendChild(input);
+            }
+            input.value = currentLang;
+        });
+    }
+
+    applyLangToLinks();
+    const langObserver = new MutationObserver(() => applyLangToLinks());
+    langObserver.observe(document.body, { childList: true, subtree: true });
     // Add hover effects to cards
     const cards = document.querySelectorAll('.stat-item, .card');
     cards.forEach(card => {
@@ -58,11 +99,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Show loading overlay when navigating to new pages (only for non-AJAX navigation)
     function showLoading() {
-        document.getElementById('loadingOverlay').style.display = 'flex';
+        const overlay = document.getElementById('loadingOverlay');
+        if (overlay) {
+            overlay.style.display = 'flex';
+        }
     }
 
     function hideLoading() {
-        document.getElementById('loadingOverlay').style.display = 'none';
+        const overlay = document.getElementById('loadingOverlay');
+        if (overlay) {
+            overlay.style.display = 'none';
+        }
     }
 
     // Add loading effect to specific navigation links (not AJAX pagination)
@@ -96,9 +143,15 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Hide loading after page loads
-    window.addEventListener('load', function() {
-        hideLoading();
+    window.addEventListener('load', hideLoading);
+    window.addEventListener('pageshow', hideLoading);
+    window.addEventListener('popstate', hideLoading);
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') {
+            hideLoading();
+        }
     });
+    setTimeout(hideLoading, 0);
 
     // AJAX pagination for recent duels
     function loadDuelsPage(page, containerId, tbodyId, paginationId) {
@@ -117,13 +170,13 @@ document.addEventListener('DOMContentLoaded', function() {
         fetch(`?ajax=get_duels_page&page=${page}&duel_sort_by=${duelOrderBy}&duel_sort_dir=${duelOrderDir}`)
             .then(response => response.json())
             .then(data => {
-                console.log('AJAX Response Data:', data); // Отладка
+                console.log('AJAX Response Data:', data);
                 
                 const tbody = document.getElementById(tbodyId);
                 tbody.innerHTML = '';
 
                 data.duels.forEach(duel => {
-                    console.log('Processing duel:', duel); // Отладка
+                    console.log('Processing duel:', duel);
                     
                     const row = document.createElement('tr');
                     
@@ -135,26 +188,26 @@ document.addEventListener('DOMContentLoaded', function() {
                     typeCell.textContent = duel.type;
                     
                     const dateCell = document.createElement('td');
-                    dateCell.textContent = new Date(duel.endtime * 1000).toLocaleString('ru-RU');
+                    dateCell.textContent = new Date(duel.endtime * 1000).toLocaleString(locale);
                     
                     const winnerCell = document.createElement('td');
                     winnerCell.innerHTML = `<a href="?profile=${encodeURIComponent(duel.winner)}" style="color: var(--success); text-decoration: none;">${duel.winner_nick}</a>`;
                     
                     const winnerClassCell = document.createElement('td');
-                    console.log('Raw winner_class_html:', duel.winner_class_html); // Отладка
-                    // Удаляем лишние экранирования, если они есть
+                    console.log('Raw winner_class_html:', duel.winner_class_html);
+
                     const processedWinnerClassHtml = duel.winner_class_html.replace(/\\"/g, '"');
-                    console.log('Processed winner_class_html:', processedWinnerClassHtml); // Отладка
+                    console.log('Processed winner_class_html:', processedWinnerClassHtml);
                     winnerClassCell.innerHTML = processedWinnerClassHtml;
                     
                     const loserCell = document.createElement('td');
                     loserCell.innerHTML = `<a href="?profile=${encodeURIComponent(duel.loser)}" style="color: var(--danger); text-decoration: none;">${duel.loser_nick}</a>`;
                     
                     const loserClassCell = document.createElement('td');
-                    console.log('Raw loser_class_html:', duel.loser_class_html); // Отладка
-                    // Удаляем лишние экранирования, если они есть
+                    console.log('Raw loser_class_html:', duel.loser_class_html);
+
                     const processedLoserClassHtml = duel.loser_class_html.replace(/\\"/g, '"');
-                    console.log('Processed loser_class_html:', processedLoserClassHtml); // Отладка
+                    console.log('Processed loser_class_html:', processedLoserClassHtml);
                     loserClassCell.innerHTML = processedLoserClassHtml;
                     
                     // Calculate ELO change for winner
@@ -204,7 +257,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.current_page > 1) {
                     const prevLink = document.createElement('a');
                     prevLink.href = `?page=${data.current_page - 1}&duel_sort_by=${duelOrderBy}&duel_sort_dir=${duelOrderDir}`;
-                    prevLink.innerHTML = '<i class="fas fa-chevron-left"></i> Назад';
+                    prevLink.innerHTML = `<i class="fas fa-chevron-left"></i> ${tJs('js_back', 'Back')}`;
                     prevLink.addEventListener('click', function(e) {
                         e.preventDefault();
                         loadDuelsPage(data.current_page - 1, containerId, tbodyId, paginationId);
@@ -230,7 +283,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.current_page < data.total_pages) {
                     const nextLink = document.createElement('a');
                     nextLink.href = `?page=${data.current_page + 1}&duel_sort_by=${duelOrderBy}&duel_sort_dir=${duelOrderDir}`;
-                    nextLink.innerHTML = 'Вперед <i class="fas fa-chevron-right"></i>';
+                    nextLink.innerHTML = `${tJs('js_forward', 'Forward')} <i class="fas fa-chevron-right"></i>`;
                     nextLink.addEventListener('click', function(e) {
                         e.preventDefault();
                         loadDuelsPage(data.current_page + 1, containerId, tbodyId, paginationId);
@@ -354,7 +407,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (data.current_page > 1) {
                         const prevLink = document.createElement('a');
                         prevLink.href = '#';
-                        prevLink.innerHTML = '<i class="fas fa-chevron-left"></i> Назад';
+                    prevLink.innerHTML = `<i class="fas fa-chevron-left"></i> ${tJs('js_back', 'Back')}`;
                         prevLink.addEventListener('click', function(e) {
                             e.preventDefault();
                             loadPlayersPage(data.current_page - 1, containerId, tbodyId, paginationId);
@@ -380,7 +433,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (data.current_page < data.total_pages) {
                         const nextLink = document.createElement('a');
                         nextLink.href = '#';
-                        nextLink.innerHTML = 'Вперед <i class="fas fa-chevron-right"></i>';
+                    nextLink.innerHTML = `${tJs('js_forward', 'Forward')} <i class="fas fa-chevron-right"></i>`;
                         nextLink.addEventListener('click', function(e) {
                             e.preventDefault();
                             loadPlayersPage(data.current_page + 1, containerId, tbodyId, paginationId);
@@ -479,7 +532,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!refreshIndicator) {
                 refreshIndicator = document.createElement('div');
                 refreshIndicator.className = 'refresh-indicator';
-                refreshIndicator.innerHTML = '<div class="refresh-spinner"></div><span>Загрузка...</span>';
+                refreshIndicator.innerHTML = `<div class="refresh-spinner"></div><span>${tJs('js_loading', 'Loading...')}</span>`;
                 container.style.position = 'relative'; // Ensure container has position relative
                 container.insertBefore(refreshIndicator, container.firstChild);
             }
@@ -505,13 +558,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 if (data.duels.length === 0) {
                     const emptyRow = document.createElement('tr');
-                    emptyRow.innerHTML = '<td colspan="10" style="text-align: center;">Нет данных о дуэлях</td>';
+                    emptyRow.innerHTML = `<td colspan="10" style="text-align: center;">${tJs('js_no_duels_data', 'No duel data')}</td>`;
                     tbody.appendChild(emptyRow);
                 } else {
                     data.duels.forEach(duel => {
                         const row = document.createElement('tr');
                         const resultClass = duel.is_winner ? 'win' : 'loss';
-                        const resultText = duel.is_winner ? 'ПОБЕДА' : 'ПОРАЖЕНИЕ';
+                        const resultText = duel.is_winner ? tJs('js_result_win', 'WIN') : tJs('js_result_loss', 'LOSS');
 
                         // Calculate ELO change
                         let eloChange = null;
@@ -588,7 +641,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 row.innerHTML = `
                                     <td><a href="?duel=${duel.id}&type=${duel.type}&profile=${encodeURIComponent(steamId)}" class="duel-id-link">${duel.id}</a></td>
                                     <td>${duel.type}</td>
-                                    <td>${new Date(duel.endtime * 1000).toLocaleString('ru-RU')}</td>
+                                    <td>${new Date(duel.endtime * 1000).toLocaleString(locale)}</td>
                                     <td><span class="duel-result ${resultClass}">${resultText}</span></td>
                                     <td>${duel.is_winner ? duel.winnerclass_html : duel.loserclass_html}</td>
                                     <td><a href="?profile=${encodeURIComponent(opponentId)}" style="color: var(--accent); text-decoration: none;">${opponentNick}</a></td>
@@ -605,7 +658,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 row.innerHTML = `
                                     <td><a href="?duel=${duel.id}&type=${duel.type}&profile=${encodeURIComponent(steamId)}" class="duel-id-link">${duel.id}</a></td>
                                     <td>${duel.type}</td>
-                                    <td>${new Date(duel.endtime * 1000).toLocaleString('ru-RU')}</td>
+                                    <td>${new Date(duel.endtime * 1000).toLocaleString(locale)}</td>
                                     <td><span class="duel-result ${resultClass}">${resultText}</span></td>
                                     <td>${duel.is_winner ? duel.winnerclass_html : duel.loserclass_html}</td>
                                     <td><a href="?profile=${encodeURIComponent(opponentId)}" style="color: var(--accent); text-decoration: none;">${opponentId}</a></td>
@@ -625,7 +678,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.current_page > 1) {
                     const prevLink = document.createElement('a');
                     prevLink.href = `?profile=${encodeURIComponent(steamId)}&duels_page=${data.current_page - 1}`;
-                    prevLink.innerHTML = '<i class="fas fa-chevron-left"></i> Назад';
+                    prevLink.innerHTML = `<i class="fas fa-chevron-left"></i> ${tJs('js_back', 'Back')}`;
                     prevLink.addEventListener('click', function(e) {
                         e.preventDefault();
                         loadProfileDuelsPage(data.current_page - 1, steamId);
@@ -651,7 +704,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.current_page < data.total_pages) {
                     const nextLink = document.createElement('a');
                     nextLink.href = `?profile=${encodeURIComponent(steamId)}&duels_page=${data.current_page + 1}`;
-                    nextLink.innerHTML = 'Вперед <i class="fas fa-chevron-right"></i>';
+                    nextLink.innerHTML = `${tJs('js_forward', 'Forward')} <i class="fas fa-chevron-right"></i>`;
                     nextLink.addEventListener('click', function(e) {
                         e.preventDefault();
                         loadProfileDuelsPage(data.current_page + 1, steamId);
@@ -689,3 +742,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // Removed AJAX pagination for sort links to allow normal navigation
 
 });
+
+
+
+
+
+
+

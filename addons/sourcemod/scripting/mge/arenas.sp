@@ -11,19 +11,424 @@ public Action Timer_InitializePublicInvites(Handle timer)
     return Plugin_Stop;
 }
 
-// Load and parse spawn point configurations from map-specific config files
-bool LoadSpawnPoints()
+int g_iArenaConfigBackupCount;
+char g_sArenaConfigBackupName[MAXARENAS + 1][64];
+char g_sArenaConfigBackupOriginalName[MAXARENAS + 1][64];
+char g_sArenaConfigBackupCap[MAXARENAS + 1][64];
+char g_sArenaConfigBackupCapTrigger[MAXARENAS + 1][64];
+char g_sArenaConfigBackupBBallHoopTriggerRed[MAXARENAS + 1][64];
+char g_sArenaConfigBackupBBallHoopTriggerBlu[MAXARENAS + 1][64];
+float g_fArenaConfigBackupSpawnOrigin[MAXARENAS + 1][MAXSPAWNS + 1][3];
+float g_fArenaConfigBackupSpawnAngles[MAXARENAS + 1][MAXSPAWNS + 1][3];
+float g_fArenaConfigBackupRedSpawnOrigin[MAXARENAS + 1][MAXSPAWNS + 1][3];
+float g_fArenaConfigBackupRedSpawnAngles[MAXARENAS + 1][MAXSPAWNS + 1][3];
+float g_fArenaConfigBackupBluSpawnOrigin[MAXARENAS + 1][MAXSPAWNS + 1][3];
+float g_fArenaConfigBackupBluSpawnAngles[MAXARENAS + 1][MAXSPAWNS + 1][3];
+float g_fArenaConfigBackupBBallIntelSpawn[MAXARENAS + 1][3];
+float g_fArenaConfigBackupBBallIntelSpawnRed[MAXARENAS + 1][3];
+float g_fArenaConfigBackupBBallIntelSpawnBlu[MAXARENAS + 1][3];
+float g_fArenaConfigBackupBBallHoopSpawn[MAXARENAS + 1][3];
+float g_fArenaConfigBackupBBallHoopSpawnRed[MAXARENAS + 1][3];
+float g_fArenaConfigBackupBBallHoopSpawnBlu[MAXARENAS + 1][3];
+float g_fArenaConfigBackupHPRatio[MAXARENAS + 1];
+float g_fArenaConfigBackupClassHPRatio[MAXARENAS + 1][10];
+float g_fArenaConfigBackupMinSpawnDist[MAXARENAS + 1];
+float g_fArenaConfigBackupRespawnTime[MAXARENAS + 1];
+bool g_bArenaConfigBackupAllowedClasses[MAXARENAS + 1][10];
+bool g_bArenaConfigBackupAmmomod[MAXARENAS + 1];
+bool g_bArenaConfigBackupMidair[MAXARENAS + 1];
+bool g_bArenaConfigBackupMGE[MAXARENAS + 1];
+bool g_bArenaConfigBackupEndif[MAXARENAS + 1];
+bool g_bArenaConfigBackupBBall[MAXARENAS + 1];
+bool g_bArenaConfigBackupVisibleHoops[MAXARENAS + 1];
+bool g_bArenaConfigBackupInfAmmo[MAXARENAS + 1];
+bool g_bArenaConfigBackupFourPerson[MAXARENAS + 1];
+bool g_bArenaConfigBackupAllowChange[MAXARENAS + 1];
+bool g_bArenaConfigBackupAllowKoth[MAXARENAS + 1];
+bool g_bArenaConfigBackupKothTeamSpawn[MAXARENAS + 1];
+bool g_bArenaConfigBackupShowHP[MAXARENAS + 1];
+bool g_bArenaConfigBackupUltiduo[MAXARENAS + 1];
+bool g_bArenaConfigBackupKoth[MAXARENAS + 1];
+bool g_bArenaConfigBackupTurris[MAXARENAS + 1];
+bool g_bArenaConfigBackupHasCap[MAXARENAS + 1];
+bool g_bArenaConfigBackupHasCapTrigger[MAXARENAS + 1];
+bool g_bArenaConfigBackupBoostVectors[MAXARENAS + 1];
+bool g_bArenaConfigBackupClassChange[MAXARENAS + 1];
+bool g_bArenaConfigBackupNoFight[MAXARENAS + 1];
+bool g_bArenaConfigBackupBBallIntelSpawnSet[MAXARENAS + 1];
+bool g_bArenaConfigBackupBBallIntelSpawnRedSet[MAXARENAS + 1];
+bool g_bArenaConfigBackupBBallIntelSpawnBluSet[MAXARENAS + 1];
+bool g_bArenaConfigBackupBBallHoopSpawnSet[MAXARENAS + 1];
+bool g_bArenaConfigBackupBBallHoopSpawnRedSet[MAXARENAS + 1];
+bool g_bArenaConfigBackupBBallHoopSpawnBluSet[MAXARENAS + 1];
+bool g_bArenaConfigBackupBBallHoopTriggerRedSet[MAXARENAS + 1];
+bool g_bArenaConfigBackupBBallHoopTriggerBluSet[MAXARENAS + 1];
+bool g_bArenaConfigBackupUseTeamSpawns[MAXARENAS + 1];
+bool g_bArenaConfigBackupNearSpawn[MAXARENAS + 1];
+int g_iArenaConfigBackupAirshotHeight[MAXARENAS + 1];
+int g_iArenaConfigBackupDefaultCapTime[MAXARENAS + 1];
+int g_iArenaConfigBackupFraglimit[MAXARENAS + 1];
+int g_iArenaConfigBackupMgelimit[MAXARENAS + 1];
+int g_iArenaConfigBackupCaplimit[MAXARENAS + 1];
+int g_iArenaConfigBackupMinRating[MAXARENAS + 1];
+int g_iArenaConfigBackupMaxRating[MAXARENAS + 1];
+int g_iArenaConfigBackupCdTime[MAXARENAS + 1];
+int g_iArenaConfigBackupSpawns[MAXARENAS + 1];
+int g_iArenaConfigBackupRedSpawns[MAXARENAS + 1];
+int g_iArenaConfigBackupBluSpawns[MAXARENAS + 1];
+int g_iArenaConfigBackupEarlyLeave[MAXARENAS + 1];
+
+bool FailMapConfigLoad(bool failHard, char[] error, int errorLen, const char[] message)
 {
+    if (errorLen > 0)
+        strcopy(error, errorLen, message);
+
+    if (!failHard)
+        LogError("%s", message);
+    else
+        SetFailState("%s", message);
+
+    return false;
+}
+
+void CaptureArenaConfigSnapshot()
+{
+    g_iArenaConfigBackupCount = g_iArenaCount;
+
+    for (int arena = 0; arena <= MAXARENAS; arena++)
+    {
+        strcopy(g_sArenaConfigBackupName[arena], sizeof(g_sArenaConfigBackupName[]), g_sArenaName[arena]);
+        strcopy(g_sArenaConfigBackupOriginalName[arena], sizeof(g_sArenaConfigBackupOriginalName[]), g_sArenaOriginalName[arena]);
+        strcopy(g_sArenaConfigBackupCap[arena], sizeof(g_sArenaConfigBackupCap[]), g_sArenaCap[arena]);
+        strcopy(g_sArenaConfigBackupCapTrigger[arena], sizeof(g_sArenaConfigBackupCapTrigger[]), g_sArenaCapTrigger[arena]);
+        strcopy(g_sArenaConfigBackupBBallHoopTriggerRed[arena], sizeof(g_sArenaConfigBackupBBallHoopTriggerRed[]), g_sArenaBBallHoopTriggerRed[arena]);
+        strcopy(g_sArenaConfigBackupBBallHoopTriggerBlu[arena], sizeof(g_sArenaConfigBackupBBallHoopTriggerBlu[]), g_sArenaBBallHoopTriggerBlu[arena]);
+
+        g_fArenaConfigBackupHPRatio[arena] = g_fArenaHPRatio[arena];
+        g_fArenaConfigBackupMinSpawnDist[arena] = g_fArenaMinSpawnDist[arena];
+        g_fArenaConfigBackupRespawnTime[arena] = g_fArenaRespawnTime[arena];
+
+        g_bArenaConfigBackupAmmomod[arena] = g_bArenaAmmomod[arena];
+        g_bArenaConfigBackupMidair[arena] = g_bArenaMidair[arena];
+        g_bArenaConfigBackupMGE[arena] = g_bArenaMGE[arena];
+        g_bArenaConfigBackupEndif[arena] = g_bArenaEndif[arena];
+        g_bArenaConfigBackupBBall[arena] = g_bArenaBBall[arena];
+        g_bArenaConfigBackupVisibleHoops[arena] = g_bVisibleHoops[arena];
+        g_bArenaConfigBackupInfAmmo[arena] = g_bArenaInfAmmo[arena];
+        g_bArenaConfigBackupFourPerson[arena] = g_bFourPersonArena[arena];
+        g_bArenaConfigBackupAllowChange[arena] = g_bArenaAllowChange[arena];
+        g_bArenaConfigBackupAllowKoth[arena] = g_bArenaAllowKoth[arena];
+        g_bArenaConfigBackupKothTeamSpawn[arena] = g_bArenaKothTeamSpawn[arena];
+        g_bArenaConfigBackupShowHP[arena] = g_bArenaShowHPToPlayers[arena];
+        g_bArenaConfigBackupUltiduo[arena] = g_bArenaUltiduo[arena];
+        g_bArenaConfigBackupKoth[arena] = g_bArenaKoth[arena];
+        g_bArenaConfigBackupTurris[arena] = g_bArenaTurris[arena];
+        g_bArenaConfigBackupHasCap[arena] = g_bArenaHasCap[arena];
+        g_bArenaConfigBackupHasCapTrigger[arena] = g_bArenaHasCapTrigger[arena];
+        g_bArenaConfigBackupBoostVectors[arena] = g_bArenaBoostVectors[arena];
+        g_bArenaConfigBackupClassChange[arena] = g_bArenaClassChange[arena];
+        g_bArenaConfigBackupNoFight[arena] = g_bArenaNoFight[arena];
+        g_bArenaConfigBackupBBallIntelSpawnSet[arena] = g_bArenaBBallIntelSpawnSet[arena];
+        g_bArenaConfigBackupBBallIntelSpawnRedSet[arena] = g_bArenaBBallIntelSpawnRedSet[arena];
+        g_bArenaConfigBackupBBallIntelSpawnBluSet[arena] = g_bArenaBBallIntelSpawnBluSet[arena];
+        g_bArenaConfigBackupBBallHoopSpawnSet[arena] = g_bArenaBBallHoopSpawnSet[arena];
+        g_bArenaConfigBackupBBallHoopSpawnRedSet[arena] = g_bArenaBBallHoopSpawnRedSet[arena];
+        g_bArenaConfigBackupBBallHoopSpawnBluSet[arena] = g_bArenaBBallHoopSpawnBluSet[arena];
+        g_bArenaConfigBackupBBallHoopTriggerRedSet[arena] = g_bArenaBBallHoopTriggerRedSet[arena];
+        g_bArenaConfigBackupBBallHoopTriggerBluSet[arena] = g_bArenaBBallHoopTriggerBluSet[arena];
+        g_bArenaConfigBackupUseTeamSpawns[arena] = g_bArenaUseTeamSpawns[arena];
+        g_bArenaConfigBackupNearSpawn[arena] = g_bArenaNearSpawn[arena];
+
+        g_iArenaConfigBackupAirshotHeight[arena] = g_iArenaAirshotHeight[arena];
+        g_iArenaConfigBackupDefaultCapTime[arena] = g_iDefaultCapTime[arena];
+        g_iArenaConfigBackupFraglimit[arena] = g_iArenaFraglimit[arena];
+        g_iArenaConfigBackupMgelimit[arena] = g_iArenaMgelimit[arena];
+        g_iArenaConfigBackupCaplimit[arena] = g_iArenaCaplimit[arena];
+        g_iArenaConfigBackupMinRating[arena] = g_iArenaMinRating[arena];
+        g_iArenaConfigBackupMaxRating[arena] = g_iArenaMaxRating[arena];
+        g_iArenaConfigBackupCdTime[arena] = g_iArenaCdTime[arena];
+        g_iArenaConfigBackupSpawns[arena] = g_iArenaSpawns[arena];
+        g_iArenaConfigBackupRedSpawns[arena] = g_iArenaRedSpawns[arena];
+        g_iArenaConfigBackupBluSpawns[arena] = g_iArenaBluSpawns[arena];
+        g_iArenaConfigBackupEarlyLeave[arena] = g_iArenaEarlyLeave[arena];
+
+        for (int axis = 0; axis < 3; axis++)
+        {
+            g_fArenaConfigBackupBBallIntelSpawn[arena][axis] = g_fArenaBBallIntelSpawn[arena][axis];
+            g_fArenaConfigBackupBBallIntelSpawnRed[arena][axis] = g_fArenaBBallIntelSpawnRed[arena][axis];
+            g_fArenaConfigBackupBBallIntelSpawnBlu[arena][axis] = g_fArenaBBallIntelSpawnBlu[arena][axis];
+            g_fArenaConfigBackupBBallHoopSpawn[arena][axis] = g_fArenaBBallHoopSpawn[arena][axis];
+            g_fArenaConfigBackupBBallHoopSpawnRed[arena][axis] = g_fArenaBBallHoopSpawnRed[arena][axis];
+            g_fArenaConfigBackupBBallHoopSpawnBlu[arena][axis] = g_fArenaBBallHoopSpawnBlu[arena][axis];
+        }
+
+        for (int classId = 0; classId <= 9; classId++)
+        {
+            g_fArenaConfigBackupClassHPRatio[arena][classId] = g_fArenaClassHPRatio[arena][classId];
+            g_bArenaConfigBackupAllowedClasses[arena][classId] = g_tfctArenaAllowedClasses[arena][classId];
+        }
+
+        for (int spawnIndex = 0; spawnIndex <= MAXSPAWNS; spawnIndex++)
+        {
+            for (int axis = 0; axis < 3; axis++)
+            {
+                g_fArenaConfigBackupSpawnOrigin[arena][spawnIndex][axis] = g_fArenaSpawnOrigin[arena][spawnIndex][axis];
+                g_fArenaConfigBackupSpawnAngles[arena][spawnIndex][axis] = g_fArenaSpawnAngles[arena][spawnIndex][axis];
+                g_fArenaConfigBackupRedSpawnOrigin[arena][spawnIndex][axis] = g_fArenaRedSpawnOrigin[arena][spawnIndex][axis];
+                g_fArenaConfigBackupRedSpawnAngles[arena][spawnIndex][axis] = g_fArenaRedSpawnAngles[arena][spawnIndex][axis];
+                g_fArenaConfigBackupBluSpawnOrigin[arena][spawnIndex][axis] = g_fArenaBluSpawnOrigin[arena][spawnIndex][axis];
+                g_fArenaConfigBackupBluSpawnAngles[arena][spawnIndex][axis] = g_fArenaBluSpawnAngles[arena][spawnIndex][axis];
+            }
+        }
+    }
+}
+
+void RestoreArenaConfigSnapshot()
+{
+    g_iArenaCount = g_iArenaConfigBackupCount;
+
+    for (int arena = 0; arena <= MAXARENAS; arena++)
+    {
+        strcopy(g_sArenaName[arena], sizeof(g_sArenaName[]), g_sArenaConfigBackupName[arena]);
+        strcopy(g_sArenaOriginalName[arena], sizeof(g_sArenaOriginalName[]), g_sArenaConfigBackupOriginalName[arena]);
+        strcopy(g_sArenaCap[arena], sizeof(g_sArenaCap[]), g_sArenaConfigBackupCap[arena]);
+        strcopy(g_sArenaCapTrigger[arena], sizeof(g_sArenaCapTrigger[]), g_sArenaConfigBackupCapTrigger[arena]);
+        strcopy(g_sArenaBBallHoopTriggerRed[arena], sizeof(g_sArenaBBallHoopTriggerRed[]), g_sArenaConfigBackupBBallHoopTriggerRed[arena]);
+        strcopy(g_sArenaBBallHoopTriggerBlu[arena], sizeof(g_sArenaBBallHoopTriggerBlu[]), g_sArenaConfigBackupBBallHoopTriggerBlu[arena]);
+
+        g_fArenaHPRatio[arena] = g_fArenaConfigBackupHPRatio[arena];
+        g_fArenaMinSpawnDist[arena] = g_fArenaConfigBackupMinSpawnDist[arena];
+        g_fArenaRespawnTime[arena] = g_fArenaConfigBackupRespawnTime[arena];
+
+        g_bArenaAmmomod[arena] = g_bArenaConfigBackupAmmomod[arena];
+        g_bArenaMidair[arena] = g_bArenaConfigBackupMidair[arena];
+        g_bArenaMGE[arena] = g_bArenaConfigBackupMGE[arena];
+        g_bArenaEndif[arena] = g_bArenaConfigBackupEndif[arena];
+        g_bArenaBBall[arena] = g_bArenaConfigBackupBBall[arena];
+        g_bVisibleHoops[arena] = g_bArenaConfigBackupVisibleHoops[arena];
+        g_bArenaInfAmmo[arena] = g_bArenaConfigBackupInfAmmo[arena];
+        g_bFourPersonArena[arena] = g_bArenaConfigBackupFourPerson[arena];
+        g_bArenaAllowChange[arena] = g_bArenaConfigBackupAllowChange[arena];
+        g_bArenaAllowKoth[arena] = g_bArenaConfigBackupAllowKoth[arena];
+        g_bArenaKothTeamSpawn[arena] = g_bArenaConfigBackupKothTeamSpawn[arena];
+        g_bArenaShowHPToPlayers[arena] = g_bArenaConfigBackupShowHP[arena];
+        g_bArenaUltiduo[arena] = g_bArenaConfigBackupUltiduo[arena];
+        g_bArenaKoth[arena] = g_bArenaConfigBackupKoth[arena];
+        g_bArenaTurris[arena] = g_bArenaConfigBackupTurris[arena];
+        g_bArenaHasCap[arena] = g_bArenaConfigBackupHasCap[arena];
+        g_bArenaHasCapTrigger[arena] = g_bArenaConfigBackupHasCapTrigger[arena];
+        g_bArenaBoostVectors[arena] = g_bArenaConfigBackupBoostVectors[arena];
+        g_bArenaClassChange[arena] = g_bArenaConfigBackupClassChange[arena];
+        g_bArenaNoFight[arena] = g_bArenaConfigBackupNoFight[arena];
+        g_bArenaBBallIntelSpawnSet[arena] = g_bArenaConfigBackupBBallIntelSpawnSet[arena];
+        g_bArenaBBallIntelSpawnRedSet[arena] = g_bArenaConfigBackupBBallIntelSpawnRedSet[arena];
+        g_bArenaBBallIntelSpawnBluSet[arena] = g_bArenaConfigBackupBBallIntelSpawnBluSet[arena];
+        g_bArenaBBallHoopSpawnSet[arena] = g_bArenaConfigBackupBBallHoopSpawnSet[arena];
+        g_bArenaBBallHoopSpawnRedSet[arena] = g_bArenaConfigBackupBBallHoopSpawnRedSet[arena];
+        g_bArenaBBallHoopSpawnBluSet[arena] = g_bArenaConfigBackupBBallHoopSpawnBluSet[arena];
+        g_bArenaBBallHoopTriggerRedSet[arena] = g_bArenaConfigBackupBBallHoopTriggerRedSet[arena];
+        g_bArenaBBallHoopTriggerBluSet[arena] = g_bArenaConfigBackupBBallHoopTriggerBluSet[arena];
+        g_bArenaUseTeamSpawns[arena] = g_bArenaConfigBackupUseTeamSpawns[arena];
+        g_bArenaNearSpawn[arena] = g_bArenaConfigBackupNearSpawn[arena];
+
+        g_iArenaAirshotHeight[arena] = g_iArenaConfigBackupAirshotHeight[arena];
+        g_iDefaultCapTime[arena] = g_iArenaConfigBackupDefaultCapTime[arena];
+        g_iArenaFraglimit[arena] = g_iArenaConfigBackupFraglimit[arena];
+        g_iArenaMgelimit[arena] = g_iArenaConfigBackupMgelimit[arena];
+        g_iArenaCaplimit[arena] = g_iArenaConfigBackupCaplimit[arena];
+        g_iArenaMinRating[arena] = g_iArenaConfigBackupMinRating[arena];
+        g_iArenaMaxRating[arena] = g_iArenaConfigBackupMaxRating[arena];
+        g_iArenaCdTime[arena] = g_iArenaConfigBackupCdTime[arena];
+        g_iArenaSpawns[arena] = g_iArenaConfigBackupSpawns[arena];
+        g_iArenaRedSpawns[arena] = g_iArenaConfigBackupRedSpawns[arena];
+        g_iArenaBluSpawns[arena] = g_iArenaConfigBackupBluSpawns[arena];
+        g_iArenaEarlyLeave[arena] = g_iArenaConfigBackupEarlyLeave[arena];
+
+        for (int axis = 0; axis < 3; axis++)
+        {
+            g_fArenaBBallIntelSpawn[arena][axis] = g_fArenaConfigBackupBBallIntelSpawn[arena][axis];
+            g_fArenaBBallIntelSpawnRed[arena][axis] = g_fArenaConfigBackupBBallIntelSpawnRed[arena][axis];
+            g_fArenaBBallIntelSpawnBlu[arena][axis] = g_fArenaConfigBackupBBallIntelSpawnBlu[arena][axis];
+            g_fArenaBBallHoopSpawn[arena][axis] = g_fArenaConfigBackupBBallHoopSpawn[arena][axis];
+            g_fArenaBBallHoopSpawnRed[arena][axis] = g_fArenaConfigBackupBBallHoopSpawnRed[arena][axis];
+            g_fArenaBBallHoopSpawnBlu[arena][axis] = g_fArenaConfigBackupBBallHoopSpawnBlu[arena][axis];
+        }
+
+        for (int classId = 0; classId <= 9; classId++)
+        {
+            g_fArenaClassHPRatio[arena][classId] = g_fArenaConfigBackupClassHPRatio[arena][classId];
+            g_tfctArenaAllowedClasses[arena][classId] = g_bArenaConfigBackupAllowedClasses[arena][classId];
+        }
+
+        for (int spawnIndex = 0; spawnIndex <= MAXSPAWNS; spawnIndex++)
+        {
+            for (int axis = 0; axis < 3; axis++)
+            {
+                g_fArenaSpawnOrigin[arena][spawnIndex][axis] = g_fArenaConfigBackupSpawnOrigin[arena][spawnIndex][axis];
+                g_fArenaSpawnAngles[arena][spawnIndex][axis] = g_fArenaConfigBackupSpawnAngles[arena][spawnIndex][axis];
+                g_fArenaRedSpawnOrigin[arena][spawnIndex][axis] = g_fArenaConfigBackupRedSpawnOrigin[arena][spawnIndex][axis];
+                g_fArenaRedSpawnAngles[arena][spawnIndex][axis] = g_fArenaConfigBackupRedSpawnAngles[arena][spawnIndex][axis];
+                g_fArenaBluSpawnOrigin[arena][spawnIndex][axis] = g_fArenaConfigBackupBluSpawnOrigin[arena][spawnIndex][axis];
+                g_fArenaBluSpawnAngles[arena][spawnIndex][axis] = g_fArenaConfigBackupBluSpawnAngles[arena][spawnIndex][axis];
+            }
+        }
+    }
+}
+
+bool FailArenaReloadCompatibility(int arena_index, const char[] field, char[] error, int errorLen)
+{
+    char message[192];
+    Format(message, sizeof(message), "Arena '%s' changed '%s'; hot reload only supports non-structural config changes.",
+        g_sArenaConfigBackupOriginalName[arena_index], field);
+    strcopy(error, errorLen, message);
+    return false;
+}
+
+bool ValidateArenaHotReloadCompatibility(char[] error, int errorLen)
+{
+    if (g_iArenaCount != g_iArenaConfigBackupCount)
+    {
+        Format(error, errorLen, "Arena count changed from %d to %d; hot reload requires the same arenas in the same order.",
+            g_iArenaConfigBackupCount, g_iArenaCount);
+        return false;
+    }
+
+    for (int arena = 1; arena <= g_iArenaCount; arena++)
+    {
+        if (!StrEqual(g_sArenaOriginalName[arena], g_sArenaConfigBackupOriginalName[arena], true))
+        {
+            Format(error, errorLen, "Arena order changed at slot %d ('%s' -> '%s'); hot reload requires stable arena order.",
+                arena, g_sArenaConfigBackupOriginalName[arena], g_sArenaOriginalName[arena]);
+            return false;
+        }
+
+        if (g_bFourPersonArena[arena] != g_bArenaConfigBackupFourPerson[arena])
+            return FailArenaReloadCompatibility(arena, "4player", error, errorLen);
+        if (g_bArenaBBall[arena] != g_bArenaConfigBackupBBall[arena])
+            return FailArenaReloadCompatibility(arena, "bball", error, errorLen);
+        if (g_bArenaKoth[arena] != g_bArenaConfigBackupKoth[arena])
+            return FailArenaReloadCompatibility(arena, "koth", error, errorLen);
+        if (g_bArenaMGE[arena] != g_bArenaConfigBackupMGE[arena])
+            return FailArenaReloadCompatibility(arena, "mge", error, errorLen);
+        if (g_bArenaUltiduo[arena] != g_bArenaConfigBackupUltiduo[arena])
+            return FailArenaReloadCompatibility(arena, "ultiduo", error, errorLen);
+        if (g_bArenaNoFight[arena] != g_bArenaConfigBackupNoFight[arena])
+            return FailArenaReloadCompatibility(arena, "nofight", error, errorLen);
+        if (g_bArenaAmmomod[arena] != g_bArenaConfigBackupAmmomod[arena])
+            return FailArenaReloadCompatibility(arena, "ammomod", error, errorLen);
+        if (g_bArenaMidair[arena] != g_bArenaConfigBackupMidair[arena])
+            return FailArenaReloadCompatibility(arena, "midair", error, errorLen);
+        if (g_bArenaEndif[arena] != g_bArenaConfigBackupEndif[arena])
+            return FailArenaReloadCompatibility(arena, "endif", error, errorLen);
+        if (g_bArenaTurris[arena] != g_bArenaConfigBackupTurris[arena])
+            return FailArenaReloadCompatibility(arena, "turris", error, errorLen);
+        if (g_bArenaBoostVectors[arena] != g_bArenaConfigBackupBoostVectors[arena])
+            return FailArenaReloadCompatibility(arena, "boostvectors", error, errorLen);
+        if (g_bArenaAllowKoth[arena] != g_bArenaConfigBackupAllowKoth[arena])
+            return FailArenaReloadCompatibility(arena, "allowkoth", error, errorLen);
+        if (g_bArenaKothTeamSpawn[arena] != g_bArenaConfigBackupKothTeamSpawn[arena])
+            return FailArenaReloadCompatibility(arena, "kothteamspawn", error, errorLen);
+    }
+
+    return true;
+}
+
+void ApplyArenaConfigReloadToLiveWorld(int &deferredBball, int &deferredKoth)
+{
+    deferredBball = 0;
+    deferredKoth = 0;
+
+    CacheBBallScoreboardEntities();
+    StartBBallScoreboardTimer();
+
+    for (int arena = 1; arena <= g_iArenaCount; arena++)
+    {
+        bool isActive = (g_iArenaStatus[arena] == AS_COUNTDOWN || g_iArenaStatus[arena] == AS_FIGHT);
+
+        if (g_bArenaBBall[arena])
+        {
+            if (isActive)
+            {
+                g_bArenaPendingBBallEntityRefresh[arena] = true;
+                deferredBball++;
+            }
+            else
+            {
+                g_bArenaPendingBBallEntityRefresh[arena] = false;
+                RemoveBBallArenaEntities(arena);
+                RebuildBBallArenaHoops(arena);
+            }
+
+            UpdateBBallScoreboardForArena(arena);
+        }
+        else
+        {
+            g_bArenaPendingBBallEntityRefresh[arena] = false;
+        }
+
+        if (g_bArenaKoth[arena])
+        {
+            if (isActive)
+            {
+                g_bArenaPendingKothEntityRefresh[arena] = true;
+                deferredKoth++;
+            }
+            else
+            {
+                g_bArenaPendingKothEntityRefresh[arena] = false;
+                RefreshKothCapturePointForArena(arena);
+            }
+        }
+        else
+        {
+            g_bArenaPendingKothEntityRefresh[arena] = false;
+        }
+
+        UpdateHudForArena(arena);
+    }
+}
+
+bool ReloadMapArenaConfigSafely(int &deferredBball, int &deferredKoth, char[] error, int errorLen)
+{
+    CaptureArenaConfigSnapshot();
+
+    if (!LoadSpawnPointsFromMapConfig(false, false, error, errorLen))
+    {
+        RestoreArenaConfigSnapshot();
+        return false;
+    }
+
+    if (!ValidateArenaHotReloadCompatibility(error, errorLen))
+    {
+        RestoreArenaConfigSnapshot();
+        return false;
+    }
+
+    if (!ReloadArenaWeaponRuleBindingsFromMapConfig())
+    {
+        RestoreArenaConfigSnapshot();
+        strcopy(error, errorLen, "Map config parsed, but weapon rule bindings could not be reloaded.");
+        return false;
+    }
+
+    ApplyArenaConfigReloadToLiveWorld(deferredBball, deferredKoth);
+    return true;
+}
+
+// Load and parse spawn point configurations from map-specific config files
+bool LoadSpawnPointsFromMapConfig(bool failHard, bool parseWeaponRules, char[] error, int errorLen)
+{
+    error[0] = '\0';
+
     char txtfile[256];
     GetCurrentMap(g_sMapName, sizeof(g_sMapName));
 
-    //  "workshop/mge_training_v8_beta4b.ugc1996603816"
     if (StrContains(g_sMapName, "workshop/", false) != -1)
     {
         char nonWorkshopName[256];
         if (!GetMapDisplayName(g_sMapName, nonWorkshopName, sizeof(nonWorkshopName)))
         {
-            LogError("Failed to convert workshop map name %s to pretty name! This map will probably not work!");
+            LogError("Failed to convert workshop map name %s to pretty name! This map will probably not work!", g_sMapName);
         }
         else
         {
@@ -31,7 +436,6 @@ bool LoadSpawnPoints()
         }
     }
 
-    // Build path to map-specific config file: configs/mge/{mapname}.cfg
     Format(txtfile, sizeof(txtfile), "configs/mge/%s.cfg", g_sMapName);
     BuildPath(Path_SM, txtfile, sizeof(txtfile), txtfile);
 
@@ -46,26 +450,55 @@ bool LoadSpawnPoints()
     for (int j = 0; j <= MAXARENAS; j++)
     {
         g_iArenaSpawns[j] = 0;
+        g_iArenaRedSpawns[j] = 0;
+        g_iArenaBluSpawns[j] = 0;
+        g_bArenaUseTeamSpawns[j] = false;
+        g_bArenaNearSpawn[j] = false;
     }
 
     if (!kv.ImportFromFile(txtfile))
     {
-        LogError("Error. Can't find cfg file: %s", txtfile);
+        char message[256];
+        Format(message, sizeof(message), "Error. Can't find cfg file: %s", txtfile);
         delete kv;
-        return false;
+        return FailMapConfigLoad(failHard, error, errorLen, message);
     }
-    
+
     if (!kv.GotoFirstSubKey())
     {
-        LogError("Error in cfg file: %s", txtfile);
+        char message[256];
+        Format(message, sizeof(message), "Error in cfg file: %s", txtfile);
         delete kv;
-        return false;
+        return FailMapConfigLoad(failHard, error, errorLen, message);
     }
-    
+
     do
     {
         g_iArenaCount++;
+        if (g_iArenaCount > MAXARENAS)
+        {
+            char message[192];
+            Format(message, sizeof(message), "Error in cfg file. Too many arenas in %s (max: %d).", txtfile, MAXARENAS);
+            delete kv;
+            return FailMapConfigLoad(failHard, error, errorLen, message);
+        }
+
+        g_bArenaBBallIntelSpawnSet[g_iArenaCount] = false;
+        g_bArenaBBallIntelSpawnRedSet[g_iArenaCount] = false;
+        g_bArenaBBallIntelSpawnBluSet[g_iArenaCount] = false;
+        g_bArenaBBallHoopSpawnSet[g_iArenaCount] = false;
+        g_bArenaBBallHoopSpawnRedSet[g_iArenaCount] = false;
+        g_bArenaBBallHoopSpawnBluSet[g_iArenaCount] = false;
+        g_bArenaBBallHoopTriggerRedSet[g_iArenaCount] = false;
+        g_bArenaBBallHoopTriggerBluSet[g_iArenaCount] = false;
+        g_sArenaBBallHoopTriggerRed[g_iArenaCount][0] = '\0';
+        g_sArenaBBallHoopTriggerBlu[g_iArenaCount][0] = '\0';
+        g_iArenaRedSpawns[g_iArenaCount] = 0;
+        g_iArenaBluSpawns[g_iArenaCount] = 0;
+        g_bArenaUseTeamSpawns[g_iArenaCount] = false;
+        g_bArenaNearSpawn[g_iArenaCount] = false;
         kv.GetSectionName(g_sArenaOriginalName[g_iArenaCount], 64);
+
         int id;
         if (kv.GetNameSymbol("1", id))
         {
@@ -75,48 +508,88 @@ bool LoadSpawnPoints()
             {
                 g_iArenaSpawns[g_iArenaCount]++;
                 IntToString(g_iArenaSpawns[g_iArenaCount], intstr, sizeof(intstr));
-                IntToString(g_iArenaSpawns[g_iArenaCount]+1, intstr2, sizeof(intstr2));
+                IntToString(g_iArenaSpawns[g_iArenaCount] + 1, intstr2, sizeof(intstr2));
                 kv.GetString(intstr, spawn, sizeof(spawn));
                 count = ExplodeString(spawn, " ", spawnCo, 6, 16);
-                if (count==6)
+
+                if (count == 6)
                 {
-                    for (i=0; i<3; i++)
-                    {
+                    for (i = 0; i < 3; i++)
                         g_fArenaSpawnOrigin[g_iArenaCount][g_iArenaSpawns[g_iArenaCount]][i] = StringToFloat(spawnCo[i]);
-                    }
-                    for (i=3; i<6; i++)
-                    {
-                        g_fArenaSpawnAngles[g_iArenaCount][g_iArenaSpawns[g_iArenaCount]][i-3] = StringToFloat(spawnCo[i]);
-                    }
-                } else if(count==4) {
-                    for (i=0; i<3; i++)
-                    {
+                    for (i = 3; i < 6; i++)
+                        g_fArenaSpawnAngles[g_iArenaCount][g_iArenaSpawns[g_iArenaCount]][i - 3] = StringToFloat(spawnCo[i]);
+                }
+                else if (count == 4)
+                {
+                    for (i = 0; i < 3; i++)
                         g_fArenaSpawnOrigin[g_iArenaCount][g_iArenaSpawns[g_iArenaCount]][i] = StringToFloat(spawnCo[i]);
-                    }
+
                     g_fArenaSpawnAngles[g_iArenaCount][g_iArenaSpawns[g_iArenaCount]][0] = 0.0;
                     g_fArenaSpawnAngles[g_iArenaCount][g_iArenaSpawns[g_iArenaCount]][1] = StringToFloat(spawnCo[3]);
                     g_fArenaSpawnAngles[g_iArenaCount][g_iArenaSpawns[g_iArenaCount]][2] = 0.0;
-                } else {
-                    SetFailState("Error in cfg file. Wrong number of parameters (%d) on spawn <%i> in arena <%s>",count,g_iArenaSpawns[g_iArenaCount],g_sArenaOriginalName[g_iArenaCount]);
+                }
+                else
+                {
+                    char message[192];
+                    Format(message, sizeof(message), "Error in cfg file. Wrong number of parameters (%d) on spawn <%i> in arena <%s>.",
+                        count, g_iArenaSpawns[g_iArenaCount], g_sArenaOriginalName[g_iArenaCount]);
+                    delete kv;
+                    return FailMapConfigLoad(failHard, error, errorLen, message);
                 }
             } while (kv.GetNameSymbol(intstr2, id));
-        } else {
-            LogError("Could not load spawns on arena %s.", g_sArenaOriginalName[g_iArenaCount]);
+        }
+        else
+        {
+            bool hasRedSection = HasSpawnSection(kv, "RedSpawns") || HasSpawnSection(kv, "redspawns");
+            bool hasBluSection = HasSpawnSection(kv, "BluSpawns") || HasSpawnSection(kv, "bluspawns");
+            if (!hasRedSection && !hasBluSection)
+                LogError("Could not load spawns on arena %s.", g_sArenaOriginalName[g_iArenaCount]);
         }
 
-        if (kv.GetNameSymbol("cap", id)) {
-            kv.GetString("cap",  g_sArenaCap[g_iArenaCount], 64);
+        if (kv.GetNameSymbol("cap", id))
+        {
+            kv.GetString("cap", g_sArenaCap[g_iArenaCount], 64);
             g_bArenaHasCap[g_iArenaCount] = true;
-        } else {
+        }
+        else
+        {
             g_bArenaHasCap[g_iArenaCount] = false;
+            g_sArenaCap[g_iArenaCount][0] = '\0';
         }
 
-        if (kv.GetNameSymbol("cap_trigger", id)) {
-            kv.GetString("cap_trigger",  g_sArenaCapTrigger[g_iArenaCount], 64);
+        if (kv.GetNameSymbol("cap_trigger", id))
+        {
+            kv.GetString("cap_trigger", g_sArenaCapTrigger[g_iArenaCount], 64);
             g_bArenaHasCapTrigger[g_iArenaCount] = true;
         }
+        else
+        {
+            g_bArenaHasCapTrigger[g_iArenaCount] = false;
+            g_sArenaCapTrigger[g_iArenaCount][0] = '\0';
+        }
 
-        // Optional parameters
+        if (kv.GetNameSymbol("hooptrigger_red", id))
+        {
+            kv.GetString("hooptrigger_red", g_sArenaBBallHoopTriggerRed[g_iArenaCount], 64);
+            g_bArenaBBallHoopTriggerRedSet[g_iArenaCount] = true;
+        }
+        else
+        {
+            g_bArenaBBallHoopTriggerRedSet[g_iArenaCount] = false;
+            g_sArenaBBallHoopTriggerRed[g_iArenaCount][0] = '\0';
+        }
+
+        if (kv.GetNameSymbol("hooptrigger_blu", id))
+        {
+            kv.GetString("hooptrigger_blu", g_sArenaBBallHoopTriggerBlu[g_iArenaCount], 64);
+            g_bArenaBBallHoopTriggerBluSet[g_iArenaCount] = true;
+        }
+        else
+        {
+            g_bArenaBBallHoopTriggerBluSet[g_iArenaCount] = false;
+            g_sArenaBBallHoopTriggerBlu[g_iArenaCount][0] = '\0';
+        }
+
         g_iArenaMgelimit[g_iArenaCount] = kv.GetNum("fraglimit", g_iDefaultFragLimit);
         g_iArenaCaplimit[g_iArenaCount] = kv.GetNum("caplimit", g_iDefaultFragLimit);
         g_iArenaMinRating[g_iArenaCount] = kv.GetNum("minrating", -1);
@@ -125,6 +598,9 @@ bool LoadSpawnPoints()
         g_iArenaCdTime[g_iArenaCount] = kv.GetNum("cdtime", DEFAULT_COUNTDOWN_TIME);
         g_bArenaMGE[g_iArenaCount] = kv.GetNum("mge", 0) ? true : false;
         g_fArenaHPRatio[g_iArenaCount] = kv.GetFloat("hpratio", 1.5);
+        for (int classId = 1; classId <= 9; classId++)
+            g_fArenaClassHPRatio[g_iArenaCount][classId] = g_fArenaHPRatio[g_iArenaCount];
+        ApplyClassHpRatioOverridesFromConfig(kv, g_iArenaCount);
         g_bArenaEndif[g_iArenaCount] = kv.GetNum("endif", 0) ? true : false;
         g_iArenaAirshotHeight[g_iArenaCount] = kv.GetNum("airshotheight", 250);
         g_bArenaBoostVectors[g_iArenaCount] = kv.GetNum("boostvectors", 0) ? true : false;
@@ -140,30 +616,182 @@ bool LoadSpawnPoints()
         g_bArenaKothTeamSpawn[g_iArenaCount] = kv.GetNum("kothteamspawn", 0) ? true : false;
         g_fArenaRespawnTime[g_iArenaCount] = kv.GetFloat("respawntime", 0.1);
         g_bArenaAmmomod[g_iArenaCount] = kv.GetNum("ammomod", 0) ? true : false;
+        g_bArenaNoFight[g_iArenaCount] = kv.GetNum("nofight", kv.GetNum("free_arena", 0)) ? true : false;
         g_bArenaUltiduo[g_iArenaCount] = kv.GetNum("ultiduo", 0) ? true : false;
         g_bArenaKoth[g_iArenaCount] = kv.GetNum("koth", 0) ? true : false;
         g_bArenaTurris[g_iArenaCount] = kv.GetNum("turris", 0) ? true : false;
         g_bArenaClassChange[g_iArenaCount] = kv.GetNum("classchange", 1) ? true : false;
         g_iDefaultCapTime[g_iArenaCount] = kv.GetNum("timer", 180);
+        g_bArenaNearSpawn[g_iArenaCount] = kv.GetNum("NearSpawn", kv.GetNum("nearspawn", 0)) ? true : false;
+        g_bArenaBBallIntelSpawnSet[g_iArenaCount] = ParseVector3Key(kv, "intelspawn", g_fArenaBBallIntelSpawn[g_iArenaCount]);
+        g_bArenaBBallIntelSpawnRedSet[g_iArenaCount] = ParseVector3Key(kv, "intelspawn_red", g_fArenaBBallIntelSpawnRed[g_iArenaCount]);
+        g_bArenaBBallIntelSpawnBluSet[g_iArenaCount] = ParseVector3Key(kv, "intelspawn_blu", g_fArenaBBallIntelSpawnBlu[g_iArenaCount]);
+        g_bArenaBBallHoopSpawnSet[g_iArenaCount] = ParseVector3Key(kv, "hoopspawn", g_fArenaBBallHoopSpawn[g_iArenaCount]);
+        g_bArenaBBallHoopSpawnRedSet[g_iArenaCount] = ParseVector3Key(kv, "hoopspawn_red", g_fArenaBBallHoopSpawnRed[g_iArenaCount]);
+        g_bArenaBBallHoopSpawnBluSet[g_iArenaCount] = ParseVector3Key(kv, "hoopspawn_blu", g_fArenaBBallHoopSpawnBlu[g_iArenaCount]);
 
-        // Parsing allowed classes for current arena
+        bool hasRedSpawns = ParseSpawnSection(kv, "RedSpawns", g_fArenaRedSpawnOrigin[g_iArenaCount], g_fArenaRedSpawnAngles[g_iArenaCount],
+            g_iArenaRedSpawns[g_iArenaCount], g_sArenaOriginalName[g_iArenaCount], failHard, error, errorLen);
+        if (error[0] != '\0')
+        {
+            delete kv;
+            return false;
+        }
+        if (!hasRedSpawns)
+        {
+            hasRedSpawns = ParseSpawnSection(kv, "redspawns", g_fArenaRedSpawnOrigin[g_iArenaCount], g_fArenaRedSpawnAngles[g_iArenaCount],
+                g_iArenaRedSpawns[g_iArenaCount], g_sArenaOriginalName[g_iArenaCount], failHard, error, errorLen);
+            if (error[0] != '\0')
+            {
+                delete kv;
+                return false;
+            }
+        }
+
+        bool hasBluSpawns = ParseSpawnSection(kv, "BluSpawns", g_fArenaBluSpawnOrigin[g_iArenaCount], g_fArenaBluSpawnAngles[g_iArenaCount],
+            g_iArenaBluSpawns[g_iArenaCount], g_sArenaOriginalName[g_iArenaCount], failHard, error, errorLen);
+        if (error[0] != '\0')
+        {
+            delete kv;
+            return false;
+        }
+        if (!hasBluSpawns)
+        {
+            hasBluSpawns = ParseSpawnSection(kv, "bluspawns", g_fArenaBluSpawnOrigin[g_iArenaCount], g_fArenaBluSpawnAngles[g_iArenaCount],
+                g_iArenaBluSpawns[g_iArenaCount], g_sArenaOriginalName[g_iArenaCount], failHard, error, errorLen);
+            if (error[0] != '\0')
+            {
+                delete kv;
+                return false;
+            }
+        }
+
+        if (hasRedSpawns != hasBluSpawns)
+        {
+            char message[192];
+            Format(message, sizeof(message), "Error in cfg file. Arena <%s> must define both RedSpawns and BluSpawns sections.",
+                g_sArenaOriginalName[g_iArenaCount]);
+            delete kv;
+            return FailMapConfigLoad(failHard, error, errorLen, message);
+        }
+
+        g_bArenaUseTeamSpawns[g_iArenaCount] = (hasRedSpawns && hasBluSpawns);
+
         char sAllowedClasses[128];
         kv.GetString("classes", sAllowedClasses, sizeof(sAllowedClasses));
-        ParseAllowedClasses(sAllowedClasses,g_tfctArenaAllowedClasses[g_iArenaCount]);
+        ParseAllowedClasses(sAllowedClasses, g_tfctArenaAllowedClasses[g_iArenaCount]);
+        if (parseWeaponRules)
+            ParseArenaWeaponRuleSettings(kv, g_iArenaCount);
         g_iArenaFraglimit[g_iArenaCount] = g_iArenaMgelimit[g_iArenaCount];
         UpdateArenaName(g_iArenaCount);
     } while (kv.GotoNextKey());
-    
+
+    delete kv;
+
     if (g_iArenaCount)
     {
         LogMessage("Loaded %d arenas from %s. MGEMod enabled.", g_iArenaCount, txtfile);
-        delete kv;
         return true;
-    } else {
-        LogMessage("No arenas found in %s.", txtfile);
-        delete kv;
+    }
+
+    Format(error, errorLen, "No arenas found in %s.", txtfile);
+    LogMessage("%s", error);
+    return false;
+}
+
+bool LoadSpawnPoints()
+{
+    char error[192];
+    return LoadSpawnPointsFromMapConfig(true, true, error, sizeof(error));
+}
+
+bool ParseVector3Key(KeyValues kv, const char[] key, float outVec[3])
+{
+    char value[96];
+    kv.GetString(key, value, sizeof(value), "");
+    TrimString(value);
+    if (value[0] == '\0')
+        return false;
+
+    char parts[3][24];
+    int count = ExplodeString(value, " ", parts, 3, 24);
+    if (count != 3)
+    {
+        LogError("Invalid vector for key '%s': '%s' (expected: x y z)", key, value);
         return false;
     }
+
+    outVec[0] = StringToFloat(parts[0]);
+    outVec[1] = StringToFloat(parts[1]);
+    outVec[2] = StringToFloat(parts[2]);
+    return true;
+}
+
+bool HasSpawnSection(KeyValues kv, const char[] sectionName)
+{
+    if (!kv.JumpToKey(sectionName, false))
+        return false;
+
+    kv.GoBack();
+    return true;
+}
+
+bool ParseSpawnSection(KeyValues kv, const char[] sectionName, float outOrigin[MAXSPAWNS + 1][3], float outAngles[MAXSPAWNS + 1][3], int &outCount, const char[] arenaName, bool failHard, char[] error, int errorLen)
+{
+    outCount = 0;
+
+    if (!kv.JumpToKey(sectionName, false))
+        return false;
+
+    char keyName[12];
+    char spawn[64];
+    char spawnCo[6][16];
+    int maxKeyToScan = MAXSPAWNS * 16;
+
+    for (int keyIndex = 1; keyIndex <= maxKeyToScan; keyIndex++)
+    {
+        IntToString(keyIndex, keyName, sizeof(keyName));
+        kv.GetString(keyName, spawn, sizeof(spawn), "");
+        TrimString(spawn);
+        if (spawn[0] == '\0')
+            continue;
+
+        outCount++;
+        if (outCount > MAXSPAWNS)
+        {
+            kv.GoBack();
+            char message[192];
+            Format(message, sizeof(message), "Error in cfg file. Too many spawns in section <%s> for arena <%s> (max: %d).", sectionName, arenaName, MAXSPAWNS);
+            return FailMapConfigLoad(failHard, error, errorLen, message);
+        }
+
+        int count = ExplodeString(spawn, " ", spawnCo, 6, 16);
+        if (count == 6)
+        {
+            for (int i = 0; i < 3; i++)
+                outOrigin[outCount][i] = StringToFloat(spawnCo[i]);
+            for (int i = 3; i < 6; i++)
+                outAngles[outCount][i - 3] = StringToFloat(spawnCo[i]);
+        }
+        else if (count == 4)
+        {
+            for (int i = 0; i < 3; i++)
+                outOrigin[outCount][i] = StringToFloat(spawnCo[i]);
+            outAngles[outCount][0] = 0.0;
+            outAngles[outCount][1] = StringToFloat(spawnCo[3]);
+            outAngles[outCount][2] = 0.0;
+        }
+        else
+        {
+            kv.GoBack();
+            char message[192];
+            Format(message, sizeof(message), "Error in cfg file. Wrong number of parameters (%d) in section <%s> on key <%d> in arena <%s>.", count, sectionName, keyIndex, arenaName);
+            return FailMapConfigLoad(failHard, error, errorLen, message);
+        }
+    }
+
+    kv.GoBack();
+    return (outCount > 0);
 }
 
 
@@ -207,9 +835,10 @@ void ResetArena(int arena_index)
 // Update arena display name based on current gamemode and configuration
 void UpdateArenaName(int arena)
 {
-    char mode[4], type[8];
+    char mode[4], type[16];
     Format(mode, sizeof(mode), "%s", g_bFourPersonArena[arena] ? "2v2" : "1v1");
     Format(type, sizeof(type), "%s",
+        g_bArenaNoFight[arena] ? "No Fight" :
         g_bArenaMGE[arena] ? "MGE" :
         g_bArenaUltiduo[arena] ? "ULTI" :
         g_bArenaKoth[arena] ? "KOTH" :
@@ -218,7 +847,10 @@ void UpdateArenaName(int arena)
         g_bArenaMidair[arena] ? "MIDA" :
         g_bArenaEndif[arena] ? "ENDIF" : ""
     );
-    Format(g_sArenaName[arena], sizeof(g_sArenaName), "%s [%s %s]", g_sArenaOriginalName[arena], mode, type);
+    if (g_bArenaNoFight[arena])
+        Format(g_sArenaName[arena], sizeof(g_sArenaName), "%s [No Fight]", g_sArenaOriginalName[arena]);
+    else
+        Format(g_sArenaName[arena], sizeof(g_sArenaName), "%s [%s %s]", g_sArenaOriginalName[arena], mode, type);
 }
 
 // Reset class point tracking for all active players in an arena
@@ -387,6 +1019,7 @@ void AddLoserToQueue(int client, int arena_index)
     // Add to end of queue (no VIP priority)
     g_iPlayerArena[client] = arena_index;
     g_iPlayerSlot[client] = queueSlot;
+    BumpTeleportRevision(client, "AddLoserToQueue");
     g_iArenaQueue[arena_index][queueSlot] = client;
 
     // Set player to spectator if not already
@@ -415,6 +1048,7 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
     int player_slot = g_iPlayerSlot[client];
     g_iPlayerArena[client] = 0;
     g_iPlayerSlot[client] = 0;
+    BumpTeleportRevision(client, "RemoveFromQueue");
     g_iArenaQueue[arena_index][player_slot] = 0;
     g_iPlayerHandicap[client] = 0;
     g_bPlayerAddedViaWadd[client] = false;
@@ -439,6 +1073,36 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
     }
 
     int after_leaver_slot = player_slot + 1;
+
+    if (g_bArenaNoFight[arena_index])
+    {
+        if (g_bTimerRunning[arena_index])
+        {
+            delete g_tKothTimer[arena_index];
+            g_bTimerRunning[arena_index] = false;
+        }
+
+        if (g_iArenaQueue[arena_index][after_leaver_slot])
+        {
+            while (g_iArenaQueue[arena_index][after_leaver_slot])
+            {
+                g_iArenaQueue[arena_index][after_leaver_slot - 1] = g_iArenaQueue[arena_index][after_leaver_slot];
+                int shiftedClient = g_iArenaQueue[arena_index][after_leaver_slot];
+                g_iPlayerSlot[shiftedClient] -= 1;
+                BumpTeleportRevision(shiftedClient, "RemoveFromQueue shift_nofight");
+                after_leaver_slot++;
+            }
+            g_iArenaQueue[arena_index][after_leaver_slot - 1] = 0;
+        }
+
+        g_iArenaStatus[arena_index] = AS_IDLE;
+        g_iArenaDuelStartTime[arena_index] = 0;
+        UpdateHudForArena(arena_index);
+        CheckWaitingList(arena_index);
+        ResetPovForArenaAfterMatch(arena_index);
+        CallForward_OnPlayerArenaRemoved(client, arena_index);
+        return;
+    }
 
     // I beleive I don't need to do this anymore BUT
     // If the player was in the arena, and the timer was running, kill it
@@ -478,25 +1142,21 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
                     g_iBBallIntel[arena_index] = -1;
                 }
 
-                RemoveClientParticle(client);
-                g_bPlayerHasIntel[client] = false;
+                ClearBBallCarryState(client, true);
 
                 if (foe)
                 {
-                    RemoveClientParticle(foe);
-                    g_bPlayerHasIntel[foe] = false;
+                    ClearBBallCarryState(foe, true);
                 }
 
                 if (foe2)
                 {
-                    RemoveClientParticle(foe2);
-                    g_bPlayerHasIntel[foe2] = false;
+                    ClearBBallCarryState(foe2, true);
                 }
 
                 if (player_teammate)
                 {
-                    RemoveClientParticle(player_teammate);
-                    g_bPlayerHasIntel[player_teammate] = false;
+                    ClearBBallCarryState(player_teammate, true);
                 }
             }
 
@@ -554,6 +1214,7 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
                 g_iArenaQueue[arena_index][SLOT_FOUR + 1] = 0;
                 g_iArenaQueue[arena_index][player_slot] = next_client;
                 g_iPlayerSlot[next_client] = player_slot;
+                BumpTeleportRevision(next_client, "RemoveFromQueue promote_2v2");
                 after_leaver_slot = SLOT_FOUR + 2;
                 char playername[MAX_NAME_LENGTH];
                 CreateTimer(2.0, Timer_Restart2v2Ready, arena_index);
@@ -588,6 +1249,7 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
                 g_iArenaDuelStartTime[arena_index] = 0;
 
                 UpdateHudForArena(arena_index);
+                ResetPovForArenaAfterMatch(arena_index);
                 return;
             }
         }
@@ -608,13 +1270,11 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
                     g_iBBallIntel[arena_index] = -1;
                 }
 
-                RemoveClientParticle(client);
-                g_bPlayerHasIntel[client] = false;
+                ClearBBallCarryState(client, true);
 
                 if (foe)
                 {
-                    RemoveClientParticle(foe);
-                    g_bPlayerHasIntel[foe] = false;
+                    ClearBBallCarryState(foe, true);
                 }
             }
 
@@ -654,6 +1314,7 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
                 g_iArenaQueue[arena_index][SLOT_TWO + 1] = 0;
                 g_iArenaQueue[arena_index][player_slot] = next_client;
                 g_iPlayerSlot[next_client] = player_slot;
+                BumpTeleportRevision(next_client, "RemoveFromQueue promote_1v1");
                 after_leaver_slot = SLOT_TWO + 2;
                 char playername[MAX_NAME_LENGTH];
                 CreateTimer(2.0, Timer_StartDuel, arena_index);
@@ -682,6 +1343,7 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
                 g_iArenaDuelStartTime[arena_index] = 0;
 
                 UpdateHudForArena(arena_index);
+                ResetPovForArenaAfterMatch(arena_index);
                 return;
             }
         }
@@ -691,7 +1353,9 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
         while (g_iArenaQueue[arena_index][after_leaver_slot])
         {
             g_iArenaQueue[arena_index][after_leaver_slot - 1] = g_iArenaQueue[arena_index][after_leaver_slot];
-            g_iPlayerSlot[g_iArenaQueue[arena_index][after_leaver_slot]] -= 1;
+            int shiftedClient = g_iArenaQueue[arena_index][after_leaver_slot];
+            g_iPlayerSlot[shiftedClient] -= 1;
+            BumpTeleportRevision(shiftedClient, "RemoveFromQueue shift");
             after_leaver_slot++;
         }
         g_iArenaQueue[arena_index][after_leaver_slot - 1] = 0;
@@ -701,6 +1365,8 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
 
     // Check if we should auto-add players from waiting list
     CheckWaitingList(arena_index);
+
+    ResetPovForArenaAfterMatch(arena_index);
 
     // Call OnPlayerArenaRemoved forward
     CallForward_OnPlayerArenaRemoved(client, arena_index);
@@ -819,7 +1485,7 @@ void AddInQueue(int client, int arena_index, bool showmsg = true, int playerPref
         if (g_iPlayerArena[client] == arena_index)
         {
             // Player is re-selecting the same arena
-            if (g_bFourPersonArena[arena_index] && playerPrefTeam == 0 && show2v2Menu)
+            if (g_bFourPersonArena[arena_index] && playerPrefTeam == 0 && show2v2Menu && !g_bArenaNoFight[arena_index])
             {
                 Show2v2SelectionMenu(client, arena_index);
                 return;
@@ -839,7 +1505,7 @@ void AddInQueue(int client, int arena_index, bool showmsg = true, int playerPref
 
     // Show 2v2 selection menu if this is a 2v2 arena and no team preference is set
     // Only show menu if there are available main slots (not all 4 slots filled)
-    if (g_bFourPersonArena[arena_index] && playerPrefTeam == 0 && show2v2Menu)
+    if (g_bFourPersonArena[arena_index] && playerPrefTeam == 0 && show2v2Menu && !g_bArenaNoFight[arena_index])
     {
         // Check if all main slots are filled
         bool allSlotsFilled = g_iArenaQueue[arena_index][SLOT_ONE] && 
@@ -904,6 +1570,7 @@ void AddInQueue(int client, int arena_index, bool showmsg = true, int playerPref
     
     g_iPlayerArena[client] = arena_index;
     g_iPlayerSlot[client] = player_slot;
+    BumpTeleportRevision(client, "AddInQueue");
     g_iArenaQueue[arena_index][player_slot] = client;
 
     // Update keyhint immediately when queue changes
@@ -920,7 +1587,7 @@ void AddInQueue(int client, int arena_index, bool showmsg = true, int playerPref
     }
     if (g_bFourPersonArena[arena_index])
     {
-        if (player_slot <= SLOT_FOUR)
+        if (player_slot <= SLOT_FOUR || g_bArenaNoFight[arena_index])
         {
             char name[MAX_NAME_LENGTH];
             GetClientName(client, name, sizeof(name));
@@ -948,14 +1615,20 @@ void AddInQueue(int client, int arena_index, bool showmsg = true, int playerPref
                 }
             }
             
-            if (red_count == 2 && blu_count == 2)
+            if (red_count == 2 && blu_count == 2 && !g_bArenaNoFight[arena_index])
             {
                 // Transition to ready waiting state instead of immediately starting
                 Start2v2ReadySystem(arena_index);
             }
             else
+            {
+                g_iArenaStatus[arena_index] = AS_IDLE;
+                g_iArenaDuelStartTime[arena_index] = 0;
                 CreateTimer(0.1, Timer_ResetPlayer, GetClientUserId(client));
-        } else {
+            }
+        }
+        else
+        {
             if (GetClientTeam(client) != TEAM_SPEC)
                 ChangeClientTeam(client, TEAM_SPEC);
             if (player_slot == SLOT_FOUR + 1)
@@ -966,7 +1639,7 @@ void AddInQueue(int client, int arena_index, bool showmsg = true, int playerPref
     }
     else
     {
-        if (player_slot <= SLOT_TWO)
+        if (player_slot <= SLOT_TWO || g_bArenaNoFight[arena_index])
         {
             char name[MAX_NAME_LENGTH];
             GetClientName(client, name, sizeof(name));
@@ -980,12 +1653,19 @@ void AddInQueue(int client, int arena_index, bool showmsg = true, int playerPref
                 g_bPlayerAddedViaWadd[client] = false;
             }
 
-            if (g_iArenaQueue[arena_index][SLOT_ONE] && g_iArenaQueue[arena_index][SLOT_TWO])
+            if (!g_bArenaNoFight[arena_index] && g_iArenaQueue[arena_index][SLOT_ONE] && g_iArenaQueue[arena_index][SLOT_TWO])
             {
                 CreateTimer(1.5, Timer_StartDuel, arena_index);
-            } else
+            }
+            else
+            {
+                g_iArenaStatus[arena_index] = AS_IDLE;
+                g_iArenaDuelStartTime[arena_index] = 0;
                 CreateTimer(0.1, Timer_ResetPlayer, GetClientUserId(client));
-        } else {
+            }
+        }
+        else
+        {
             if (GetClientTeam(client) != TEAM_SPEC)
                 ChangeClientTeam(client, TEAM_SPEC);
             if (player_slot == SLOT_TWO + 1)
@@ -999,7 +1679,7 @@ void AddInQueue(int client, int arena_index, bool showmsg = true, int playerPref
 
     // Check if we should add players from waiting list after successful join
     // Only check if the joining player was added to main slots (not waiting queue)
-    if (player_slot <= SLOT_TWO || (g_bFourPersonArena[arena_index] && player_slot <= SLOT_FOUR))
+    if (g_bArenaNoFight[arena_index] || player_slot <= SLOT_TWO || (g_bFourPersonArena[arena_index] && player_slot <= SLOT_FOUR))
     {
         CheckWaitingList(arena_index);
     }
@@ -1431,7 +2111,7 @@ void PrintToChatArena(int arena_index, const char[] message, any ...)
         int client = g_iArenaQueue[arena_index][i];
         if (client)
         {
-            PrintToChat(client, buffer);
+            MC_PrintToChat(client, "%s", buffer);
         }
     }
 }
@@ -1699,7 +2379,7 @@ void WaddToArena(int client, int arena_index, bool show_menu)
     }
 
     // If arena has no other players, add to waiting list
-    if (!has_active_player)
+    if (!has_active_player && !g_bArenaNoFight[arena_index])
     {
         if (g_bDebugWadd)
             LogToFileEx(g_sLogFile, "[wadd] waiting list client=%N arena=%d", client, arena_index);
@@ -1716,6 +2396,1163 @@ void WaddToArena(int client, int arena_index, bool show_menu)
     AddInQueue(client, arena_index, true);
     if (g_bDebugWadd)
         LogToFileEx(g_sLogFile, "[wadd] addinqueue client=%N arena=%d", client, arena_index);
+}
+
+#define SETSPAWN_MODE_NEUTRAL 0
+#define SETSPAWN_MODE_RED 1
+#define SETSPAWN_MODE_BLU 2
+#define SETSPAWN_MODE_BBALL_INTEL 3
+#define SETSPAWN_MODE_BBALL_INTEL_RED 4
+#define SETSPAWN_MODE_BBALL_INTEL_BLU 5
+#define SETSPAWN_MODE_BBALL_HOOP 6
+#define SETSPAWN_MODE_BBALL_HOOP_RED 7
+#define SETSPAWN_MODE_BBALL_HOOP_BLU 8
+
+void ClearSetSpawnState(int client)
+{
+    g_bSetSpawnAwaitInput[client] = false;
+    g_iSetSpawnArena[client] = 0;
+    g_iSetSpawnMode[client] = SETSPAWN_MODE_NEUTRAL;
+}
+
+bool IsSinglePointSetSpawnMode(int mode)
+{
+    return (mode >= SETSPAWN_MODE_BBALL_INTEL);
+}
+
+bool TryResolveSinglePointSetSpawnMode(const char[] token1, const char[] token2, bool hasToken2, int &mode, int &consumedArgs)
+{
+    consumedArgs = 0;
+
+    if (StrEqual(token1, "intel", false) || StrEqual(token1, "intelspawn", false))
+    {
+        mode = SETSPAWN_MODE_BBALL_INTEL;
+        consumedArgs = 1;
+    }
+    else if (StrEqual(token1, "intel_red", false) || StrEqual(token1, "intelred", false) || StrEqual(token1, "intelspawn_red", false))
+    {
+        mode = SETSPAWN_MODE_BBALL_INTEL_RED;
+        consumedArgs = 1;
+    }
+    else if (StrEqual(token1, "intel_blu", false) || StrEqual(token1, "intelblu", false) || StrEqual(token1, "intel_blue", false) || StrEqual(token1, "intelspawn_blu", false))
+    {
+        mode = SETSPAWN_MODE_BBALL_INTEL_BLU;
+        consumedArgs = 1;
+    }
+    else if (StrEqual(token1, "hoop", false) || StrEqual(token1, "hoopspawn", false))
+    {
+        mode = SETSPAWN_MODE_BBALL_HOOP;
+        consumedArgs = 1;
+    }
+    else if (StrEqual(token1, "hoop_red", false) || StrEqual(token1, "hoopred", false) || StrEqual(token1, "hoopspawn_red", false))
+    {
+        mode = SETSPAWN_MODE_BBALL_HOOP_RED;
+        consumedArgs = 1;
+    }
+    else if (StrEqual(token1, "hoop_blu", false) || StrEqual(token1, "hoopblu", false) || StrEqual(token1, "hoop_blue", false) || StrEqual(token1, "hoopspawn_blu", false))
+    {
+        mode = SETSPAWN_MODE_BBALL_HOOP_BLU;
+        consumedArgs = 1;
+    }
+
+    if (consumedArgs == 0)
+        return false;
+
+    if (!hasToken2)
+        return true;
+
+    if (StrEqual(token1, "intel", false) || StrEqual(token1, "intelspawn", false))
+    {
+        if (StrEqual(token2, "red", false))
+        {
+            mode = SETSPAWN_MODE_BBALL_INTEL_RED;
+            consumedArgs = 2;
+        }
+        else if (StrEqual(token2, "blue", false) || StrEqual(token2, "blu", false))
+        {
+            mode = SETSPAWN_MODE_BBALL_INTEL_BLU;
+            consumedArgs = 2;
+        }
+    }
+    else if (StrEqual(token1, "hoop", false) || StrEqual(token1, "hoopspawn", false))
+    {
+        if (StrEqual(token2, "red", false))
+        {
+            mode = SETSPAWN_MODE_BBALL_HOOP_RED;
+            consumedArgs = 2;
+        }
+        else if (StrEqual(token2, "blue", false) || StrEqual(token2, "blu", false))
+        {
+            mode = SETSPAWN_MODE_BBALL_HOOP_BLU;
+            consumedArgs = 2;
+        }
+    }
+
+    return true;
+}
+
+bool IsPositiveIntegerToken(const char[] token)
+{
+    int len = strlen(token);
+    if (len <= 0)
+        return false;
+
+    for (int i = 0; i < len; i++)
+    {
+        if (!IsCharNumeric(token[i]))
+            return false;
+    }
+
+    return (StringToInt(token) > 0);
+}
+
+bool ParseSetSpawnInput(const char[] text, int &index, bool &deleteSpawn, char[] error, int errorLen)
+{
+    char rawParts[8][64];
+    int rawCount = ExplodeString(text, " ", rawParts, sizeof(rawParts), sizeof(rawParts[]));
+
+    char parts[8][64];
+    int partCount = 0;
+    for (int i = 0; i < rawCount && partCount < sizeof(parts); i++)
+    {
+        TrimString(rawParts[i]);
+        if (rawParts[i][0] == '\0')
+            continue;
+
+        strcopy(parts[partCount], sizeof(parts[]), rawParts[i]);
+        partCount++;
+    }
+
+    if (partCount <= 0)
+    {
+        strcopy(error, errorLen, "Empty input.");
+        return false;
+    }
+
+    int indexToken = 0;
+    if (StrEqual(parts[0], "-"))
+    {
+        if (partCount < 2)
+        {
+            strcopy(error, errorLen, "Missing spawn number.");
+            return false;
+        }
+        indexToken = 1;
+    }
+
+    if (!IsPositiveIntegerToken(parts[indexToken]))
+    {
+        strcopy(error, errorLen, "Invalid input. Use: <number> OR <number> del/delete.");
+        return false;
+    }
+
+    index = StringToInt(parts[indexToken]);
+    deleteSpawn = false;
+
+    int actionToken = indexToken + 1;
+    if (actionToken < partCount)
+    {
+        if (StrEqual(parts[actionToken], "del", false) || StrEqual(parts[actionToken], "delete", false))
+            deleteSpawn = true;
+        else
+        {
+            Format(error, errorLen, "Unknown action '%s'. Use del or delete.", parts[actionToken]);
+            return false;
+        }
+    }
+
+    if (actionToken + 1 < partCount)
+    {
+        strcopy(error, errorLen, "Too many arguments.");
+        return false;
+    }
+
+    return true;
+}
+
+bool TryResolveIndexedSetSpawnModeToken(const char[] token, int &mode)
+{
+    if (StrEqual(token, "neutral", false) || StrEqual(token, "n", false))
+    {
+        mode = SETSPAWN_MODE_NEUTRAL;
+        return true;
+    }
+
+    if (StrEqual(token, "red", false))
+    {
+        mode = SETSPAWN_MODE_RED;
+        return true;
+    }
+
+    if (StrEqual(token, "blue", false) || StrEqual(token, "blu", false))
+    {
+        mode = SETSPAWN_MODE_BLU;
+        return true;
+    }
+
+    return false;
+}
+
+bool ParseSetSpawnChatCommand(const char[] text, int currentMode, int &resolvedMode, int &index, bool &deleteSpawn, char[] error, int errorLen)
+{
+    char rawParts[8][64];
+    int rawCount = ExplodeString(text, " ", rawParts, sizeof(rawParts), sizeof(rawParts[]));
+
+    char parts[8][64];
+    int partCount = 0;
+    for (int i = 0; i < rawCount && partCount < sizeof(parts); i++)
+    {
+        TrimString(rawParts[i]);
+        if (rawParts[i][0] == '\0')
+            continue;
+
+        strcopy(parts[partCount], sizeof(parts[]), rawParts[i]);
+        partCount++;
+    }
+
+    if (partCount <= 0)
+    {
+        strcopy(error, errorLen, "Empty input.");
+        return false;
+    }
+
+    resolvedMode = currentMode;
+    index = 1;
+    deleteSpawn = false;
+
+    int consumedArgs = 0;
+    int singleMode = currentMode;
+    if (TryResolveSinglePointSetSpawnMode(parts[0], (partCount > 1) ? parts[1] : "", partCount > 1, singleMode, consumedArgs))
+    {
+        resolvedMode = singleMode;
+
+        if (partCount == consumedArgs)
+            return true;
+
+        if (partCount == consumedArgs + 1 && (StrEqual(parts[consumedArgs], "del", false) || StrEqual(parts[consumedArgs], "delete", false)))
+        {
+            deleteSpawn = true;
+            return true;
+        }
+
+        strcopy(error, errorLen, "Usage: <intel|hoop> [red|blu] [del|delete]");
+        return false;
+    }
+
+    int indexedMode = currentMode;
+    if (TryResolveIndexedSetSpawnModeToken(parts[0], indexedMode))
+    {
+        if (partCount < 2)
+        {
+            strcopy(error, errorLen, "Missing spawn number after type.");
+            return false;
+        }
+
+        resolvedMode = indexedMode;
+
+        char remainder[128];
+        remainder[0] = '\0';
+        for (int i = 1; i < partCount; i++)
+        {
+            if (i > 1)
+                StrCat(remainder, sizeof(remainder), " ");
+            StrCat(remainder, sizeof(remainder), parts[i]);
+        }
+
+        return ParseSetSpawnInput(remainder, index, deleteSpawn, error, errorLen);
+    }
+
+    if (IsSinglePointSetSpawnMode(currentMode))
+    {
+        if (partCount == 1 && (StrEqual(parts[0], "del", false) || StrEqual(parts[0], "delete", false)))
+        {
+            deleteSpawn = true;
+            return true;
+        }
+
+        strcopy(error, errorLen, "Type the point type in chat (e.g. 'intel red' or 'hoop blu'), or add 'del' to clear.");
+        return false;
+    }
+
+    return ParseSetSpawnInput(text, index, deleteSpawn, error, errorLen);
+}
+
+void GetSetSpawnModeName(int mode, char[] output, int outputLen)
+{
+    switch (mode)
+    {
+        case SETSPAWN_MODE_RED: strcopy(output, outputLen, "RED");
+        case SETSPAWN_MODE_BLU: strcopy(output, outputLen, "BLU");
+        case SETSPAWN_MODE_BBALL_INTEL: strcopy(output, outputLen, "INTEL");
+        case SETSPAWN_MODE_BBALL_INTEL_RED: strcopy(output, outputLen, "INTEL RED");
+        case SETSPAWN_MODE_BBALL_INTEL_BLU: strcopy(output, outputLen, "INTEL BLU");
+        case SETSPAWN_MODE_BBALL_HOOP: strcopy(output, outputLen, "HOOP");
+        case SETSPAWN_MODE_BBALL_HOOP_RED: strcopy(output, outputLen, "HOOP RED");
+        case SETSPAWN_MODE_BBALL_HOOP_BLU: strcopy(output, outputLen, "HOOP BLU");
+        default: strcopy(output, outputLen, "NEUTRAL");
+    }
+}
+
+int GetArenaSpawnCountByMode(int arena_index, int mode)
+{
+    switch (mode)
+    {
+        case SETSPAWN_MODE_RED: return g_iArenaRedSpawns[arena_index];
+        case SETSPAWN_MODE_BLU: return g_iArenaBluSpawns[arena_index];
+        case SETSPAWN_MODE_BBALL_INTEL: return g_bArenaBBallIntelSpawnSet[arena_index] ? 1 : 0;
+        case SETSPAWN_MODE_BBALL_INTEL_RED: return g_bArenaBBallIntelSpawnRedSet[arena_index] ? 1 : 0;
+        case SETSPAWN_MODE_BBALL_INTEL_BLU: return g_bArenaBBallIntelSpawnBluSet[arena_index] ? 1 : 0;
+        case SETSPAWN_MODE_BBALL_HOOP: return g_bArenaBBallHoopSpawnSet[arena_index] ? 1 : 0;
+        case SETSPAWN_MODE_BBALL_HOOP_RED: return g_bArenaBBallHoopSpawnRedSet[arena_index] ? 1 : 0;
+        case SETSPAWN_MODE_BBALL_HOOP_BLU: return g_bArenaBBallHoopSpawnBluSet[arena_index] ? 1 : 0;
+    }
+    return g_iArenaSpawns[arena_index];
+}
+
+void GetArenaSpawnByMode(int arena_index, int mode, int index, float origin[3], float angles[3])
+{
+    if (mode == SETSPAWN_MODE_RED)
+    {
+        origin[0] = g_fArenaRedSpawnOrigin[arena_index][index][0];
+        origin[1] = g_fArenaRedSpawnOrigin[arena_index][index][1];
+        origin[2] = g_fArenaRedSpawnOrigin[arena_index][index][2];
+        angles[0] = g_fArenaRedSpawnAngles[arena_index][index][0];
+        angles[1] = g_fArenaRedSpawnAngles[arena_index][index][1];
+        angles[2] = g_fArenaRedSpawnAngles[arena_index][index][2];
+        return;
+    }
+
+    if (mode == SETSPAWN_MODE_BLU)
+    {
+        origin[0] = g_fArenaBluSpawnOrigin[arena_index][index][0];
+        origin[1] = g_fArenaBluSpawnOrigin[arena_index][index][1];
+        origin[2] = g_fArenaBluSpawnOrigin[arena_index][index][2];
+        angles[0] = g_fArenaBluSpawnAngles[arena_index][index][0];
+        angles[1] = g_fArenaBluSpawnAngles[arena_index][index][1];
+        angles[2] = g_fArenaBluSpawnAngles[arena_index][index][2];
+        return;
+    }
+
+    if (IsSinglePointSetSpawnMode(mode))
+    {
+        switch (mode)
+        {
+            case SETSPAWN_MODE_BBALL_INTEL:
+            {
+                origin[0] = g_fArenaBBallIntelSpawn[arena_index][0];
+                origin[1] = g_fArenaBBallIntelSpawn[arena_index][1];
+                origin[2] = g_fArenaBBallIntelSpawn[arena_index][2];
+            }
+            case SETSPAWN_MODE_BBALL_INTEL_RED:
+            {
+                origin[0] = g_fArenaBBallIntelSpawnRed[arena_index][0];
+                origin[1] = g_fArenaBBallIntelSpawnRed[arena_index][1];
+                origin[2] = g_fArenaBBallIntelSpawnRed[arena_index][2];
+            }
+            case SETSPAWN_MODE_BBALL_INTEL_BLU:
+            {
+                origin[0] = g_fArenaBBallIntelSpawnBlu[arena_index][0];
+                origin[1] = g_fArenaBBallIntelSpawnBlu[arena_index][1];
+                origin[2] = g_fArenaBBallIntelSpawnBlu[arena_index][2];
+            }
+            case SETSPAWN_MODE_BBALL_HOOP:
+            {
+                origin[0] = g_fArenaBBallHoopSpawn[arena_index][0];
+                origin[1] = g_fArenaBBallHoopSpawn[arena_index][1];
+                origin[2] = g_fArenaBBallHoopSpawn[arena_index][2];
+            }
+            case SETSPAWN_MODE_BBALL_HOOP_RED:
+            {
+                origin[0] = g_fArenaBBallHoopSpawnRed[arena_index][0];
+                origin[1] = g_fArenaBBallHoopSpawnRed[arena_index][1];
+                origin[2] = g_fArenaBBallHoopSpawnRed[arena_index][2];
+            }
+            case SETSPAWN_MODE_BBALL_HOOP_BLU:
+            {
+                origin[0] = g_fArenaBBallHoopSpawnBlu[arena_index][0];
+                origin[1] = g_fArenaBBallHoopSpawnBlu[arena_index][1];
+                origin[2] = g_fArenaBBallHoopSpawnBlu[arena_index][2];
+            }
+        }
+
+        angles[0] = 0.0;
+        angles[1] = 0.0;
+        angles[2] = 0.0;
+        return;
+    }
+
+    origin[0] = g_fArenaSpawnOrigin[arena_index][index][0];
+    origin[1] = g_fArenaSpawnOrigin[arena_index][index][1];
+    origin[2] = g_fArenaSpawnOrigin[arena_index][index][2];
+    angles[0] = g_fArenaSpawnAngles[arena_index][index][0];
+    angles[1] = g_fArenaSpawnAngles[arena_index][index][1];
+    angles[2] = g_fArenaSpawnAngles[arena_index][index][2];
+}
+
+bool SetArenaSpawnByMode(int arena_index, int mode, int index, const float origin[3], const float angles[3], char[] error, int errorLen)
+{
+    if (IsSinglePointSetSpawnMode(mode))
+    {
+        if (!g_bArenaBBall[arena_index])
+        {
+            strcopy(error, errorLen, "This arena is not BBall.");
+            return false;
+        }
+
+        switch (mode)
+        {
+            case SETSPAWN_MODE_BBALL_INTEL:
+            {
+                g_fArenaBBallIntelSpawn[arena_index][0] = origin[0];
+                g_fArenaBBallIntelSpawn[arena_index][1] = origin[1];
+                g_fArenaBBallIntelSpawn[arena_index][2] = origin[2];
+                g_bArenaBBallIntelSpawnSet[arena_index] = true;
+            }
+            case SETSPAWN_MODE_BBALL_INTEL_RED:
+            {
+                g_fArenaBBallIntelSpawnRed[arena_index][0] = origin[0];
+                g_fArenaBBallIntelSpawnRed[arena_index][1] = origin[1];
+                g_fArenaBBallIntelSpawnRed[arena_index][2] = origin[2];
+                g_bArenaBBallIntelSpawnRedSet[arena_index] = true;
+            }
+            case SETSPAWN_MODE_BBALL_INTEL_BLU:
+            {
+                g_fArenaBBallIntelSpawnBlu[arena_index][0] = origin[0];
+                g_fArenaBBallIntelSpawnBlu[arena_index][1] = origin[1];
+                g_fArenaBBallIntelSpawnBlu[arena_index][2] = origin[2];
+                g_bArenaBBallIntelSpawnBluSet[arena_index] = true;
+            }
+            case SETSPAWN_MODE_BBALL_HOOP:
+            {
+                g_fArenaBBallHoopSpawn[arena_index][0] = origin[0];
+                g_fArenaBBallHoopSpawn[arena_index][1] = origin[1];
+                g_fArenaBBallHoopSpawn[arena_index][2] = origin[2];
+                g_bArenaBBallHoopSpawnSet[arena_index] = true;
+            }
+            case SETSPAWN_MODE_BBALL_HOOP_RED:
+            {
+                g_fArenaBBallHoopSpawnRed[arena_index][0] = origin[0];
+                g_fArenaBBallHoopSpawnRed[arena_index][1] = origin[1];
+                g_fArenaBBallHoopSpawnRed[arena_index][2] = origin[2];
+                g_bArenaBBallHoopSpawnRedSet[arena_index] = true;
+            }
+            case SETSPAWN_MODE_BBALL_HOOP_BLU:
+            {
+                g_fArenaBBallHoopSpawnBlu[arena_index][0] = origin[0];
+                g_fArenaBBallHoopSpawnBlu[arena_index][1] = origin[1];
+                g_fArenaBBallHoopSpawnBlu[arena_index][2] = origin[2];
+                g_bArenaBBallHoopSpawnBluSet[arena_index] = true;
+            }
+        }
+
+        return true;
+    }
+
+    if (index < 1 || index > MAXSPAWNS)
+    {
+        Format(error, errorLen, "Index must be between 1 and %d.", MAXSPAWNS);
+        return false;
+    }
+
+    int count = GetArenaSpawnCountByMode(arena_index, mode);
+    if (index > count + 1)
+    {
+        Format(error, errorLen, "Cannot skip indexes. Next available index is %d.", count + 1);
+        return false;
+    }
+
+    if (mode == SETSPAWN_MODE_RED)
+    {
+        if (index == g_iArenaRedSpawns[arena_index] + 1)
+            g_iArenaRedSpawns[arena_index]++;
+
+        g_fArenaRedSpawnOrigin[arena_index][index][0] = origin[0];
+        g_fArenaRedSpawnOrigin[arena_index][index][1] = origin[1];
+        g_fArenaRedSpawnOrigin[arena_index][index][2] = origin[2];
+        g_fArenaRedSpawnAngles[arena_index][index][0] = angles[0];
+        g_fArenaRedSpawnAngles[arena_index][index][1] = angles[1];
+        g_fArenaRedSpawnAngles[arena_index][index][2] = angles[2];
+    }
+    else if (mode == SETSPAWN_MODE_BLU)
+    {
+        if (index == g_iArenaBluSpawns[arena_index] + 1)
+            g_iArenaBluSpawns[arena_index]++;
+
+        g_fArenaBluSpawnOrigin[arena_index][index][0] = origin[0];
+        g_fArenaBluSpawnOrigin[arena_index][index][1] = origin[1];
+        g_fArenaBluSpawnOrigin[arena_index][index][2] = origin[2];
+        g_fArenaBluSpawnAngles[arena_index][index][0] = angles[0];
+        g_fArenaBluSpawnAngles[arena_index][index][1] = angles[1];
+        g_fArenaBluSpawnAngles[arena_index][index][2] = angles[2];
+    }
+    else
+    {
+        if (index == g_iArenaSpawns[arena_index] + 1)
+            g_iArenaSpawns[arena_index]++;
+
+        g_fArenaSpawnOrigin[arena_index][index][0] = origin[0];
+        g_fArenaSpawnOrigin[arena_index][index][1] = origin[1];
+        g_fArenaSpawnOrigin[arena_index][index][2] = origin[2];
+        g_fArenaSpawnAngles[arena_index][index][0] = angles[0];
+        g_fArenaSpawnAngles[arena_index][index][1] = angles[1];
+        g_fArenaSpawnAngles[arena_index][index][2] = angles[2];
+    }
+
+    g_bArenaUseTeamSpawns[arena_index] = (g_iArenaRedSpawns[arena_index] > 0 && g_iArenaBluSpawns[arena_index] > 0);
+    return true;
+}
+
+bool DeleteArenaSpawnByMode(int arena_index, int mode, int index, char[] error, int errorLen)
+{
+    if (IsSinglePointSetSpawnMode(mode))
+    {
+        if (!g_bArenaBBall[arena_index])
+        {
+            strcopy(error, errorLen, "This arena is not BBall.");
+            return false;
+        }
+
+        switch (mode)
+        {
+            case SETSPAWN_MODE_BBALL_INTEL: g_bArenaBBallIntelSpawnSet[arena_index] = false;
+            case SETSPAWN_MODE_BBALL_INTEL_RED: g_bArenaBBallIntelSpawnRedSet[arena_index] = false;
+            case SETSPAWN_MODE_BBALL_INTEL_BLU: g_bArenaBBallIntelSpawnBluSet[arena_index] = false;
+            case SETSPAWN_MODE_BBALL_HOOP: g_bArenaBBallHoopSpawnSet[arena_index] = false;
+            case SETSPAWN_MODE_BBALL_HOOP_RED: g_bArenaBBallHoopSpawnRedSet[arena_index] = false;
+            case SETSPAWN_MODE_BBALL_HOOP_BLU: g_bArenaBBallHoopSpawnBluSet[arena_index] = false;
+        }
+
+        return true;
+    }
+
+    int count = GetArenaSpawnCountByMode(arena_index, mode);
+    if (index < 1 || index > count)
+    {
+        Format(error, errorLen, "Spawn #%d does not exist.", index);
+        return false;
+    }
+
+    if (mode == SETSPAWN_MODE_RED)
+    {
+        for (int i = index; i < g_iArenaRedSpawns[arena_index]; i++)
+        {
+            g_fArenaRedSpawnOrigin[arena_index][i][0] = g_fArenaRedSpawnOrigin[arena_index][i + 1][0];
+            g_fArenaRedSpawnOrigin[arena_index][i][1] = g_fArenaRedSpawnOrigin[arena_index][i + 1][1];
+            g_fArenaRedSpawnOrigin[arena_index][i][2] = g_fArenaRedSpawnOrigin[arena_index][i + 1][2];
+            g_fArenaRedSpawnAngles[arena_index][i][0] = g_fArenaRedSpawnAngles[arena_index][i + 1][0];
+            g_fArenaRedSpawnAngles[arena_index][i][1] = g_fArenaRedSpawnAngles[arena_index][i + 1][1];
+            g_fArenaRedSpawnAngles[arena_index][i][2] = g_fArenaRedSpawnAngles[arena_index][i + 1][2];
+        }
+        g_iArenaRedSpawns[arena_index]--;
+    }
+    else if (mode == SETSPAWN_MODE_BLU)
+    {
+        for (int i = index; i < g_iArenaBluSpawns[arena_index]; i++)
+        {
+            g_fArenaBluSpawnOrigin[arena_index][i][0] = g_fArenaBluSpawnOrigin[arena_index][i + 1][0];
+            g_fArenaBluSpawnOrigin[arena_index][i][1] = g_fArenaBluSpawnOrigin[arena_index][i + 1][1];
+            g_fArenaBluSpawnOrigin[arena_index][i][2] = g_fArenaBluSpawnOrigin[arena_index][i + 1][2];
+            g_fArenaBluSpawnAngles[arena_index][i][0] = g_fArenaBluSpawnAngles[arena_index][i + 1][0];
+            g_fArenaBluSpawnAngles[arena_index][i][1] = g_fArenaBluSpawnAngles[arena_index][i + 1][1];
+            g_fArenaBluSpawnAngles[arena_index][i][2] = g_fArenaBluSpawnAngles[arena_index][i + 1][2];
+        }
+        g_iArenaBluSpawns[arena_index]--;
+    }
+    else
+    {
+        for (int i = index; i < g_iArenaSpawns[arena_index]; i++)
+        {
+            g_fArenaSpawnOrigin[arena_index][i][0] = g_fArenaSpawnOrigin[arena_index][i + 1][0];
+            g_fArenaSpawnOrigin[arena_index][i][1] = g_fArenaSpawnOrigin[arena_index][i + 1][1];
+            g_fArenaSpawnOrigin[arena_index][i][2] = g_fArenaSpawnOrigin[arena_index][i + 1][2];
+            g_fArenaSpawnAngles[arena_index][i][0] = g_fArenaSpawnAngles[arena_index][i + 1][0];
+            g_fArenaSpawnAngles[arena_index][i][1] = g_fArenaSpawnAngles[arena_index][i + 1][1];
+            g_fArenaSpawnAngles[arena_index][i][2] = g_fArenaSpawnAngles[arena_index][i + 1][2];
+        }
+        g_iArenaSpawns[arena_index]--;
+    }
+
+    g_bArenaUseTeamSpawns[arena_index] = (g_iArenaRedSpawns[arena_index] > 0 && g_iArenaBluSpawns[arena_index] > 0);
+    return true;
+}
+
+void ClearNumericSpawnKeysInCurrentSection(KeyValues kv)
+{
+    char keyName[12];
+    for (int i = 1; i <= MAXSPAWNS * 16; i++)
+    {
+        IntToString(i, keyName, sizeof(keyName));
+        kv.DeleteKey(keyName);
+    }
+}
+
+bool JumpToArenaConfigSectionExact(KeyValues kv, const char[] arenaName)
+{
+    if (!kv.GotoFirstSubKey())
+        return false;
+
+    do
+    {
+        char currentName[64];
+        kv.GetSectionName(currentName, sizeof(currentName));
+        if (StrEqual(currentName, arenaName, true))
+            return true;
+    }
+    while (kv.GotoNextKey());
+
+    return false;
+}
+
+void WriteOptionalVector3Key(KeyValues kv, const char[] key, bool enabled, const float vec[3])
+{
+    if (!enabled)
+    {
+        kv.DeleteKey(key);
+        return;
+    }
+
+    char value[96];
+    Format(value, sizeof(value), "%.6f %.6f %.6f", vec[0], vec[1], vec[2]);
+    kv.SetString(key, value);
+}
+
+void WriteSpawnSectionToKv(KeyValues kv, const char[] sectionName, float spawnOrigin[MAXSPAWNS + 1][3], float spawnAngles[MAXSPAWNS + 1][3], int spawnCount)
+{
+    kv.DeleteKey(sectionName);
+    if (spawnCount <= 0)
+        return;
+
+    if (!kv.JumpToKey(sectionName, true))
+        return;
+
+    ClearNumericSpawnKeysInCurrentSection(kv);
+
+    char keyName[12];
+    char value[128];
+    for (int i = 1; i <= spawnCount; i++)
+    {
+        IntToString(i, keyName, sizeof(keyName));
+        Format(value, sizeof(value), "%.6f %.6f %.6f %.6f %.6f %.6f",
+            spawnOrigin[i][0], spawnOrigin[i][1], spawnOrigin[i][2],
+            spawnAngles[i][0], spawnAngles[i][1], spawnAngles[i][2]);
+        kv.SetString(keyName, value);
+    }
+
+    kv.GoBack();
+}
+
+bool SaveArenaSpawnsToConfig(int arena_index, char[] error, int errorLen)
+{
+    if (arena_index <= 0 || arena_index > g_iArenaCount)
+    {
+        Format(error, errorLen, "Invalid arena index.");
+        return false;
+    }
+
+    char txtfile[256];
+    Format(txtfile, sizeof(txtfile), "configs/mge/%s.cfg", g_sMapName);
+    BuildPath(Path_SM, txtfile, sizeof(txtfile), txtfile);
+
+    KeyValues kv = new KeyValues("SpawnConfigs");
+    if (!kv.ImportFromFile(txtfile))
+    {
+        Format(error, errorLen, "Could not open config file: %s", txtfile);
+        delete kv;
+        return false;
+    }
+
+    if (!JumpToArenaConfigSectionExact(kv, g_sArenaOriginalName[arena_index]))
+    {
+        Format(error, errorLen, "Arena section '%s' not found in config.", g_sArenaOriginalName[arena_index]);
+        delete kv;
+        return false;
+    }
+
+    ClearNumericSpawnKeysInCurrentSection(kv);
+
+    char keyName[12];
+    char value[128];
+    for (int i = 1; i <= g_iArenaSpawns[arena_index]; i++)
+    {
+        IntToString(i, keyName, sizeof(keyName));
+        Format(value, sizeof(value), "%.6f %.6f %.6f %.6f %.6f %.6f",
+            g_fArenaSpawnOrigin[arena_index][i][0], g_fArenaSpawnOrigin[arena_index][i][1], g_fArenaSpawnOrigin[arena_index][i][2],
+            g_fArenaSpawnAngles[arena_index][i][0], g_fArenaSpawnAngles[arena_index][i][1], g_fArenaSpawnAngles[arena_index][i][2]);
+        kv.SetString(keyName, value);
+    }
+
+    kv.DeleteKey("redspawns");
+    kv.DeleteKey("bluspawns");
+    WriteSpawnSectionToKv(kv, "RedSpawns", g_fArenaRedSpawnOrigin[arena_index], g_fArenaRedSpawnAngles[arena_index], g_iArenaRedSpawns[arena_index]);
+    WriteSpawnSectionToKv(kv, "BluSpawns", g_fArenaBluSpawnOrigin[arena_index], g_fArenaBluSpawnAngles[arena_index], g_iArenaBluSpawns[arena_index]);
+    WriteOptionalVector3Key(kv, "intelspawn", g_bArenaBBallIntelSpawnSet[arena_index], g_fArenaBBallIntelSpawn[arena_index]);
+    WriteOptionalVector3Key(kv, "intelspawn_red", g_bArenaBBallIntelSpawnRedSet[arena_index], g_fArenaBBallIntelSpawnRed[arena_index]);
+    WriteOptionalVector3Key(kv, "intelspawn_blu", g_bArenaBBallIntelSpawnBluSet[arena_index], g_fArenaBBallIntelSpawnBlu[arena_index]);
+    WriteOptionalVector3Key(kv, "hoopspawn", g_bArenaBBallHoopSpawnSet[arena_index], g_fArenaBBallHoopSpawn[arena_index]);
+    WriteOptionalVector3Key(kv, "hoopspawn_red", g_bArenaBBallHoopSpawnRedSet[arena_index], g_fArenaBBallHoopSpawnRed[arena_index]);
+    WriteOptionalVector3Key(kv, "hoopspawn_blu", g_bArenaBBallHoopSpawnBluSet[arena_index], g_fArenaBBallHoopSpawnBlu[arena_index]);
+
+    kv.GoBack();
+
+    if (!kv.ExportToFile(txtfile))
+    {
+        Format(error, errorLen, "Failed to save config file: %s", txtfile);
+        delete kv;
+        return false;
+    }
+
+    delete kv;
+    return true;
+}
+
+void PrintArenaSpawnsToClient(int client, int arena_index, int mode)
+{
+    char modeName[16];
+    GetSetSpawnModeName(mode, modeName, sizeof(modeName));
+
+    int count = GetArenaSpawnCountByMode(arena_index, mode);
+    char header[192];
+    Format(header, sizeof(header), "[MGE] %s spawns in arena '%s': %d", modeName, g_sArenaOriginalName[arena_index], count);
+    PrintToConsole(client, "%s", header);
+    MC_PrintToChat(client, "%s", header);
+
+    if (count <= 0)
+    {
+        PrintToConsole(client, "[MGE] (none)");
+        MC_PrintToChat(client, "[MGE] (none)");
+        return;
+    }
+
+    for (int i = 1; i <= count; i++)
+    {
+        float origin[3];
+        float angles[3];
+        GetArenaSpawnByMode(arena_index, mode, i, origin, angles);
+
+        char line[256];
+        Format(line, sizeof(line), "%d %.2f %.2f %.2f (%.1f %.1f %.1f)", i, origin[0], origin[1], origin[2], angles[0], angles[1], angles[2]);
+        PrintToConsole(client, "%s", line);
+        MC_PrintToChat(client, "%s", line);
+    }
+}
+
+Action Command_MgeMapReload(int client, int args)
+{
+    int deferredBball;
+    int deferredKoth;
+    char error[192];
+
+    if (!ReloadMapArenaConfigSafely(deferredBball, deferredKoth, error, sizeof(error)))
+    {
+        if (client > 0 && IsValidClient(client))
+        {
+            MC_PrintToChat(client, "[MGE] Map config reload failed: %s", error);
+            PrintToConsole(client, "[MGE] Map config reload failed: %s", error);
+        }
+        else
+        {
+            PrintToServer("[MGE] Map config reload failed: %s", error);
+        }
+        return Plugin_Handled;
+    }
+
+    ReapplyWeaponRulesToOnlineArenaPlayers();
+
+    if (client > 0 && IsValidClient(client))
+    {
+        MC_PrintToChat(client, "[MGE] Map config reloaded. arenas=%d deferred_bball=%d deferred_koth=%d",
+            g_iArenaCount, deferredBball, deferredKoth);
+        PrintToConsole(client, "[MGE] Map config reloaded. arenas=%d deferred_bball=%d deferred_koth=%d",
+            g_iArenaCount, deferredBball, deferredKoth);
+    }
+    else
+    {
+        PrintToServer("[MGE] Map config reloaded. arenas=%d deferred_bball=%d deferred_koth=%d",
+            g_iArenaCount, deferredBball, deferredKoth);
+    }
+
+    return Plugin_Handled;
+}
+
+Action Command_SetSpawn(int client, int args)
+{
+    if (!IsValidClient(client))
+        return Plugin_Handled;
+
+    int arena_index = g_iPlayerArena[client];
+    if (arena_index <= 0 || arena_index > g_iArenaCount)
+    {
+        MC_PrintToChat(client, "%t", "NotInArena");
+        return Plugin_Handled;
+    }
+
+    int mode = SETSPAWN_MODE_NEUTRAL;
+    int inputArgPos = 1;
+    bool singlePointMode = false;
+
+    if (args >= 1)
+    {
+        char arg1[32];
+        char arg2[32];
+        GetCmdArg(1, arg1, sizeof(arg1));
+        bool hasArg2 = (args >= 2);
+        arg2[0] = '\0';
+        if (hasArg2)
+            GetCmdArg(2, arg2, sizeof(arg2));
+
+        int consumedArgs = 0;
+        if (TryResolveSinglePointSetSpawnMode(arg1, arg2, hasArg2, mode, consumedArgs))
+        {
+            singlePointMode = true;
+            inputArgPos = 1 + consumedArgs;
+        }
+        else
+        {
+            if (StrEqual(arg1, "red", false))
+            {
+                mode = SETSPAWN_MODE_RED;
+                inputArgPos = 2;
+            }
+            else if (StrEqual(arg1, "blue", false) || StrEqual(arg1, "blu", false))
+            {
+                mode = SETSPAWN_MODE_BLU;
+                inputArgPos = 2;
+            }
+        }
+    }
+
+    if (singlePointMode)
+    {
+        bool deleteSpawn = false;
+        char error[192];
+
+        if (args > inputArgPos)
+        {
+            MC_PrintToChat(client, "[MGE] Usage: sm_setspawn <intel|hoop> [red|blu] [del|delete]");
+            PrintToConsole(client, "[MGE] Usage: sm_setspawn <intel|hoop> [red|blu] [del|delete]");
+            return Plugin_Handled;
+        }
+
+        if (args >= inputArgPos)
+        {
+            char actionArg[32];
+            GetCmdArg(inputArgPos, actionArg, sizeof(actionArg));
+            if (StrEqual(actionArg, "del", false) || StrEqual(actionArg, "delete", false))
+                deleteSpawn = true;
+            else
+            {
+                MC_PrintToChat(client, "[MGE] Invalid action. Use del or delete.");
+                PrintToConsole(client, "[MGE] Invalid action. Use del or delete.");
+                return Plugin_Handled;
+            }
+        }
+
+        bool ok;
+        if (deleteSpawn)
+        {
+            ok = DeleteArenaSpawnByMode(arena_index, mode, 1, error, sizeof(error));
+        }
+        else
+        {
+            float origin[3];
+            float angles[3] = {0.0, 0.0, 0.0};
+            GetClientAbsOrigin(client, origin);
+            ok = SetArenaSpawnByMode(arena_index, mode, 1, origin, angles, error, sizeof(error));
+        }
+
+        if (!ok)
+        {
+            MC_PrintToChat(client, "[MGE] %s", error);
+            PrintToConsole(client, "[MGE] %s", error);
+            return Plugin_Handled;
+        }
+
+        if (!SaveArenaSpawnsToConfig(arena_index, error, sizeof(error)))
+        {
+            MC_PrintToChat(client, "[MGE] Save failed: %s", error);
+            PrintToConsole(client, "[MGE] Save failed: %s", error);
+            return Plugin_Handled;
+        }
+
+        if (g_bArenaBBall[arena_index])
+        {
+            if (mode >= SETSPAWN_MODE_BBALL_HOOP)
+            {
+                if (g_iArenaStatus[arena_index] == AS_COUNTDOWN || g_iArenaStatus[arena_index] == AS_FIGHT)
+                    g_bArenaPendingBBallEntityRefresh[arena_index] = true;
+                else
+                    RebuildBBallArenaHoops(arena_index);
+            }
+        }
+
+        RefreshArenaSpawnAnnotationsForViewers(arena_index);
+
+        char modeName[32];
+        GetSetSpawnModeName(mode, modeName, sizeof(modeName));
+
+        if (deleteSpawn)
+        {
+            MC_PrintToChat(client, "[MGE] %s cleared.", modeName);
+            PrintToConsole(client, "[MGE] %s cleared.", modeName);
+        }
+        else
+        {
+            MC_PrintToChat(client, "[MGE] %s saved from your current position.", modeName);
+            PrintToConsole(client, "[MGE] %s saved from your current position.", modeName);
+        }
+
+        PrintArenaSpawnsToClient(client, arena_index, mode);
+        return Plugin_Handled;
+    }
+
+    // Direct mode: sm_setspawn [red|blue] <number> [del|delete]
+    if (args >= inputArgPos)
+    {
+        if (args > inputArgPos + 1)
+        {
+            MC_PrintToChat(client, "[MGE] Usage: sm_setspawn [red|blue] [number] [del|delete]");
+            PrintToConsole(client, "[MGE] Usage: sm_setspawn [red|blue] [number] [del|delete]");
+            return Plugin_Handled;
+        }
+
+        char input[128];
+        char indexArg[32];
+        char actionArg[32];
+        GetCmdArg(inputArgPos, indexArg, sizeof(indexArg));
+        input[0] = '\0';
+        strcopy(input, sizeof(input), indexArg);
+        if (args >= inputArgPos + 1)
+        {
+            GetCmdArg(inputArgPos + 1, actionArg, sizeof(actionArg));
+            Format(input, sizeof(input), "%s %s", indexArg, actionArg);
+        }
+
+        int index;
+        bool deleteSpawn;
+        char error[192];
+        if (!ParseSetSpawnInput(input, index, deleteSpawn, error, sizeof(error)))
+        {
+            MC_PrintToChat(client, "[MGE] %s", error);
+            PrintToConsole(client, "[MGE] %s", error);
+            return Plugin_Handled;
+        }
+
+        bool ok;
+        if (deleteSpawn)
+        {
+            ok = DeleteArenaSpawnByMode(arena_index, mode, index, error, sizeof(error));
+        }
+        else
+        {
+            float origin[3];
+            float angles[3];
+            GetClientAbsOrigin(client, origin);
+            GetClientEyeAngles(client, angles);
+            ok = SetArenaSpawnByMode(arena_index, mode, index, origin, angles, error, sizeof(error));
+        }
+
+        if (!ok)
+        {
+            MC_PrintToChat(client, "[MGE] %s", error);
+            PrintToConsole(client, "[MGE] %s", error);
+
+            if (deleteSpawn)
+            {
+                int nCount = g_iArenaSpawns[arena_index];
+                int rCount = g_iArenaRedSpawns[arena_index];
+                int bCount = g_iArenaBluSpawns[arena_index];
+                MC_PrintToChat(client, "[MGE] Current counts: NEUTRAL=%d RED=%d BLU=%d", nCount, rCount, bCount);
+                PrintToConsole(client, "[MGE] Current counts: NEUTRAL=%d RED=%d BLU=%d", nCount, rCount, bCount);
+            }
+            return Plugin_Handled;
+        }
+
+        if (!SaveArenaSpawnsToConfig(arena_index, error, sizeof(error)))
+        {
+            MC_PrintToChat(client, "[MGE] Save failed: %s", error);
+            PrintToConsole(client, "[MGE] Save failed: %s", error);
+            return Plugin_Handled;
+        }
+
+        RefreshArenaSpawnAnnotationsForViewers(arena_index);
+
+        if (deleteSpawn)
+        {
+            MC_PrintToChat(client, "[MGE] Spawn #%d deleted.", index);
+            PrintToConsole(client, "[MGE] Spawn #%d deleted.", index);
+        }
+        else
+        {
+            MC_PrintToChat(client, "[MGE] Spawn #%d saved from your current position.", index);
+            PrintToConsole(client, "[MGE] Spawn #%d saved from your current position.", index);
+        }
+
+        PrintArenaSpawnsToClient(client, arena_index, mode);
+        return Plugin_Handled;
+    }
+
+    g_bSetSpawnAwaitInput[client] = true;
+    g_iSetSpawnArena[client] = arena_index;
+    g_iSetSpawnMode[client] = mode;
+
+    PrintArenaSpawnsToClient(client, arena_index, mode);
+
+    char modeName[32];
+    GetSetSpawnModeName(mode, modeName, sizeof(modeName));
+    if (IsSinglePointSetSpawnMode(mode))
+    {
+        MC_PrintToChat(client, "[MGE] Editing %s. Type a point type in chat (e.g. 'intel red' or 'hoop blu') to save current position.", modeName);
+        MC_PrintToChat(client, "[MGE] Add 'del' to clear, or type 'cancel' to exit.");
+        PrintToConsole(client, "[MGE] Editing %s. Type a point type in chat (e.g. 'intel red' or 'hoop blu') to save current position.", modeName);
+        PrintToConsole(client, "[MGE] Add 'del' to clear, or type 'cancel' to exit.");
+    }
+    else
+    {
+        MC_PrintToChat(client, "[MGE] Editing %s spawns. Enter <number> to save, or prefix a type like 'red 2' / 'intel red'.", modeName);
+        MC_PrintToChat(client, "[MGE] Add 'del' to delete, or type 'cancel' to exit.");
+        PrintToConsole(client, "[MGE] Editing %s spawns. Enter <number> to save, or prefix a type like 'red 2' / 'intel red'.", modeName);
+        PrintToConsole(client, "[MGE] Add 'del' to delete, or type 'cancel' to exit.");
+    }
+    return Plugin_Handled;
+}
+
+Action Command_SetSpawnChatInput(int client, const char[] command, int args)
+{
+    if (!IsValidClient(client) || !g_bSetSpawnAwaitInput[client])
+        return Plugin_Continue;
+
+    char text[192];
+    GetCmdArgString(text, sizeof(text));
+    StripQuotes(text);
+    TrimString(text);
+
+    if (text[0] == '\0')
+        return Plugin_Handled;
+
+    if (text[0] == '!' || text[0] == '/')
+        return Plugin_Continue;
+
+    if (StrEqual(text, "cancel", false))
+    {
+        ClearSetSpawnState(client);
+        MC_PrintToChat(client, "[MGE] Spawn editor cancelled.");
+        PrintToConsole(client, "[MGE] Spawn editor cancelled.");
+        return Plugin_Handled;
+    }
+
+    int arena_index = g_iSetSpawnArena[client];
+    int mode = g_iSetSpawnMode[client];
+    if (arena_index <= 0 || arena_index > g_iArenaCount || g_iPlayerArena[client] != arena_index)
+    {
+        ClearSetSpawnState(client);
+        MC_PrintToChat(client, "[MGE] Spawn editor closed: arena context changed.");
+        PrintToConsole(client, "[MGE] Spawn editor closed: arena context changed.");
+        return Plugin_Handled;
+    }
+
+    int index;
+    bool deleteSpawn;
+    int resolvedMode = mode;
+    char error[192];
+    if (!ParseSetSpawnChatCommand(text, mode, resolvedMode, index, deleteSpawn, error, sizeof(error)))
+    {
+        MC_PrintToChat(client, "[MGE] %s", error);
+        PrintToConsole(client, "[MGE] %s", error);
+        return Plugin_Handled;
+    }
+
+    mode = resolvedMode;
+    g_iSetSpawnMode[client] = mode;
+
+    bool ok;
+    if (IsSinglePointSetSpawnMode(mode))
+    {
+        if (deleteSpawn)
+        {
+            ok = DeleteArenaSpawnByMode(arena_index, mode, 1, error, sizeof(error));
+        }
+        else
+        {
+            float origin[3];
+            float angles[3] = {0.0, 0.0, 0.0};
+            GetClientAbsOrigin(client, origin);
+            ok = SetArenaSpawnByMode(arena_index, mode, 1, origin, angles, error, sizeof(error));
+        }
+    }
+    else
+    {
+        if (deleteSpawn)
+        {
+            ok = DeleteArenaSpawnByMode(arena_index, mode, index, error, sizeof(error));
+        }
+        else
+        {
+            float origin[3];
+            float angles[3];
+            GetClientAbsOrigin(client, origin);
+            GetClientEyeAngles(client, angles);
+            ok = SetArenaSpawnByMode(arena_index, mode, index, origin, angles, error, sizeof(error));
+        }
+    }
+
+    if (!ok)
+    {
+        MC_PrintToChat(client, "[MGE] %s", error);
+        PrintToConsole(client, "[MGE] %s", error);
+        return Plugin_Handled;
+    }
+
+    if (!SaveArenaSpawnsToConfig(arena_index, error, sizeof(error)))
+    {
+        MC_PrintToChat(client, "[MGE] Save failed: %s", error);
+        PrintToConsole(client, "[MGE] Save failed: %s", error);
+        return Plugin_Handled;
+    }
+
+    if (g_bArenaBBall[arena_index] && mode >= SETSPAWN_MODE_BBALL_HOOP)
+    {
+        if (g_iArenaStatus[arena_index] == AS_COUNTDOWN || g_iArenaStatus[arena_index] == AS_FIGHT)
+            g_bArenaPendingBBallEntityRefresh[arena_index] = true;
+        else
+            RebuildBBallArenaHoops(arena_index);
+    }
+
+    RefreshArenaSpawnAnnotationsForViewers(arena_index);
+
+    char modeName[32];
+    GetSetSpawnModeName(mode, modeName, sizeof(modeName));
+
+    if (deleteSpawn)
+    {
+        if (IsSinglePointSetSpawnMode(mode))
+        {
+            MC_PrintToChat(client, "[MGE] %s cleared.", modeName);
+            PrintToConsole(client, "[MGE] %s cleared.", modeName);
+        }
+        else
+        {
+            MC_PrintToChat(client, "[MGE] Spawn #%d deleted.", index);
+            PrintToConsole(client, "[MGE] Spawn #%d deleted.", index);
+        }
+    }
+    else
+    {
+        if (IsSinglePointSetSpawnMode(mode))
+        {
+            MC_PrintToChat(client, "[MGE] %s saved from your current position.", modeName);
+            PrintToConsole(client, "[MGE] %s saved from your current position.", modeName);
+        }
+        else
+        {
+            MC_PrintToChat(client, "[MGE] Spawn #%d saved from your current position.", index);
+            PrintToConsole(client, "[MGE] Spawn #%d saved from your current position.", index);
+        }
+    }
+
+    PrintArenaSpawnsToClient(client, arena_index, mode);
+    MC_PrintToChat(client, "[MGE] Continue editing. You can type a type prefix (e.g. 'red 2', 'intel red', 'hoop blu') or 'cancel' to exit.");
+    PrintToConsole(client, "[MGE] Continue editing. You can type a type prefix (e.g. 'red 2', 'intel red', 'hoop blu') or 'cancel' to exit.");
+    return Plugin_Handled;
 }
 
 // Remove player from current arena queue or waiting list
@@ -1778,6 +3615,62 @@ Action Command_First(int client, int args)
 
     // Couldn't find any empty or half-empty arenas, so display the menu.
     ShowMainMenu(client);
+    return Plugin_Handled;
+}
+
+// Restart current arena duel/round from scratch
+Action Command_ArenaRestart(int client, int args)
+{
+    if (!IsValidClient(client))
+        return Plugin_Handled;
+
+    int arena_index = g_iPlayerArena[client];
+    if (!arena_index)
+    {
+        MC_PrintToChat(client, "%t", "NotInArena");
+        return Plugin_Handled;
+    }
+
+    if (g_bArenaNoFight[arena_index])
+    {
+        g_iArenaStatus[arena_index] = AS_IDLE;
+        g_iArenaDuelStartTime[arena_index] = 0;
+
+        for (int slot = SLOT_ONE; slot <= MAXPLAYERS; slot++)
+        {
+            int player = g_iArenaQueue[arena_index][slot];
+            if (IsValidClient(player))
+            {
+                CreateTimer(0.1, Timer_ResetPlayer, GetClientUserId(player));
+            }
+        }
+
+        UpdateHudForArena(arena_index);
+        PrintToChatArena(arena_index, "[MGE] Arena restarted by %N.", client);
+        return Plugin_Handled;
+    }
+
+    int requiredPlayers = g_bFourPersonArena[arena_index] ? 4 : 2;
+    int activePlayers = 0;
+    int maxActiveSlot = g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO;
+
+    for (int slot = SLOT_ONE; slot <= maxActiveSlot; slot++)
+    {
+        if (IsValidClient(g_iArenaQueue[arena_index][slot]))
+            activePlayers++;
+    }
+
+    if (activePlayers < requiredPlayers)
+    {
+        MC_PrintToChat(client, "[MGE] Not enough players to restart fight (%d/%d).", activePlayers, requiredPlayers);
+        return Plugin_Handled;
+    }
+
+    g_iArenaStatus[arena_index] = AS_IDLE;
+    g_iArenaDuelStartTime[arena_index] = 0;
+    CreateTimer(0.1, Timer_StartDuel, arena_index);
+    PrintToChatArena(arena_index, "[MGE] Arena restarted by %N.", client);
+
     return Plugin_Handled;
 }
 
@@ -2002,6 +3895,9 @@ Action Timer_CountDown(Handle timer, any arena_index)
                     g_iArenaDuelStartTime[arena_index] = GetTime();
                 if (isDuelStart)
                     ResetClassPointsForArena(arena_index);
+                if (isDuelStart)
+                    StartDuelWeaponTrackingForArena(arena_index);
+                StartArenaRoundLogging(arena_index);
                 char msg[64];
                 Format(msg, sizeof(msg), "FIGHT", g_iArenaCd[arena_index]);
                 PrintCenterText(red_f1, msg);
@@ -2086,6 +3982,9 @@ Action Timer_CountDown(Handle timer, any arena_index)
                     g_iArenaDuelStartTime[arena_index] = GetTime();
                 if (isDuelStart)
                     ResetClassPointsForArena(arena_index);
+                if (isDuelStart)
+                    StartDuelWeaponTrackingForArena(arena_index);
+                StartArenaRoundLogging(arena_index);
                 char msg[64];
                 Format(msg, sizeof(msg), "FIGHT", g_iArenaCd[arena_index]);
                 PrintCenterText(red_f1, msg);
@@ -2120,6 +4019,23 @@ Action Timer_CountDown(Handle timer, any arena_index)
 // Initialize duel start sequence and player setup
 Action Timer_StartDuel(Handle timer, any arena_index)
 {
+    if (g_bArenaNoFight[arena_index])
+    {
+        g_iArenaStatus[arena_index] = AS_IDLE;
+        g_iArenaDuelStartTime[arena_index] = 0;
+        ResetArenaRoundLogging(arena_index);
+
+        int max_slot = g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO;
+        for (int slot = SLOT_ONE; slot <= max_slot; slot++)
+        {
+            int player = g_iArenaQueue[arena_index][slot];
+            if (IsValidClient(player))
+                CreateTimer(0.1, Timer_ResetPlayer, GetClientUserId(player));
+        }
+        UpdateHudForArena(arena_index);
+        return Plugin_Stop;
+    }
+
     // Clear any pending invites when match starts
     for (int i = SLOT_ONE; i <= (g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO); i++)
     {
@@ -2133,6 +4049,19 @@ Action Timer_StartDuel(Handle timer, any arena_index)
     // Clear public invite for this arena when match starts
     g_iPublicInviteArena[arena_index] = 0;
     g_fPublicInviteTime[arena_index] = 0.0;
+
+    if (g_bArenaPendingBBallEntityRefresh[arena_index] && g_bArenaBBall[arena_index])
+    {
+        RemoveBBallArenaEntities(arena_index);
+        RebuildBBallArenaHoops(arena_index);
+        g_bArenaPendingBBallEntityRefresh[arena_index] = false;
+    }
+
+    if (g_bArenaPendingKothEntityRefresh[arena_index] && g_bArenaKoth[arena_index])
+    {
+        RefreshKothCapturePointForArena(arena_index);
+        g_bArenaPendingKothEntityRefresh[arena_index] = false;
+    }
 
     ResetArena(arena_index);
 
@@ -2164,6 +4093,9 @@ Action Timer_StartDuel(Handle timer, any arena_index)
 
     g_iArenaScore[arena_index][SLOT_ONE] = 0;
     g_iArenaScore[arena_index][SLOT_TWO] = 0;
+    ResetArenaRoundLogging(arena_index);
+    if (g_bArenaBBall[arena_index])
+        UpdateBBallScoreboardForArena(arena_index);
     // Don't reset duel start time here - it should persist across rounds until match completion
     UpdateHudForArena(arena_index);
     
@@ -2187,7 +4119,7 @@ Action Timer_RegenArena(Handle timer, any arena_index)
     if (IsPlayerAlive(client))
     {
         TF2_RegeneratePlayer(client);
-        int raised_hp = RoundToNearest(float(g_iPlayerMaxHP[client]) * g_fArenaHPRatio[arena_index]);
+        int raised_hp = GetArenaTargetHPForClient(client, arena_index, g_iPlayerMaxHP[client]);
         g_iPlayerHP[client] = raised_hp;
         SetEntProp(client, Prop_Data, "m_iHealth", raised_hp);
     }
@@ -2195,7 +4127,7 @@ Action Timer_RegenArena(Handle timer, any arena_index)
     if (IsPlayerAlive(client2))
     {
         TF2_RegeneratePlayer(client2);
-        int raised_hp2 = RoundToNearest(float(g_iPlayerMaxHP[client2]) * g_fArenaHPRatio[arena_index]);
+        int raised_hp2 = GetArenaTargetHPForClient(client2, arena_index, g_iPlayerMaxHP[client2]);
         g_iPlayerHP[client2] = raised_hp2;
         SetEntProp(client2, Prop_Data, "m_iHealth", raised_hp2);
     }
@@ -2207,14 +4139,14 @@ Action Timer_RegenArena(Handle timer, any arena_index)
         if (IsPlayerAlive(client3))
         {
             TF2_RegeneratePlayer(client3);
-            int raised_hp3 = RoundToNearest(float(g_iPlayerMaxHP[client3]) * g_fArenaHPRatio[arena_index]);
+            int raised_hp3 = GetArenaTargetHPForClient(client3, arena_index, g_iPlayerMaxHP[client3]);
             g_iPlayerHP[client3] = raised_hp3;
             SetEntProp(client3, Prop_Data, "m_iHealth", raised_hp3);
         }
         if (IsPlayerAlive(client4))
         {
             TF2_RegeneratePlayer(client4);
-            int raised_hp4 = RoundToNearest(float(g_iPlayerMaxHP[client4]) * g_fArenaHPRatio[arena_index]);
+            int raised_hp4 = GetArenaTargetHPForClient(client4, arena_index, g_iPlayerMaxHP[client4]);
             g_iPlayerHP[client4] = raised_hp4;
             SetEntProp(client4, Prop_Data, "m_iHealth", raised_hp4);
         }
@@ -2243,6 +4175,57 @@ Action Timer_AddBotInQueue(Handle timer, DataPack pack)
 }
 
 // ===== UTILITIES =====
+
+TFClassType TFClassFromConfigName(const char[] className)
+{
+    if (StrEqual(className, "scout", false)) return TFClass_Scout;
+    if (StrEqual(className, "sniper", false)) return TFClass_Sniper;
+    if (StrEqual(className, "soldier", false)) return TFClass_Soldier;
+    if (StrEqual(className, "demoman", false) || StrEqual(className, "demo", false)) return TFClass_DemoMan;
+    if (StrEqual(className, "medic", false)) return TFClass_Medic;
+    if (StrEqual(className, "heavy", false)) return TFClass_Heavy;
+    if (StrEqual(className, "pyro", false)) return TFClass_Pyro;
+    if (StrEqual(className, "spy", false)) return TFClass_Spy;
+    if (StrEqual(className, "engineer", false) || StrEqual(className, "engie", false)) return TFClass_Engineer;
+    return TFClass_Unknown;
+}
+
+void ApplyClassHpRatioOverridesFromSection(KeyValues kv, int arena_index, const char[] sectionName)
+{
+    if (!kv.JumpToKey(sectionName, false))
+        return;
+
+    char classKeys[][] =
+    {
+        "scout",
+        "sniper",
+        "soldier",
+        "demoman",
+        "medic",
+        "heavy",
+        "pyro",
+        "spy",
+        "engineer"
+    };
+
+    for (int i = 0; i < sizeof(classKeys); i++)
+    {
+        TFClassType classType = TFClassFromConfigName(classKeys[i]);
+        if (classType == TFClass_Unknown)
+            continue;
+
+        g_fArenaClassHPRatio[arena_index][classType] = kv.GetFloat(classKeys[i], g_fArenaClassHPRatio[arena_index][classType]);
+    }
+
+    kv.GoBack();
+}
+
+void ApplyClassHpRatioOverridesFromConfig(KeyValues kv, int arena_index)
+{
+    // Keep user's requested key spelling, plus a correctly-spelled alias for convenience.
+    ApplyClassHpRatioOverridesFromSection(kv, arena_index, "hpratio_by_clasees");
+    ApplyClassHpRatioOverridesFromSection(kv, arena_index, "hpratio_by_classes");
+}
 
 // Parse comma-separated class list into boolean array for validation
 void ParseAllowedClasses(const char[] sList, bool[] output)

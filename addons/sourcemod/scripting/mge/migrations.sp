@@ -78,9 +78,13 @@ void RunMigration(const char[] migrationName)
         {
             g_migrationProgress.SetValue(migrationName, 1); // Just mark as complete for PostgreSQL
         }
+        else if (g_DatabaseType == DB_MYSQL)
+        {
+            g_migrationProgress.SetValue(migrationName, 4);
+        }
         else
         {
-            g_migrationProgress.SetValue(migrationName, 11); // Updated for SQLite, 4 for MySQL
+            g_migrationProgress.SetValue(migrationName, 11);
         }
         Migration_003_AddPrimaryKeys();
     }
@@ -98,7 +102,10 @@ void RunMigration(const char[] migrationName)
     }
     else if (StrEqual(migrationName, "005_add_cancel_fields"))
     {
-        g_migrationProgress.SetValue(migrationName, 8);
+        if (g_DatabaseType == DB_POSTGRESQL)
+            g_migrationProgress.SetValue(migrationName, 1);
+        else
+            g_migrationProgress.SetValue(migrationName, 6);
         Migration_005_AddCancelFields();
     }
     else if (StrEqual(migrationName, "006_add_class_ratings"))
@@ -112,6 +119,45 @@ void RunMigration(const char[] migrationName)
             g_migrationProgress.SetValue(migrationName, 9);
         }
         Migration_006_AddClassRatings();
+    }
+    else if (StrEqual(migrationName, "007_add_weapon_id_columns"))
+    {
+        if (g_DatabaseType == DB_POSTGRESQL)
+            g_migrationProgress.SetValue(migrationName, 1);
+        else
+            g_migrationProgress.SetValue(migrationName, 6);
+        Migration_007_AddWeaponIdColumns();
+    }
+    else if (StrEqual(migrationName, "008_add_round_logs"))
+    {
+        g_migrationProgress.SetValue(migrationName, 2);
+        Migration_008_AddRoundLogs();
+    }
+    else if (StrEqual(migrationName, "009_add_server_id_to_duels"))
+    {
+        g_migrationProgress.SetValue(migrationName, 2);
+        Migration_009_AddServerIdToDuels();
+    }
+    else if (StrEqual(migrationName, "010_ensure_duel_ids_autoincrement"))
+    {
+        if (g_DatabaseType == DB_MYSQL)
+            g_migrationProgress.SetValue(migrationName, 6);
+        else
+            g_migrationProgress.SetValue(migrationName, 1);
+        Migration_010_EnsureDuelIdsAutoincrement();
+    }
+    else if (StrEqual(migrationName, "011_round_slot_normalization"))
+    {
+        if (g_DatabaseType == DB_MYSQL)
+            g_migrationProgress.SetValue(migrationName, 29);
+        else
+            g_migrationProgress.SetValue(migrationName, 10);
+        Migration_011_RoundSlotNormalization();
+    }
+    else if (StrEqual(migrationName, "012_add_compact_round_json"))
+    {
+        g_migrationProgress.SetValue(migrationName, 2);
+        Migration_012_AddCompactRoundJson();
     }
 }
 
@@ -159,6 +205,12 @@ void CreateMigrationsTableCallback(Database db, DBResultSet results, const char[
     CheckAndRunMigration("004_add_elo_tracking");
     CheckAndRunMigration("005_add_cancel_fields");
     CheckAndRunMigration("006_add_class_ratings");
+    CheckAndRunMigration("007_add_weapon_id_columns");
+    CheckAndRunMigration("008_add_round_logs");
+    CheckAndRunMigration("009_add_server_id_to_duels");
+    CheckAndRunMigration("010_ensure_duel_ids_autoincrement");
+    CheckAndRunMigration("011_round_slot_normalization");
+    CheckAndRunMigration("012_add_compact_round_json");
 }
 
 // Processes migration existence check results and triggers migration execution if needed
@@ -227,12 +279,48 @@ void GenericMigrationCallback(Database db, DBResultSet results, const char[] err
              (StrContains(error, "duplicate column name") != -1 ||
               StrContains(error, "Duplicate column name") != -1 ||
               StrContains(error, "already exists") != -1 ||
-              StrContains(error, "Unknown column") != -1)))
+              StrContains(error, "Unknown column") != -1)) ||
+            (StrEqual(migrationName, "007_add_weapon_id_columns") &&
+             (StrContains(error, "duplicate column name") != -1 ||
+              StrContains(error, "Duplicate column name") != -1 ||
+              StrContains(error, "already exists") != -1 ||
+              StrContains(error, "Unknown column") != -1)) ||
+            (StrEqual(migrationName, "009_add_server_id_to_duels") &&
+             (StrContains(error, "duplicate column name") != -1 ||
+              StrContains(error, "Duplicate column name") != -1 ||
+              StrContains(error, "already exists") != -1 ||
+              StrContains(error, "Duplicate key name") != -1 ||
+              StrContains(error, "multiple primary key") != -1 ||
+              StrContains(error, "Multiple primary key") != -1 ||
+              StrContains(error, "Unknown column") != -1)) ||
+            (StrEqual(migrationName, "010_ensure_duel_ids_autoincrement") &&
+             (StrContains(error, "duplicate column name") != -1 ||
+              StrContains(error, "Duplicate column name") != -1 ||
+              StrContains(error, "already exists") != -1 ||
+              StrContains(error, "Duplicate key name") != -1 ||
+              StrContains(error, "multiple primary key") != -1 ||
+              StrContains(error, "Multiple primary key") != -1 ||
+              StrContains(error, "Unknown column") != -1)) ||
+            (StrEqual(migrationName, "012_add_compact_round_json") &&
+             (StrContains(error, "duplicate column name") != -1 ||
+              StrContains(error, "Duplicate column name") != -1 ||
+              StrContains(error, "already exists") != -1 ||
+              StrContains(error, "Unknown column") != -1)) ||
+            (StrEqual(migrationName, "011_round_slot_normalization") &&
+             (StrContains(error, "duplicate column name") != -1 ||
+              StrContains(error, "Duplicate column name") != -1 ||
+              StrContains(error, "already exists") != -1 ||
+              StrContains(error, "Unknown column") != -1 ||
+              StrContains(error, "no such column") != -1 ||
+              StrContains(error, "Can't DROP") != -1 ||
+              StrContains(error, "check that column/key exists") != -1 ||
+              StrContains(error, "Illegal mix of collations") != -1)))
         {
             LogMessage("[Migration %s] Step %d skipped (already applied): %s", migrationName, stepNumber, error);
             stepSkipped = true;
         }
-        else if (StrContains(error, "duplicate column name") != -1)
+        else if (StrContains(error, "duplicate column name") != -1 ||
+                 StrContains(error, "Duplicate column name") != -1)
         {
             // Generic handling for duplicate column errors
             LogMessage("[Migration %s] Step %d skipped (column already exists): %s", migrationName, stepNumber, error);
@@ -490,12 +578,12 @@ void Migration_005_AddCancelFields()
         }
         case DB_POSTGRESQL:
         {
-            ExecuteMigrationStep("005_add_cancel_fields", "ALTER TABLE mgemod_duels ADD COLUMN canceled INTEGER DEFAULT 0", 1);
-            ExecuteMigrationStep("005_add_cancel_fields", "ALTER TABLE mgemod_duels ADD COLUMN canceled_reason TEXT DEFAULT NULL", 2);
-            ExecuteMigrationStep("005_add_cancel_fields", "ALTER TABLE mgemod_duels ADD COLUMN canceled_by VARCHAR(32) DEFAULT NULL", 3);
-            ExecuteMigrationStep("005_add_cancel_fields", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN canceled INTEGER DEFAULT 0", 4);
-            ExecuteMigrationStep("005_add_cancel_fields", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN canceled_reason TEXT DEFAULT NULL", 5);
-            ExecuteMigrationStep("005_add_cancel_fields", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN canceled_by VARCHAR(32) DEFAULT NULL", 6);
+            // PostgreSQL gets modern schema immediately in CREATE TABLE statements
+            // But we still need to mark this migration as complete for consistency
+            int currentTime = GetTime();
+            char migrationQuery[256];
+            g_DB.Format(migrationQuery, sizeof(migrationQuery), "INSERT INTO mgemod_migrations (migration_name, executed_at) VALUES ('005_add_cancel_fields', %d) ON CONFLICT (migration_name) DO NOTHING", currentTime);
+            g_DB.Query(MarkMigrationCallback, migrationQuery);
         }
     }
 }
@@ -539,6 +627,208 @@ void Migration_006_AddClassRatings()
             char migrationQuery[256];
             g_DB.Format(migrationQuery, sizeof(migrationQuery), "INSERT INTO mgemod_migrations (migration_name, executed_at) VALUES ('006_add_class_ratings', %d) ON CONFLICT (migration_name) DO NOTHING", currentTime);
             g_DB.Query(MarkMigrationCallback, migrationQuery);
+        }
+    }
+}
+
+// Adds weapon id tracking columns to duel tables (1v1 + 2v2)
+void Migration_007_AddWeaponIdColumns()
+{
+    LogMessage("[Migration 007] Adding weapon id columns to duel tables");
+
+    switch (g_DatabaseType)
+    {
+        case DB_SQLITE:
+        {
+            ExecuteMigrationStep("007_add_weapon_id_columns", "ALTER TABLE mgemod_duels ADD COLUMN winnerweaponids TEXT DEFAULT NULL", 1);
+            ExecuteMigrationStep("007_add_weapon_id_columns", "ALTER TABLE mgemod_duels ADD COLUMN loserweaponids TEXT DEFAULT NULL", 2);
+            ExecuteMigrationStep("007_add_weapon_id_columns", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN winnerweaponids TEXT DEFAULT NULL", 3);
+            ExecuteMigrationStep("007_add_weapon_id_columns", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN winner2weaponids TEXT DEFAULT NULL", 4);
+            ExecuteMigrationStep("007_add_weapon_id_columns", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN loserweaponids TEXT DEFAULT NULL", 5);
+            ExecuteMigrationStep("007_add_weapon_id_columns", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN loser2weaponids TEXT DEFAULT NULL", 6);
+        }
+        case DB_MYSQL:
+        {
+            ExecuteMigrationStep("007_add_weapon_id_columns", "ALTER TABLE mgemod_duels ADD COLUMN winnerweaponids TEXT DEFAULT NULL", 1);
+            ExecuteMigrationStep("007_add_weapon_id_columns", "ALTER TABLE mgemod_duels ADD COLUMN loserweaponids TEXT DEFAULT NULL", 2);
+            ExecuteMigrationStep("007_add_weapon_id_columns", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN winnerweaponids TEXT DEFAULT NULL", 3);
+            ExecuteMigrationStep("007_add_weapon_id_columns", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN winner2weaponids TEXT DEFAULT NULL", 4);
+            ExecuteMigrationStep("007_add_weapon_id_columns", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN loserweaponids TEXT DEFAULT NULL", 5);
+            ExecuteMigrationStep("007_add_weapon_id_columns", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN loser2weaponids TEXT DEFAULT NULL", 6);
+        }
+        case DB_POSTGRESQL:
+        {
+            // PostgreSQL gets modern schema immediately in CREATE TABLE statements
+            // But we still need to mark this migration as complete for consistency
+            int currentTime = GetTime();
+            char migrationQuery[256];
+            g_DB.Format(migrationQuery, sizeof(migrationQuery), "INSERT INTO mgemod_migrations (migration_name, executed_at) VALUES ('007_add_weapon_id_columns', %d) ON CONFLICT (migration_name) DO NOTHING", currentTime);
+            g_DB.Query(MarkMigrationCallback, migrationQuery);
+        }
+    }
+}
+
+// Adds dedicated round log tables linked to 1v1 and 2v2 duel rows
+void Migration_008_AddRoundLogs()
+{
+    LogMessage("[Migration 008] Creating round log tables for 1v1 and 2v2");
+
+    char query[4096];
+
+    GetCreateTableQuery_DuelRounds1v1(query, sizeof(query));
+    ExecuteMigrationStep("008_add_round_logs", query, 1);
+
+    GetCreateTableQuery_DuelRounds2v2(query, sizeof(query));
+    ExecuteMigrationStep("008_add_round_logs", query, 2);
+}
+
+// Adds server_id to duel tables so duel logs can be separated by server
+void Migration_009_AddServerIdToDuels()
+{
+    LogMessage("[Migration 009] Adding server_id to duel tables");
+
+    switch (g_DatabaseType)
+    {
+        case DB_SQLITE:
+        {
+            ExecuteMigrationStep("009_add_server_id_to_duels", "ALTER TABLE mgemod_duels ADD COLUMN server_id INTEGER NOT NULL DEFAULT 1", 1);
+            ExecuteMigrationStep("009_add_server_id_to_duels", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN server_id INTEGER NOT NULL DEFAULT 1", 2);
+        }
+        case DB_MYSQL:
+        {
+            ExecuteMigrationStep("009_add_server_id_to_duels", "ALTER TABLE mgemod_duels ADD COLUMN server_id INT(11) NOT NULL DEFAULT 1", 1);
+            ExecuteMigrationStep("009_add_server_id_to_duels", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN server_id INT(11) NOT NULL DEFAULT 1", 2);
+        }
+        case DB_POSTGRESQL:
+        {
+            ExecuteMigrationStep("009_add_server_id_to_duels", "ALTER TABLE mgemod_duels ADD COLUMN server_id INTEGER NOT NULL DEFAULT 1", 1);
+            ExecuteMigrationStep("009_add_server_id_to_duels", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN server_id INTEGER NOT NULL DEFAULT 1", 2);
+        }
+    }
+}
+
+// Ensures duel id columns exist and are auto-increment in MySQL so dependent tables can reference duel_id reliably
+void Migration_010_EnsureDuelIdsAutoincrement()
+{
+    LogMessage("[Migration 010] Ensuring duel id columns are auto-increment");
+
+    switch (g_DatabaseType)
+    {
+        case DB_MYSQL:
+        {
+            ExecuteMigrationStep("010_ensure_duel_ids_autoincrement", "ALTER TABLE mgemod_duels ADD COLUMN id INT(11) NULL FIRST", 1);
+            ExecuteMigrationStep("010_ensure_duel_ids_autoincrement", "ALTER TABLE mgemod_duels ADD UNIQUE KEY uq_mgemod_duels_id (id)", 2);
+            ExecuteMigrationStep("010_ensure_duel_ids_autoincrement", "ALTER TABLE mgemod_duels MODIFY COLUMN id INT(11) NOT NULL AUTO_INCREMENT", 3);
+            ExecuteMigrationStep("010_ensure_duel_ids_autoincrement", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN id INT(11) NULL FIRST", 4);
+            ExecuteMigrationStep("010_ensure_duel_ids_autoincrement", "ALTER TABLE mgemod_duels_2v2 ADD UNIQUE KEY uq_mgemod_duels_2v2_id (id)", 5);
+            ExecuteMigrationStep("010_ensure_duel_ids_autoincrement", "ALTER TABLE mgemod_duels_2v2 MODIFY COLUMN id INT(11) NOT NULL AUTO_INCREMENT", 6);
+        }
+        default:
+        {
+            // Not needed outside MySQL; mark as complete for migration consistency.
+            int currentTime = GetTime();
+            char migrationQuery[256];
+            g_DB.Format(migrationQuery, sizeof(migrationQuery), "INSERT INTO mgemod_migrations (migration_name, executed_at) VALUES ('010_ensure_duel_ids_autoincrement', %d)", currentTime);
+            g_DB.Query(MarkMigrationCallback, migrationQuery);
+        }
+    }
+}
+
+// Normalizes round logs by storing scorer/victim slots instead of repeating SteamIDs each round.
+void Migration_011_RoundSlotNormalization()
+{
+    LogMessage("[Migration 011] Normalizing round logs to slot-based identity mapping");
+
+    switch (g_DatabaseType)
+    {
+        case DB_MYSQL:
+        {
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duels ADD COLUMN winner_slot TINYINT NULL DEFAULT NULL", 1);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duels ADD COLUMN loser_slot TINYINT NULL DEFAULT NULL", 2);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN winner_slot TINYINT NULL DEFAULT NULL", 3);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN winner2_slot TINYINT NULL DEFAULT NULL", 4);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN loser_slot TINYINT NULL DEFAULT NULL", 5);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN loser2_slot TINYINT NULL DEFAULT NULL", 6);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duel_rounds_1v1 ADD COLUMN scorer_slot TINYINT NULL DEFAULT NULL", 7);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duel_rounds_1v1 ADD COLUMN victim_slot TINYINT NULL DEFAULT NULL", 8);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duel_rounds_2v2 ADD COLUMN scorer_slot TINYINT NULL DEFAULT NULL", 9);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duel_rounds_2v2 ADD COLUMN victim_slot TINYINT NULL DEFAULT NULL", 10);
+
+            // Backfill duel-level slot mapping from historical round snapshots.
+            ExecuteMigrationStep("011_round_slot_normalization", "UPDATE mgemod_duels d INNER JOIN mgemod_duel_rounds_1v1 r ON r.duel_id = d.id SET d.winner_slot = 1 WHERE d.winner_slot IS NULL AND BINARY d.winner = BINARY r.slot1_steamid", 11);
+            ExecuteMigrationStep("011_round_slot_normalization", "UPDATE mgemod_duels d INNER JOIN mgemod_duel_rounds_1v1 r ON r.duel_id = d.id SET d.winner_slot = 2 WHERE d.winner_slot IS NULL AND BINARY d.winner = BINARY r.slot2_steamid", 12);
+            ExecuteMigrationStep("011_round_slot_normalization", "UPDATE mgemod_duels d INNER JOIN mgemod_duel_rounds_1v1 r ON r.duel_id = d.id SET d.loser_slot = 1 WHERE d.loser_slot IS NULL AND BINARY d.loser = BINARY r.slot1_steamid", 13);
+            ExecuteMigrationStep("011_round_slot_normalization", "UPDATE mgemod_duels d INNER JOIN mgemod_duel_rounds_1v1 r ON r.duel_id = d.id SET d.loser_slot = 2 WHERE d.loser_slot IS NULL AND BINARY d.loser = BINARY r.slot2_steamid", 14);
+            ExecuteMigrationStep("011_round_slot_normalization", "UPDATE mgemod_duels_2v2 d INNER JOIN mgemod_duel_rounds_2v2 r ON r.duel_id = d.id SET d.winner_slot = COALESCE(d.winner_slot, CASE WHEN BINARY d.winner = BINARY r.slot1_steamid THEN 1 WHEN BINARY d.winner = BINARY r.slot2_steamid THEN 2 WHEN BINARY d.winner = BINARY r.slot3_steamid THEN 3 WHEN BINARY d.winner = BINARY r.slot4_steamid THEN 4 ELSE NULL END), d.winner2_slot = COALESCE(d.winner2_slot, CASE WHEN BINARY d.winner2 = BINARY r.slot1_steamid THEN 1 WHEN BINARY d.winner2 = BINARY r.slot2_steamid THEN 2 WHEN BINARY d.winner2 = BINARY r.slot3_steamid THEN 3 WHEN BINARY d.winner2 = BINARY r.slot4_steamid THEN 4 ELSE NULL END), d.loser_slot = COALESCE(d.loser_slot, CASE WHEN BINARY d.loser = BINARY r.slot1_steamid THEN 1 WHEN BINARY d.loser = BINARY r.slot2_steamid THEN 2 WHEN BINARY d.loser = BINARY r.slot3_steamid THEN 3 WHEN BINARY d.loser = BINARY r.slot4_steamid THEN 4 ELSE NULL END), d.loser2_slot = COALESCE(d.loser2_slot, CASE WHEN BINARY d.loser2 = BINARY r.slot1_steamid THEN 1 WHEN BINARY d.loser2 = BINARY r.slot2_steamid THEN 2 WHEN BINARY d.loser2 = BINARY r.slot3_steamid THEN 3 WHEN BINARY d.loser2 = BINARY r.slot4_steamid THEN 4 ELSE NULL END) WHERE d.winner_slot IS NULL OR d.winner2_slot IS NULL OR d.loser_slot IS NULL OR d.loser2_slot IS NULL", 15);
+
+            // Backfill round scorer/victim slots from old round SteamID data.
+            ExecuteMigrationStep("011_round_slot_normalization", "UPDATE mgemod_duel_rounds_1v1 SET scorer_slot = CASE WHEN scorer_steamid = slot1_steamid THEN 1 WHEN scorer_steamid = slot2_steamid THEN 2 ELSE scorer_slot END WHERE scorer_slot IS NULL", 16);
+            ExecuteMigrationStep("011_round_slot_normalization", "UPDATE mgemod_duel_rounds_1v1 SET victim_slot = CASE WHEN victim_steamid = slot1_steamid THEN 1 WHEN victim_steamid = slot2_steamid THEN 2 ELSE victim_slot END WHERE victim_slot IS NULL", 17);
+            ExecuteMigrationStep("011_round_slot_normalization", "UPDATE mgemod_duel_rounds_2v2 SET scorer_slot = CASE WHEN scorer_steamid = slot1_steamid THEN 1 WHEN scorer_steamid = slot2_steamid THEN 2 WHEN scorer_steamid = slot3_steamid THEN 3 WHEN scorer_steamid = slot4_steamid THEN 4 ELSE scorer_slot END WHERE scorer_slot IS NULL", 18);
+            ExecuteMigrationStep("011_round_slot_normalization", "UPDATE mgemod_duel_rounds_2v2 SET victim_slot = CASE WHEN victim_steamid = slot1_steamid THEN 1 WHEN victim_steamid = slot2_steamid THEN 2 WHEN victim_steamid = slot3_steamid THEN 3 WHEN victim_steamid = slot4_steamid THEN 4 ELSE victim_slot END WHERE victim_slot IS NULL", 19);
+
+            // Drop old per-round SteamID columns to save storage.
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duel_rounds_1v1 DROP COLUMN scorer_steamid", 20);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duel_rounds_1v1 DROP COLUMN victim_steamid", 21);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duel_rounds_1v1 DROP COLUMN slot1_steamid", 22);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duel_rounds_1v1 DROP COLUMN slot2_steamid", 23);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duel_rounds_2v2 DROP COLUMN scorer_steamid", 24);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duel_rounds_2v2 DROP COLUMN victim_steamid", 25);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duel_rounds_2v2 DROP COLUMN slot1_steamid", 26);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duel_rounds_2v2 DROP COLUMN slot2_steamid", 27);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duel_rounds_2v2 DROP COLUMN slot3_steamid", 28);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duel_rounds_2v2 DROP COLUMN slot4_steamid", 29);
+        }
+        case DB_SQLITE:
+        {
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duels ADD COLUMN winner_slot INTEGER DEFAULT NULL", 1);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duels ADD COLUMN loser_slot INTEGER DEFAULT NULL", 2);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN winner_slot INTEGER DEFAULT NULL", 3);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN winner2_slot INTEGER DEFAULT NULL", 4);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN loser_slot INTEGER DEFAULT NULL", 5);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN loser2_slot INTEGER DEFAULT NULL", 6);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duel_rounds_1v1 ADD COLUMN scorer_slot INTEGER DEFAULT NULL", 7);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duel_rounds_1v1 ADD COLUMN victim_slot INTEGER DEFAULT NULL", 8);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duel_rounds_2v2 ADD COLUMN scorer_slot INTEGER DEFAULT NULL", 9);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duel_rounds_2v2 ADD COLUMN victim_slot INTEGER DEFAULT NULL", 10);
+        }
+        case DB_POSTGRESQL:
+        {
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duels ADD COLUMN winner_slot INTEGER DEFAULT NULL", 1);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duels ADD COLUMN loser_slot INTEGER DEFAULT NULL", 2);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN winner_slot INTEGER DEFAULT NULL", 3);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN winner2_slot INTEGER DEFAULT NULL", 4);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN loser_slot INTEGER DEFAULT NULL", 5);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN loser2_slot INTEGER DEFAULT NULL", 6);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duel_rounds_1v1 ADD COLUMN scorer_slot INTEGER DEFAULT NULL", 7);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duel_rounds_1v1 ADD COLUMN victim_slot INTEGER DEFAULT NULL", 8);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duel_rounds_2v2 ADD COLUMN scorer_slot INTEGER DEFAULT NULL", 9);
+            ExecuteMigrationStep("011_round_slot_normalization", "ALTER TABLE mgemod_duel_rounds_2v2 ADD COLUMN victim_slot INTEGER DEFAULT NULL", 10);
+        }
+    }
+}
+
+// Adds compact per-duel round JSON column for reduced storage footprint.
+void Migration_012_AddCompactRoundJson()
+{
+    LogMessage("[Migration 012] Adding compact round JSON columns to duel tables");
+
+    switch (g_DatabaseType)
+    {
+        case DB_SQLITE:
+        {
+            ExecuteMigrationStep("012_add_compact_round_json", "ALTER TABLE mgemod_duels ADD COLUMN rounds_compact_json TEXT DEFAULT NULL", 1);
+            ExecuteMigrationStep("012_add_compact_round_json", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN rounds_compact_json TEXT DEFAULT NULL", 2);
+        }
+        case DB_MYSQL:
+        {
+            ExecuteMigrationStep("012_add_compact_round_json", "ALTER TABLE mgemod_duels ADD COLUMN rounds_compact_json TEXT DEFAULT NULL", 1);
+            ExecuteMigrationStep("012_add_compact_round_json", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN rounds_compact_json TEXT DEFAULT NULL", 2);
+        }
+        case DB_POSTGRESQL:
+        {
+            ExecuteMigrationStep("012_add_compact_round_json", "ALTER TABLE mgemod_duels ADD COLUMN rounds_compact_json TEXT DEFAULT NULL", 1);
+            ExecuteMigrationStep("012_add_compact_round_json", "ALTER TABLE mgemod_duels_2v2 ADD COLUMN rounds_compact_json TEXT DEFAULT NULL", 2);
         }
     }
 }

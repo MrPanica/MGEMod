@@ -1,4 +1,4 @@
-/* Profile Page Styles */
+﻿/* Profile Page Styles */
 
 /* ==================== DUEL PAGE ==================== */
 .duel-page-content {
@@ -214,6 +214,217 @@
     color: #7d8590;
 }
 
+
+/* Duel rounds block */
+.duel-rounds-wrap {
+    margin-top: 22px;
+    padding: 16px;
+    background: #2d2d2d;
+    border: 1px solid #3a4250;
+    border-radius: 14px;
+    width: 100%;
+}
+
+.duel-rounds-wrap-timeline {
+    overflow: hidden;
+}
+
+.duel-rounds-title {
+    margin: 0 0 12px;
+    color: #e6edf3;
+    font-size: 30px;
+    font-weight: 800;
+}
+
+.duel-rounds-empty {
+    background: #1b2430;
+    border: 1px solid #2f3e52;
+    border-radius: 8px;
+    color: #9aa8b7;
+    padding: 12px;
+}
+
+.duel-rounds-timeline {
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 14px;
+    overflow-x: auto;
+    overflow-y: visible;
+    cursor: grab;
+    padding: 12px 6px;
+    -webkit-overflow-scrolling: touch;
+}
+
+.duel-rounds-timeline-dragging {
+    cursor: grabbing;
+    user-select: none;
+}
+
+.duel-round-timeline-item {
+    min-width: 260px;
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-rows: auto 90px auto;
+    gap: 10px;
+    align-items: center;
+}
+
+.duel-round-center {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.duel-round-center::before {
+    content: "";
+    position: absolute;
+    left: -12px;
+    right: -12px;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 4px;
+    border-radius: 999px;
+    background: #67c1f5;
+    opacity: 0.75;
+}
+
+.duel-round-timeline-item:first-child .duel-round-center::before {
+    left: 0;
+}
+
+.duel-round-timeline-item:last-child .duel-round-center::before {
+    right: 0;
+}
+
+.duel-round-center-pill {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 112px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid #cfd8e5;
+    background: #f7f9fc;
+    color: #1f2e46;
+    box-shadow: 0 2px 8px rgba(42, 55, 80, 0.08);
+    white-space: nowrap;
+}
+
+.duel-round-center-red {
+    border-color: #b26060;
+    box-shadow: 0 0 0 2px rgba(184, 70, 70, 0.25);
+}
+
+.duel-round-center-blu {
+    border-color: #6092b2;
+    box-shadow: 0 0 0 2px rgba(60, 137, 190, 0.25);
+}
+
+.duel-round-center-line1 {
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.duel-round-center-line2,
+.duel-round-center-line3 {
+    font-size: 11px;
+    font-weight: 700;
+    color: #40526e;
+}
+
+.duel-round-side {
+    display: grid;
+    gap: 10px;
+    justify-items: center;
+}
+
+.duel-round-side-top {
+    align-content: end;
+}
+
+.duel-round-side-bottom {
+    align-content: start;
+}
+
+.duel-round-card {
+    width: 100%;
+    max-width: 220px;
+    min-height: 118px;
+    padding: 10px;
+    border: 2px solid #4c5668;
+    border-radius: 8px;
+    background: #1e1e1e;
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.26);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 5px;
+}
+
+.duel-round-card-win {
+    border-color: #35bf67;
+    box-shadow: 0 0 0 2px rgba(53, 191, 103, 0.65), 0 10px 16px rgba(51, 153, 79, 0.28);
+}
+
+.duel-round-card-loss {
+    border-color: #e15a5a;
+    box-shadow: 0 0 0 2px rgba(225, 90, 90, 0.65), 0 10px 16px rgba(189, 68, 68, 0.28);
+}
+
+.duel-round-card-head {
+    font-size: 11px;
+    color: #9fb0c3;
+    width: 100%;
+}
+
+.duel-round-card-player {
+    font-size: 14px;
+    font-weight: 800;
+    color: #e9eff9;
+    word-break: break-word;
+}
+
+.duel-round-player-link {
+    color: #2d8ceb;
+    text-decoration: none;
+}
+
+.duel-round-player-link:hover {
+    text-decoration: underline;
+}
+
+.duel-round-card-meta {
+    font-size: 12px;
+    color: #bac7d6;
+    width: 100%;
+    word-break: break-word;
+}
+
+.duel-round-card-meta span {
+    color: #dfe7f0;
+}
+
+.duel-round-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.duel-round-badge-scorer {
+    background: rgba(35, 134, 54, 0.25);
+    color: #57d676;
+    border: 1px solid rgba(35, 134, 54, 0.45);
+}
 /* ==================== MATCHUP GRID ==================== */
 .matchup-cell:hover {
     opacity: 1 !important;
@@ -289,6 +500,15 @@
         flex-direction: column;
         align-items: center;
     }
+    .duel-rounds-timeline {
+        gap: 10px;
+    }
+
+    .duel-round-timeline-item {
+        min-width: 220px;
+        grid-template-rows: auto 80px auto;
+    }
+
 
     .duel-score-display {
         order: -1;
@@ -299,3 +519,7 @@
         width: 100%;
     }
 }
+
+
+
+

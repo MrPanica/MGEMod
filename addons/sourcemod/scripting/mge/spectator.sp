@@ -1,6 +1,8 @@
 
 // ===== SPECTATOR HUD MANAGEMENT =====
 
+#define OBS_MODE_ROAMING 6
+
 // Displays countdown messages to spectators watching a specific arena
 void ShowCountdownToSpec(int arena_index, char[] text)
 {
@@ -49,14 +51,30 @@ Action Timer_SpecHudToAllArenas(Handle timer, int userid)
 }
 
 // Changes dead player to spectator team after delay
-Action Timer_ChangePlayerSpec(Handle timer, any player)
+Action Timer_ChangePlayerSpec(Handle timer, any userid)
 {
-    if (IsValidClient(player) && !IsPlayerAlive(player))
+    int player = GetClientOfUserId(userid);
+    if (!IsValidClient(player))
+        return Plugin_Stop;
+
+    if (g_hPlayerWaitingSpecTimer[player] != timer)
+        return Plugin_Stop;
+
+    g_hPlayerWaitingSpecTimer[player] = null;
+
+    if (!g_iPlayerWaiting[player])
+        return Plugin_Stop;
+
+    int arena_index = g_iPlayerArena[player];
+    if (!arena_index || !g_bFourPersonArena[arena_index])
+        return Plugin_Stop;
+
+    if (!IsPlayerAlive(player) && GetClientTeam(player) != TEAM_SPEC)
     {
         ChangeClientTeam(player, TEAM_SPEC);
     }
     
-    return Plugin_Continue;
+    return Plugin_Stop;
 }
 
 // Updates spectator target and refreshes HUD when target changes
@@ -134,19 +152,61 @@ Action Command_SpecNavigation(int client, const char[] command, int args)
     if (!IsValidClient(client) || GetClientTeam(client) != TEAM_SPEC || g_iPlayerArena[client] > 0)
         return Plugin_Continue;
 
+    bool isNext = StrEqual(command, "spec_next");
+    bool isPrev = StrEqual(command, "spec_prev");
+    if (!isNext && !isPrev)
+        return Plugin_Continue;
+
+    int observer_mode = GetEntProp(client, Prop_Send, "m_iObserverMode");
+    if (observer_mode == OBS_MODE_ROAMING)
+    {
+        // In free-roam mode let the engine handle navigation/state transitions.
+        return Plugin_Continue;
+    }
+
     // Get current target
     int current_target = GetEntPropEnt(client, Prop_Send, "m_hObserverTarget");
 
-    // Find all valid arena players
+    // Find all valid arena players in deterministic order: arena -> slot.
     int valid_targets[MAXPLAYERS + 1];
     int target_count = 0;
 
-    for (int i = 1; i <= MaxClients; i++)
+    for (int arena = 1; arena <= g_iArenaCount; arena++)
     {
-        if (IsValidClient(i) && g_iPlayerArena[i] > 0 && IsPlayerAlive(i))
+        int maxSlot = g_bArenaNoFight[arena] ? MAXPLAYERS : (g_bFourPersonArena[arena] ? SLOT_FOUR : SLOT_TWO);
+        if (maxSlot > MAXPLAYERS)
+            maxSlot = MAXPLAYERS;
+
+        for (int slot = SLOT_ONE; slot <= maxSlot; slot++)
         {
-            valid_targets[target_count++] = i;
+            int target = g_iArenaQueue[arena][slot];
+            if (!IsValidClient(target))
+                continue;
+            if (g_iPlayerArena[target] != arena)
+                continue;
+            if (!IsPlayerAlive(target))
+                continue;
+
+            bool alreadyAdded = false;
+            for (int i = 0; i < target_count; i++)
+            {
+                if (valid_targets[i] == target)
+                {
+                    alreadyAdded = true;
+                    break;
+                }
+            }
+
+            if (alreadyAdded)
+                continue;
+
+            valid_targets[target_count++] = target;
+            if (target_count >= MAXPLAYERS)
+                break;
         }
+
+        if (target_count >= MAXPLAYERS)
+            break;
     }
 
     if (target_count == 0)
@@ -165,11 +225,15 @@ Action Command_SpecNavigation(int client, const char[] command, int args)
 
     // Determine next target based on command
     int next_index;
-    if (StrEqual(command, "spec_next"))
+    if (current_index == -1)
+    {
+        next_index = isNext ? 0 : (target_count - 1);
+    }
+    else if (isNext)
     {
         next_index = (current_index + 1) % target_count;
     }
-    else if (StrEqual(command, "spec_prev"))
+    else if (isPrev)
     {
         next_index = (current_index - 1 + target_count) % target_count;
     }
@@ -180,8 +244,19 @@ Action Command_SpecNavigation(int client, const char[] command, int args)
 
     // Set new target
     int new_target = valid_targets[next_index];
-    SetEntPropEnt(client, Prop_Send, "m_hObserverTarget", new_target);
-    SetEntProp(client, Prop_Send, "m_iObserverMode", 4); // Third person mode
+    if (!IsValidClient(new_target) || !IsPlayerAlive(new_target) || g_iPlayerArena[new_target] <= 0)
+        return Plugin_Continue;
+
+    if (new_target != current_target)
+    {
+        SetEntPropEnt(client, Prop_Send, "m_hObserverTarget", new_target);
+    }
+
+    // Preserve spectator mode instead of forcing a fixed observer mode.
+    if (GetEntProp(client, Prop_Send, "m_iObserverMode") != observer_mode)
+    {
+        SetEntProp(client, Prop_Send, "m_iObserverMode", observer_mode);
+    }
 
     // Update HUD
     g_iPlayerSpecTarget[client] = new_target;

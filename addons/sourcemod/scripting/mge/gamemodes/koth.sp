@@ -1,42 +1,42 @@
 // ===== ENTITY MANAGEMENT =====
 
+void RefreshKothCapturePointForArena(int arena_index)
+{
+    if (arena_index <= 0 || arena_index > g_iArenaCount || !g_bArenaKoth[arena_index])
+        return;
+
+    float point_loc[3];
+    point_loc[0] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index]][0];
+    point_loc[1] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index]][1];
+    point_loc[2] = g_fArenaSpawnOrigin[arena_index][g_iArenaSpawns[arena_index]][2];
+
+    if (IsValidEdict(g_iCapturePoint[arena_index]) && g_iCapturePoint[arena_index] > 0)
+        RemoveEdict(g_iCapturePoint[arena_index]);
+    g_iCapturePoint[arena_index] = -1;
+
+    g_iCapturePoint[arena_index] = CreateEntityByName("item_ammopack_small");
+    if (g_iCapturePoint[arena_index] == -1)
+        return;
+
+    TeleportEntity(g_iCapturePoint[arena_index], point_loc, NULL_VECTOR, NULL_VECTOR);
+    DispatchSpawn(g_iCapturePoint[arena_index]);
+    SetEntProp(g_iCapturePoint[arena_index], Prop_Send, "m_iTeamNum", 1, 4);
+    SetEntityModel(g_iCapturePoint[arena_index], MODEL_POINT);
+    DispatchKeyValue(g_iCapturePoint[arena_index], "powerup_model", MODEL_BRIEFCASE);
+
+    SDKHook(g_iCapturePoint[arena_index], SDKHook_StartTouch, OnTouchPoint);
+    SDKHook(g_iCapturePoint[arena_index], SDKHook_EndTouch, OnEndTouchPoint);
+
+    AcceptEntityInput(g_iCapturePoint[arena_index], "Disable");
+}
+
 // Setup KOTH capture points for all KOTH arenas during round start
 void SetupKothCapturePoints()
 {
     for (int i = 0; i <= g_iArenaCount; i++)
     {
         if (g_bArenaKoth[i])
-        {
-            float point_loc[3];
-            point_loc[0] = g_fArenaSpawnOrigin[i][g_iArenaSpawns[i]][0];
-            point_loc[1] = g_fArenaSpawnOrigin[i][g_iArenaSpawns[i]][1];
-            point_loc[2] = g_fArenaSpawnOrigin[i][g_iArenaSpawns[i]][2];
-
-            if (IsValidEdict(g_iCapturePoint[i]) && g_iCapturePoint[i] > 0)
-            {
-                RemoveEdict(g_iCapturePoint[i]);
-                g_iCapturePoint[i] = -1;
-            }
-            else if (g_iCapturePoint[i] != -1)
-            {
-                g_iCapturePoint[i] = -1;
-            }
-
-            if (g_iCapturePoint[i] == -1)
-            {
-                g_iCapturePoint[i] = CreateEntityByName("item_ammopack_small");
-                TeleportEntity(g_iCapturePoint[i], point_loc, NULL_VECTOR, NULL_VECTOR);
-                DispatchSpawn(g_iCapturePoint[i]);
-                SetEntProp(g_iCapturePoint[i], Prop_Send, "m_iTeamNum", 1, 4);
-                SetEntityModel(g_iCapturePoint[i], MODEL_POINT);
-                DispatchKeyValue(g_iCapturePoint[i], "powerup_model", MODEL_BRIEFCASE);
-
-                SDKHook(g_iCapturePoint[i], SDKHook_StartTouch, OnTouchPoint);
-                SDKHook(g_iCapturePoint[i], SDKHook_EndTouch, OnEndTouchPoint);
-            }
-
-            AcceptEntityInput(g_iCapturePoint[i], "Disable");
-        }
+            RefreshKothCapturePointForArena(i);
     }
 }
 
@@ -269,7 +269,11 @@ void ProcessKothArenaCapture(int arena_index)
 void EndKoth(any arena_index, any winner_team)
 {
     PlayEndgameSoundsToArena(arena_index, winner_team);
+    int score_red_before = g_iArenaScore[arena_index][SLOT_ONE];
+    int score_blu_before = g_iArenaScore[arena_index][SLOT_TWO];
     g_iArenaScore[arena_index][winner_team] += 1;
+    int score_red_after = g_iArenaScore[arena_index][SLOT_ONE];
+    int score_blu_after = g_iArenaScore[arena_index][SLOT_TWO];
     int fraglimit = g_iArenaFraglimit[arena_index];
     int client = g_iArenaQueue[arena_index][winner_team];
     int client_slot = winner_team;
@@ -291,6 +295,8 @@ void EndKoth(any arena_index, any winner_team)
         client_teammate = GetPlayerTeammate(client_slot, arena_index);
         foe_teammate = GetPlayerTeammate(foe_slot, arena_index);
     }
+
+    RecordArenaRoundEnd(arena_index, winner_team, RoundEndReason_KothCap, client, 0, GetClientScoringWeaponDefIndex(client), score_red_before, score_blu_before, score_red_after, score_blu_after);
 
     if (fraglimit > 0 && g_iArenaScore[arena_index][winner_team] >= fraglimit && g_iArenaStatus[arena_index] >= AS_FIGHT && g_iArenaStatus[arena_index] < AS_REPORTED)
     {
@@ -368,6 +374,7 @@ void EndKoth(any arena_index, any winner_team)
         g_bOvertimePlayed[arena_index][TEAM_BLU] = false;
         g_tKothTimer[arena_index] = CreateTimer(1.0, Timer_CountDownKoth, arena_index, TIMER_REPEAT);
         g_bTimerRunning[arena_index] = true;
+        StartArenaRoundLogging(arena_index);
     }
 
     UpdateHud(client);

@@ -41,11 +41,14 @@ char g_sMapName[256];
 
 bool g_bBlockFallDamage,
      g_bAutoCvar,
+     g_bLogDuelRounds,
      g_b2v2SkipCountdown,
      g_b2v2Elo,
      g_bClearProjectiles,
      g_bClearPlayerEntities,
      g_bDebugWadd,
+     g_bDebugTeleport,
+     g_bDebugWeaponRules,
      g_bAllowUnverifiedPlayers,
      g_bVipQueuePriority;
 
@@ -59,10 +62,15 @@ Handle g_hDBReconnectTimer;
 Handle g_hTopRatingTimer; // Timer for displaying top online player rating
 Handle g_hSpecHudTimer;
 Handle g_hQueueKeyHintTimer;
-Handle g_hQueueDisplayTimer;
+Handle g_hMapWorldTextTimer;
+Handle g_hMapWorldTextApplyTimer;
+Handle g_hBBallIntelSpinTimer[MAXARENAS + 1];
+Handle g_hBBallScoreboardTimer;
+Handle g_hPlayerWaitingSpecTimer[MAXPLAYERS + 1];
 
 char g_sDBConfig[256];
 int g_iReconnectInterval;
+int g_iServerId;
 
 // Global CVar Handles
 Convar
@@ -70,6 +78,8 @@ Convar
     gcvar_allowedClasses,
     gcvar_blockFallDamage,
     gcvar_dbConfig,
+    gcvar_serverId,
+    gcvar_logDuelRounds,
     gcvar_midairHP,
     gcvar_airshotHeight,
     gcvar_RocketForceX,
@@ -86,8 +96,14 @@ Convar
     gcvar_clearProjectiles,
     gcvar_clearPlayerEntities,
     gcvar_debugWadd,
+    gcvar_debugTeleport,
+    gcvar_debugWeaponRules,
+    gcvar_perfDebug,
     gcvar_allowUnverifiedPlayers,
     gcvar_vipQueuePriority,
+    gcvar_queueHintInterval,
+    gcvar_bballSpinInterval,
+    gcvar_mapWorldText,
     g_cvarPlayArenaSound;
 
 // Classes
@@ -103,12 +119,25 @@ char
     // Cap point trggier name for KOTH
     g_sArenaCapTrigger      [MAXARENAS + 1][64],
     // Cap point name for KOTH
-    g_sArenaCap             [MAXARENAS + 1][64];
+    g_sArenaCap             [MAXARENAS + 1][64],
+    g_sArenaBBallHoopTriggerRed [MAXARENAS + 1][64],
+    g_sArenaBBallHoopTriggerBlu [MAXARENAS + 1][64];
 
 float
     g_fArenaSpawnOrigin     [MAXARENAS + 1][MAXSPAWNS+1][3],
     g_fArenaSpawnAngles     [MAXARENAS + 1][MAXSPAWNS+1][3],
+    g_fArenaRedSpawnOrigin  [MAXARENAS + 1][MAXSPAWNS+1][3],
+    g_fArenaRedSpawnAngles  [MAXARENAS + 1][MAXSPAWNS+1][3],
+    g_fArenaBluSpawnOrigin  [MAXARENAS + 1][MAXSPAWNS+1][3],
+    g_fArenaBluSpawnAngles  [MAXARENAS + 1][MAXSPAWNS+1][3],
+    g_fArenaBBallIntelSpawn [MAXARENAS + 1][3],
+    g_fArenaBBallIntelSpawnRed [MAXARENAS + 1][3],
+    g_fArenaBBallIntelSpawnBlu [MAXARENAS + 1][3],
+    g_fArenaBBallHoopSpawn [MAXARENAS + 1][3],
+    g_fArenaBBallHoopSpawnRed [MAXARENAS + 1][3],
+    g_fArenaBBallHoopSpawnBlu [MAXARENAS + 1][3],
     g_fArenaHPRatio         [MAXARENAS + 1],
+    g_fArenaClassHPRatio    [MAXARENAS + 1][10],
     g_fArenaMinSpawnDist    [MAXARENAS + 1],
     g_fArenaRespawnTime     [MAXARENAS + 1],
     g_fKothCappedPercent    [MAXARENAS + 1],
@@ -138,6 +167,19 @@ bool
     g_bArenaHasCapTrigger   [MAXARENAS + 1],
     g_bArenaBoostVectors    [MAXARENAS + 1],
     g_bArenaClassChange     [MAXARENAS + 1];
+bool g_bArenaNoFight       [MAXARENAS + 1];
+bool g_bArenaBBallIntelSpawnSet [MAXARENAS + 1];
+bool g_bArenaBBallIntelSpawnRedSet [MAXARENAS + 1];
+bool g_bArenaBBallIntelSpawnBluSet [MAXARENAS + 1];
+bool g_bArenaBBallHoopSpawnSet [MAXARENAS + 1];
+bool g_bArenaBBallHoopSpawnRedSet [MAXARENAS + 1];
+bool g_bArenaBBallHoopSpawnBluSet [MAXARENAS + 1];
+bool g_bArenaBBallHoopTriggerRedSet [MAXARENAS + 1];
+bool g_bArenaBBallHoopTriggerBluSet [MAXARENAS + 1];
+bool g_bArenaUseTeamSpawns [MAXARENAS + 1];
+bool g_bArenaNearSpawn     [MAXARENAS + 1];
+bool g_bArenaPendingBBallEntityRefresh [MAXARENAS + 1];
+bool g_bArenaPendingKothEntityRefresh [MAXARENAS + 1];
 
 int
     g_iArenaCount,
@@ -162,9 +204,16 @@ int
     g_iArenaMaxRating       [MAXARENAS + 1],
     g_iArenaCdTime          [MAXARENAS + 1],
     g_iArenaSpawns          [MAXARENAS + 1],
+    g_iArenaRedSpawns       [MAXARENAS + 1],
+    g_iArenaBluSpawns       [MAXARENAS + 1],
     //                      [What arena the hoop is in][Hoop 1 or Hoop 2]
     g_iBBallHoop            [MAXARENAS + 1][3],
+    g_iBBallHoopTrigger     [MAXARENAS + 1][3],
     g_iBBallIntel           [MAXARENAS + 1],
+    g_iBBallIntelWorldParticle [MAXARENAS + 1],
+    g_iBBallIntelSkinTeam   [MAXARENAS + 1],
+    g_iBBallTimerEntRef     [MAXARENAS + 1][4],
+    g_iBBallScoreEntRef     [MAXARENAS + 1][2][2],
     g_iArenaEarlyLeave      [MAXARENAS + 1],
     g_iPublicInviteArena    [MAXARENAS + 1],
     g_iTopPlayersPage       [MAXPLAYERS + 1],
@@ -186,6 +235,7 @@ char g_sPlayerSteamID       [MAXPLAYERS + 1][32]; // Saving steamid
 bool
     g_bPlayerTakenDirectHit [MAXPLAYERS + 1],// Player was hit directly
     g_bPlayerRestoringAmmo  [MAXPLAYERS + 1],// Player is awaiting full ammo restore
+    g_bSkipNextSpawnTeleport [MAXPLAYERS + 1],// Skip Event_PlayerSpawn teleport once (ResetPlayer already queued it)
     g_bPlayerHasIntel       [MAXPLAYERS + 1],
     g_bScoreboardOpen       [MAXPLAYERS + 1],
     g_bWaddMenu             [MAXPLAYERS + 1],
@@ -197,13 +247,20 @@ bool
     g_bCanPlayerGetIntel    [MAXPLAYERS + 1],
     g_bPlayerEloVerified    [MAXPLAYERS + 1]; // ELO loaded from authenticated Steam account
 
+bool g_bSetSpawnAwaitInput [MAXPLAYERS + 1];
+int g_iSetSpawnArena       [MAXPLAYERS + 1];
+int g_iSetSpawnMode        [MAXPLAYERS + 1];
+
 int
     g_iPlayerArena          [MAXPLAYERS + 1],
     g_iPlayerSlot           [MAXPLAYERS + 1],
+    g_iTeleportRevision     [MAXPLAYERS + 1],
+    g_iPlayerRespawnroomTouchDepth [MAXPLAYERS + 1],
     g_iPlayerHP             [MAXPLAYERS + 1], // True HP of players
     g_iPlayerSpecTarget     [MAXPLAYERS + 1],
     g_iPlayerMaxHP          [MAXPLAYERS + 1],
     g_iClientParticle       [MAXPLAYERS + 1],
+    g_iBBallBackModel       [MAXPLAYERS + 1],
     g_iPlayerClip           [MAXPLAYERS + 1][3],
     g_iPlayerWins           [MAXPLAYERS + 1],
     g_iPlayerLosses         [MAXPLAYERS + 1],
@@ -215,6 +272,8 @@ int
     
 // Track matchup interactions during a duel: [player][myClass][opponentClass] = count
 int g_iPlayerMatchupCount   [MAXPLAYERS + 1][10][10];
+// Dirty flags for matchup ratings changed during duel; used to avoid full 9x9 DB writes
+bool g_bPlayerMatchupDirty  [MAXPLAYERS + 1][10][10];
 
 // Pending arena context used when presenting menus without committing to arena changes yet
 int g_iPendingArena[MAXPLAYERS + 1];
@@ -229,6 +288,14 @@ TFClassType g_tfctPlayerDuelClass[MAXPLAYERS + 1];
 
 // Track all classes used during a duel (for arenas with class changes allowed)
 ArrayList g_alPlayerDuelClasses[MAXPLAYERS + 1];
+// Track all weapon item definition indexes used during a duel
+ArrayList g_alPlayerDuelWeaponIds[MAXPLAYERS + 1];
+// Per-arena completed round logs for current duel
+ArrayList g_alArenaRoundLogs[MAXARENAS + 1];
+int g_iArenaRoundNumber[MAXARENAS + 1];
+int g_iArenaRoundStartTime[MAXARENAS + 1];
+float g_fArenaRoundStartGameTime[MAXARENAS + 1];
+bool g_bArenaRoundInProgress[MAXARENAS + 1];
 
 // Bot things
 bool g_bPlayerAskedForBot[MAXPLAYERS + 1];
@@ -246,6 +313,61 @@ float g_fPlayerAddCooldown[MAXPLAYERS + 1]; // Last time player used 'add' comma
 ArrayList g_alArenaWaitingList[MAXARENAS + 1]; // Players waiting for arenas to become available
 bool g_bPlayArenaSound; // Whether to play sound when player auto-joins arena
 bool g_bPlayerAddedViaWadd[MAXPLAYERS + 1]; // Track if player was added via wadd command
+
+// Map worldtext integration
+char g_sCurrentCameraName[64];
+int g_iCurrentCameraIndex;
+int g_iCurrentCameraArenaIndex;
+char g_sTop10WorldTextNames[10][MAX_NAME_LENGTH * 2];
+char g_sLastTvText[128];
+char g_sLastTopMvpText[MAX_NAME_LENGTH * 2];
+float g_fNextTopMvpWorldTextUpdate;
+bool g_bMapWorldTextApplyPending;
+bool g_bTvTextVisible;
+
+// Arena POV camera mode
+bool g_bCameraPovMode;
+int g_iCameraPovTarget;
+int g_iCameraPovArenaIndex;
+int g_iCameraPovListIndex;
+int g_iCameraSpectateEntity;
+bool g_bCameraPovCameraPoseSaved;
+int g_iCameraPovMovedCameraEnt;
+int g_iCameraPovAttachedTargetSpectate;
+int g_iCameraPovAttachedTargetArenaCam;
+float g_fCameraPovSavedOrigin[3];
+float g_fCameraPovSavedAngles[3];
+Handle g_hCameraPovFollowTimer;
+
+// Arena HP helpers
+float GetArenaHpRatioByClass(int arena_index, TFClassType playerClass)
+{
+    int classId = view_as<int>(playerClass);
+    if (arena_index <= 0 || arena_index > MAXARENAS || classId < 1 || classId > 9)
+        return 1.0;
+
+    return g_fArenaClassHPRatio[arena_index][classId];
+}
+
+float GetArenaHpRatioForClient(int client, int arena_index)
+{
+    if (!IsValidClient(client))
+        return g_fArenaHPRatio[arena_index];
+
+    TFClassType playerClass = g_tfctPlayerClass[client];
+    if (playerClass == TFClass_Unknown)
+        playerClass = TF2_GetPlayerClass(client);
+
+    float ratio = GetArenaHpRatioByClass(arena_index, playerClass);
+    if (ratio <= 0.0)
+        ratio = g_fArenaHPRatio[arena_index];
+    return ratio;
+}
+
+int GetArenaTargetHPForClient(int client, int arena_index, int maxHP)
+{
+    return RoundToNearest(float(maxHP) * GetArenaHpRatioForClient(client, arena_index));
+}
 
 // Midair
 int g_iMidairHP;

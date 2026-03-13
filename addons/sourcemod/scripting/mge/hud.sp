@@ -1,6 +1,10 @@
 
 // ===== HUD DISPLAY CORE =====
 
+#define HUD_LEFT_X 0.01
+#define HUD_LOWER_LEFT_Y 0.80
+#define HUD_BBALL_STATUS_Y 0.74
+
 // Unified HUD update method that handles both players and spectators
 void UpdateHud(int client)
 {
@@ -102,6 +106,7 @@ void ShowCriticalGameInfo(int client, int arena_index)
     {
         // BBall arenas show intel status instead of regular health display
         char hud_text[128];
+        SetHudTextParams(HUD_LEFT_X, HUD_BBALL_STATUS_Y, HUDFADEOUTTIME, 255, 255, 255, 255);
         if (g_bPlayerHasIntel[client])
         {
             Format(hud_text, sizeof(hud_text), "%T", "YouHaveTheIntel", client);
@@ -132,22 +137,22 @@ void ShowCriticalGameInfo(int client, int arena_index)
         // Regular health display for non-BBall arenas
         if (g_bArenaShowHPToPlayers[arena_index])
         {
-            float hp_ratio = ((float(g_iPlayerHP[client])) / (float(g_iPlayerMaxHP[client]) * g_fArenaHPRatio[arena_index]));
+            float hp_ratio = ((float(g_iPlayerHP[client])) / (float(g_iPlayerMaxHP[client]) * GetArenaHpRatioForClient(client, arena_index)));
             if (hp_ratio > 0.66)
-                SetHudTextParams(0.01, 0.80, HUDFADEOUTTIME, 0, 255, 0, 255); // Green
+                SetHudTextParams(HUD_LEFT_X, HUD_LOWER_LEFT_Y, HUDFADEOUTTIME, 0, 255, 0, 255); // Green
             else if (hp_ratio >= 0.33)
-                SetHudTextParams(0.01, 0.80, HUDFADEOUTTIME, 255, 255, 0, 255); // Yellow
+                SetHudTextParams(HUD_LEFT_X, HUD_LOWER_LEFT_Y, HUDFADEOUTTIME, 255, 255, 0, 255); // Yellow
             else if (hp_ratio < 0.33)
-                SetHudTextParams(0.01, 0.80, HUDFADEOUTTIME, 255, 0, 0, 255); // Red
+                SetHudTextParams(HUD_LEFT_X, HUD_LOWER_LEFT_Y, HUDFADEOUTTIME, 255, 0, 0, 255); // Red
             else
-                SetHudTextParams(0.01, 0.80, HUDFADEOUTTIME, 255, 255, 255, 255); // White
+                SetHudTextParams(HUD_LEFT_X, HUD_LOWER_LEFT_Y, HUDFADEOUTTIME, 255, 255, 255, 255); // White
 
             ClearSyncHud(client, hm_HP);
             ShowSyncHudText(client, hm_HP, "Health : %d", g_iPlayerHP[client]);
         }
         else
         {
-            SetHudTextParams(0.01, 0.80, HUDFADEOUTTIME, 255, 255, 255, 255);
+            SetHudTextParams(HUD_LEFT_X, HUD_LOWER_LEFT_Y, HUDFADEOUTTIME, 255, 255, 255, 255);
             ClearSyncHud(client, hm_HP);
             ShowSyncHudText(client, hm_HP, "", g_iPlayerHP[client]);
         }
@@ -158,7 +163,7 @@ void ShowCriticalGameInfo(int client, int arena_index)
     {
         char hp_report[128];
         Format(hp_report, sizeof(hp_report), "%N : %d", client_teammate, g_iPlayerHP[client_teammate]);
-        SetHudTextParams(0.01, 0.80, HUDFADEOUTTIME, 255, 255, 255, 255);
+        SetHudTextParams(HUD_LEFT_X, HUD_LOWER_LEFT_Y, HUDFADEOUTTIME, 255, 255, 255, 255);
         ClearSyncHud(client, hm_TeammateHP);
         ShowSyncHudText(client, hm_TeammateHP, hp_report);
     }
@@ -197,7 +202,7 @@ void ShowFullHud(int client, int arena_index, bool is_spectator)
                 Format(hp_report, sizeof(hp_report), "%s\n%N : %d", hp_report, blu_f1, g_iPlayerHP[blu_f1]);
         }
 
-        SetHudTextParams(0.01, 0.80, HUDFADEOUTTIME, 255, 255, 255, 255);
+        SetHudTextParams(HUD_LEFT_X, HUD_LOWER_LEFT_Y, HUDFADEOUTTIME, 255, 255, 255, 255);
         ClearSyncHud(client, hm_HP);
         ShowSyncHudText(client, hm_HP, hp_report);
     }
@@ -205,6 +210,13 @@ void ShowFullHud(int client, int arena_index, bool is_spectator)
     {
         // Players get critical info first, then score
         ShowCriticalGameInfo(client, arena_index);
+    }
+
+    // In nofight arenas, hide left arena HUD for players.
+    if (!is_spectator && g_bArenaNoFight[arena_index])
+    {
+        ClearSyncHud(client, hm_Score);
+        return;
     }
 
     // Both players and spectators get score display (now includes battle timer in arena name)
@@ -496,6 +508,12 @@ void ShowQueueInKeyHintText(int client, int arena_index)
     if (g_bScoreboardOpen[client])
         return;
 
+    if (g_bArenaNoFight[arena_index])
+    {
+        ClearQueueKeyHintText(client);
+        return;
+    }
+
     // Check if player wants to see queue
     if (!g_bShowQueue[client])
     {
@@ -551,11 +569,11 @@ void ShowQueueInKeyHintText(int client, int arena_index)
         }
     }
 
-    // Always send KeyHintText message (empty if no queue)
-    Client_PrintKeyHintText(client, "%s", queueMessage);
+    // Send only when text changes to reduce usermessage spam.
+    SendQueueKeyHintTextIfChanged(client, queueMessage);
 }
 
-// Timer callback to update queue keyhint every 10 seconds
+// Timer callback to update queue keyhint
 Action Timer_UpdateQueueKeyHint(Handle timer)
 {
     for (int i = 1; i <= g_iArenaCount; i++)
@@ -570,6 +588,17 @@ void UpdateQueueKeyHintText(int arena_index)
 {
     if (arena_index <= 0 || arena_index > g_iArenaCount)
         return;
+
+    if (g_bArenaNoFight[arena_index])
+    {
+        for (int i = 1; i < MAXPLAYERS; i++)
+        {
+            int player = g_iArenaQueue[arena_index][i];
+            if (player != 0 && IsValidClient(player))
+                ClearQueueKeyHintText(player);
+        }
+        return;
+    }
 
     // Update for all players in the arena
     for (int i = SLOT_ONE; i <= (g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO); i++)
@@ -609,20 +638,24 @@ void ClearQueueKeyHintText(int client)
     if (g_bScoreboardOpen[client])
         return;
 
-    // Send empty KeyHintText to clear it
-    Client_PrintKeyHintText(client, "");
+    SendQueueKeyHintTextIfChanged(client, "");
 }
 
-// Timer function to update queue display every 10 seconds
-Action Timer_UpdateQueueDisplay(Handle timer)
+void SendQueueKeyHintTextIfChanged(int client, const char[] text)
 {
-    // Update queue display for all arenas
-    for (int i = 1; i <= g_iArenaCount; i++)
-    {
-        UpdateQueueKeyHintText(i);
-    }
-    
-    return Plugin_Continue;
+    if (!IsValidClient(client))
+        return;
+
+    float now = GetGameTime();
+    bool textChanged = !StrEqual(g_sLastQueueHintText[client], text, false);
+    bool keepAliveDue = (now - g_fLastQueueHintSentAt[client]) >= QUEUE_KEYHINT_KEEPALIVE_SEC;
+
+    if (!textChanged && !keepAliveDue)
+        return;
+
+    strcopy(g_sLastQueueHintText[client], sizeof(g_sLastQueueHintText[]), text);
+    if (Client_PrintKeyHintText(client, "%s", text))
+        g_fLastQueueHintSentAt[client] = now;
 }
 
 // Helper function to print KeyHintText with proper protobuf support

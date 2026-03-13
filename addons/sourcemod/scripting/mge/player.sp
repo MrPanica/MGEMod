@@ -10,10 +10,23 @@ void HandleClientConnection(int client)
     ChangeClientTeam(client, TEAM_SPEC);
     g_bShowHud[client] = true;
     g_bPlayerRestoringAmmo[client] = false;
+    g_bSkipNextSpawnTeleport[client] = false;
     g_bPlayerEloVerified[client] = false;
     g_bPlayerAddedViaWadd[client] = false;
     g_bScoreboardOpen[client] = false;
     g_bWaddMenu[client] = false;
+    g_iPlayerRespawnroomTouchDepth[client] = 0;
+    g_iTeleportRevision[client] = 0;
+    g_bSkipNextSpawnTeleport[client] = false;
+    g_bSetSpawnAwaitInput[client] = false;
+    g_iSetSpawnArena[client] = 0;
+    g_iSetSpawnMode[client] = 0;
+    g_iPlayerWaiting[client] = false;
+    if (g_hPlayerWaitingSpecTimer[client] != null)
+    {
+        delete g_hPlayerWaitingSpecTimer[client];
+        g_hPlayerWaitingSpecTimer[client] = null;
+    }
     
     // Clear any inherited statistics data immediately (but preserve if already properly loaded)
     // This prevents stats from being inherited from previous client in the same slot
@@ -33,11 +46,22 @@ void HandleClientConnection(int client)
             }
         }
     }
+
+    for (int classId = 1; classId <= 9; classId++)
+    {
+        for (int oppClassId = 1; oppClassId <= 9; oppClassId++)
+            g_bPlayerMatchupDirty[client][classId][oppClassId] = false;
+    }
     
     // Initialize class tracking ArrayList
     if (g_alPlayerDuelClasses[client] != null)
         delete g_alPlayerDuelClasses[client];
     g_alPlayerDuelClasses[client] = new ArrayList();
+
+    // Initialize weapon tracking ArrayList
+    if (g_alPlayerDuelWeaponIds[client] != null)
+        delete g_alPlayerDuelWeaponIds[client];
+    g_alPlayerDuelWeaponIds[client] = new ArrayList();
     
     // Try to load player stats (will retry in HandleClientAuthentication if Steam ID not ready)
     TryLoadPlayerStats(client, false);
@@ -72,6 +96,7 @@ void HandleClientAuthentication(int client)
                     for (int oppClassId = 1; oppClassId <= 9; oppClassId++)
                     {
                         g_iPlayerClassRating[client][classId][oppClassId] = 1551;
+                        g_bPlayerMatchupDirty[client][classId][oppClassId] = false;
                     }
                 }
                 g_bPlayerAskedForBot[i] = false;
@@ -86,9 +111,102 @@ void HandleClientAuthentication(int client)
     }
 }
 
+void BumpTeleportRevision(int client, const char[] reason = "")
+{
+    if (client <= 0 || client > MaxClients)
+        return;
+
+    g_iTeleportRevision[client]++;
+
+    if (!g_bDebugTeleport)
+        return;
+
+    if (IsClientInGame(client))
+    {
+        LogMessage("[MGE tele][debug] rev bump client=%N rev=%d reason=%s arena=%d slot=%d",
+            client, g_iTeleportRevision[client], reason, g_iPlayerArena[client], g_iPlayerSlot[client]);
+    }
+    else
+    {
+        LogMessage("[MGE tele][debug] rev bump client=%d rev=%d reason=%s arena=%d slot=%d",
+            client, g_iTeleportRevision[client], reason, g_iPlayerArena[client], g_iPlayerSlot[client]);
+    }
+}
+
+bool IsTeleportContextCurrent(int client, int arena_index, int player_slot, int revision, const char[] phase, const char[] reason = "")
+{
+    if (!IsValidClient(client))
+    {
+        if (g_bDebugTeleport)
+            LogMessage("[MGE tele][debug] %s drop: invalid client userid context reason=%s", phase, reason);
+        return false;
+    }
+
+    if (revision != g_iTeleportRevision[client])
+    {
+        if (g_bDebugTeleport)
+        {
+            LogMessage("[MGE tele][debug] %s drop: stale revision client=%N queued_rev=%d current_rev=%d reason=%s",
+                phase, client, revision, g_iTeleportRevision[client], reason);
+        }
+        return false;
+    }
+
+    if (arena_index <= 0 || arena_index > g_iArenaCount)
+    {
+        if (g_bDebugTeleport)
+            LogMessage("[MGE tele][debug] %s drop: invalid arena client=%N arena=%d reason=%s", phase, client, arena_index, reason);
+        return false;
+    }
+
+    if (player_slot <= 0 || player_slot >= MAXPLAYERS)
+    {
+        if (g_bDebugTeleport)
+            LogMessage("[MGE tele][debug] %s drop: invalid slot client=%N slot=%d reason=%s", phase, client, player_slot, reason);
+        return false;
+    }
+
+    if (g_iPlayerArena[client] != arena_index || g_iPlayerSlot[client] != player_slot)
+    {
+        if (g_bDebugTeleport)
+        {
+            LogMessage("[MGE tele][debug] %s drop: context mismatch client=%N queued=[a:%d s:%d] current=[a:%d s:%d] reason=%s",
+                phase, client, arena_index, player_slot, g_iPlayerArena[client], g_iPlayerSlot[client], reason);
+        }
+        return false;
+    }
+
+    if (g_iArenaQueue[arena_index][player_slot] != client)
+    {
+        if (g_bDebugTeleport)
+        {
+            LogMessage("[MGE tele][debug] %s drop: queue mismatch client=%N arena=%d slot=%d queue_client=%d reason=%s",
+                phase, client, arena_index, player_slot, g_iArenaQueue[arena_index][player_slot], reason);
+        }
+        return false;
+    }
+
+    return true;
+}
+
 // Handle client disconnection and cleanup
 void HandleClientDisconnection(int client)
 {
+    BumpTeleportRevision(client, "HandleClientDisconnection");
+    ClearBBallCarryState(client, true);
+
+    g_iPlayerRespawnroomTouchDepth[client] = 0;
+    g_bSetSpawnAwaitInput[client] = false;
+    g_iSetSpawnArena[client] = 0;
+    g_iSetSpawnMode[client] = 0;
+
+    g_iPlayerWaiting[client] = false;
+    if (g_hPlayerWaitingSpecTimer[client] != null)
+    {
+        delete g_hPlayerWaitingSpecTimer[client];
+        g_hPlayerWaitingSpecTimer[client] = null;
+    }
+
     // Clear any invites before removing from queue
     ClearPlayerInvites(client);
     
@@ -143,6 +261,12 @@ void HandleClientDisconnection(int client)
             delete g_alPlayerDuelClasses[client];
             g_alPlayerDuelClasses[client] = null;
         }
+
+        if (g_alPlayerDuelWeaponIds[client] != null)
+        {
+            delete g_alPlayerDuelWeaponIds[client];
+            g_alPlayerDuelWeaponIds[client] = null;
+        }
         
         // Clear 2v2 ready status
         g_bPlayer2v2Ready[client] = false;
@@ -158,6 +282,7 @@ void HandleClientDisconnection(int client)
             {
                 g_iPlayerClassRating[client][classId][oppClassId] = 0;
                 g_iPlayerMatchupCount[client][classId][oppClassId] = 0;
+                g_bPlayerMatchupDirty[client][classId][oppClassId] = false;
             }
         }
         
@@ -201,10 +326,140 @@ void HandleClientDisconnection(int client)
         g_iArenaDuelStartTime[arena_index] = 0;
         return;
     }
+
+    if (g_alPlayerDuelClasses[client] != null)
+    {
+        delete g_alPlayerDuelClasses[client];
+        g_alPlayerDuelClasses[client] = null;
+    }
+
+    if (g_alPlayerDuelWeaponIds[client] != null)
+    {
+        delete g_alPlayerDuelWeaponIds[client];
+        g_alPlayerDuelWeaponIds[client] = null;
+    }
+}
+
+bool IsClientInRespawnroomByNetprop(int client)
+{
+    if (!IsValidClient(client))
+        return false;
+
+    if (!HasEntProp(client, Prop_Send, "m_bInUpgradeZone"))
+        return false;
+
+    return (GetEntProp(client, Prop_Send, "m_bInUpgradeZone") != 0);
+}
+
+void OnRespawnroomStartTouchOutput(const char[] output, int caller, int activator, float delay)
+{
+    #pragma unused output
+    #pragma unused delay
+    if (!IsValidClient(activator))
+        return;
+
+    g_iPlayerRespawnroomTouchDepth[activator]++;
+
+    if (g_bDebugTeleport)
+    {
+        LogMessage("[MGE tele][debug] respawnroom starttouch client=%N caller=%d depth=%d",
+            activator, caller, g_iPlayerRespawnroomTouchDepth[activator]);
+    }
+}
+
+void OnRespawnroomEndTouchOutput(const char[] output, int caller, int activator, float delay)
+{
+    #pragma unused output
+    #pragma unused delay
+    if (!IsValidClient(activator))
+        return;
+
+    if (g_iPlayerRespawnroomTouchDepth[activator] > 0)
+        g_iPlayerRespawnroomTouchDepth[activator]--;
+
+    if (g_bDebugTeleport)
+    {
+        LogMessage("[MGE tele][debug] respawnroom endtouch client=%N caller=%d depth=%d",
+            activator, caller, g_iPlayerRespawnroomTouchDepth[activator]);
+    }
+}
+
+void QueueArenaTeleport(int client, float delay, const char[] reason)
+{
+    if (!IsValidClient(client))
+        return;
+
+    int arena_index = g_iPlayerArena[client];
+    int player_slot = g_iPlayerSlot[client];
+    int revision = g_iTeleportRevision[client];
+
+    if (arena_index <= 0 || arena_index > g_iArenaCount || player_slot <= 0 || player_slot >= MAXPLAYERS)
+    {
+        if (g_bDebugTeleport)
+        {
+            LogMessage("[MGE tele][debug] queue skip reason=%s client=%N invalid context arena=%d slot=%d rev=%d",
+                reason, client, arena_index, player_slot, revision);
+        }
+        return;
+    }
+
+    if (g_iArenaQueue[arena_index][player_slot] != client)
+    {
+        if (g_bDebugTeleport)
+        {
+            LogMessage("[MGE tele][debug] queue skip reason=%s client=%N queue mismatch arena=%d slot=%d queue_client=%d rev=%d",
+                reason, client, arena_index, player_slot, g_iArenaQueue[arena_index][player_slot], revision);
+        }
+        return;
+    }
+
+    if (g_bDebugTeleport)
+    {
+        LogMessage("[MGE tele][debug] queue reason=%s client=%N delay=%.2f arena=%d slot=%d rev=%d team=%d alive=%d",
+            reason, client, delay, arena_index, player_slot, revision, GetClientTeam(client), IsPlayerAlive(client) ? 1 : 0);
+    }
+
+    DataPack pack = new DataPack();
+    CreateDataTimer(delay, Timer_TeleWithDebug, pack, TIMER_FLAG_NO_MAPCHANGE);
+    pack.WriteCell(GetClientUserId(client));
+    pack.WriteCell(arena_index);
+    pack.WriteCell(player_slot);
+    pack.WriteCell(revision);
+    pack.WriteString(reason);
+}
+
+Action Timer_TeleWithDebug(Handle timer, DataPack pack)
+{
+    pack.Reset();
+    int userid = pack.ReadCell();
+    int queued_arena = pack.ReadCell();
+    int queued_slot = pack.ReadCell();
+    int queued_revision = pack.ReadCell();
+    char reason[64];
+    pack.ReadString(reason, sizeof(reason));
+
+    int client = GetClientOfUserId(userid);
+    if (!IsValidClient(client))
+        return Plugin_Stop;
+
+    if (!IsTeleportContextCurrent(client, queued_arena, queued_slot, queued_revision, "fire", reason))
+        return Plugin_Stop;
+
+    if (g_bDebugTeleport)
+    {
+        bool inRespawnNet = IsClientInRespawnroomByNetprop(client);
+        LogMessage("[MGE tele][debug] fire reason=%s client=%N queued=[a:%d s:%d r:%d] current=[a:%d s:%d r:%d] team=%d alive=%d in_upgrade_zone=%d rr_depth=%d",
+            reason, client,
+            queued_arena, queued_slot, queued_revision,
+            g_iPlayerArena[client], g_iPlayerSlot[client], g_iTeleportRevision[client],
+            GetClientTeam(client), IsPlayerAlive(client) ? 1 : 0, inRespawnNet ? 1 : 0, g_iPlayerRespawnroomTouchDepth[client]);
+    }
+
+    return Timer_Tele(timer, userid, queued_arena, queued_slot, queued_revision, reason);
 }
 
 // Attempts to load player statistics from database with Steam ID validation
-void TryLoadPlayerStats(int client, bool isRetry)
+void TryLoadPlayerStats(int client, bool isRetry, bool forceReload = false)
 {
     if (g_bNoStats || !IsValidClient(client))
         return;
@@ -223,7 +478,7 @@ void TryLoadPlayerStats(int client, bool isRetry)
     g_DB.Escape(steamid_dirty, steamid, sizeof(steamid));
     
     // Skip if stats already loaded successfully for this specific Steam ID
-    if (g_bPlayerEloVerified[client] && StrEqual(g_sPlayerSteamID[client], steamid)) {
+    if (!forceReload && g_bPlayerEloVerified[client] && StrEqual(g_sPlayerSteamID[client], steamid)) {
         if (isRetry) {
             LogMessage("Stats already loaded for client %d (%s), skipping retry", client, steamid);
         }
@@ -284,13 +539,31 @@ int ResetPlayer(int client)
         return 0;
     }
 
+    if (arena_index <= 0 || arena_index > g_iArenaCount || g_iArenaQueue[arena_index][player_slot] != client)
+        return 0;
+
+    BumpTeleportRevision(client, "ResetPlayer");
+    int teleportRevision = g_iTeleportRevision[client];
+
+    // Any pending "move to spec while waiting" timer is stale once we are resetting this player.
+    if (g_hPlayerWaitingSpecTimer[client] != null)
+    {
+        delete g_hPlayerWaitingSpecTimer[client];
+        g_hPlayerWaitingSpecTimer[client] = null;
+    }
+    g_iPlayerWaiting[client] = false;
+
     // Remove projectiles when resetting a player (keep player entities for round reset only)
     if (!g_bClearPlayerEntities && g_bClearProjectiles && g_iArenaStatus[arena_index] == AS_FIGHT && !g_bArenaBBall[arena_index])
         RemoveArenaProjectiles(arena_index);
 
     g_iPlayerSpecTarget[client] = 0;
 
-    if (player_slot == SLOT_ONE || player_slot == SLOT_THREE)
+    bool is_red_team = (player_slot == SLOT_ONE || player_slot == SLOT_THREE);
+    if (g_bArenaNoFight[arena_index])
+        is_red_team = ((player_slot % 2) == 1);
+
+    if (is_red_team)
         ChangeClientTeam(client, TEAM_RED);
     else
         ChangeClientTeam(client, TEAM_BLU);
@@ -304,6 +577,7 @@ int ResetPlayer(int client)
         if (class != TF2_GetPlayerClass(client))
             TF2_SetPlayerClass(client, class);
 
+        g_bSkipNextSpawnTeleport[client] = true;
         TF2_RespawnPlayer(client);
         
         // Reset velocity immediately to prevent momentum carryover from death
@@ -316,17 +590,26 @@ int ResetPlayer(int client)
 
     g_iPlayerMaxHP[client] = GetEntProp(client, Prop_Data, "m_iMaxHealth");
 
+    if (!IsTeleportContextCurrent(client, arena_index, player_slot, teleportRevision, "reset_post_spawn", "ResetPlayer"))
+        return 0;
+
     if (g_bArenaMidair[arena_index])
         g_iPlayerHP[client] = g_iMidairHP;
     else
-        g_iPlayerHP[client] = g_iPlayerHandicap[client] ? g_iPlayerHandicap[client] : RoundToNearest(float(g_iPlayerMaxHP[client]) * g_fArenaHPRatio[arena_index]);
+        g_iPlayerHP[client] = g_iPlayerHandicap[client] ? g_iPlayerHandicap[client] : GetArenaTargetHPForClient(client, arena_index, g_iPlayerMaxHP[client]);
 
     if (g_bArenaMGE[arena_index] || g_bArenaBBall[arena_index])
-        SetEntProp(client, Prop_Data, "m_iHealth", g_iPlayerHandicap[client] ? g_iPlayerHandicap[client] : RoundToNearest(float(g_iPlayerMaxHP[client]) * g_fArenaHPRatio[arena_index]));
+        SetEntProp(client, Prop_Data, "m_iHealth", g_iPlayerHandicap[client] ? g_iPlayerHandicap[client] : GetArenaTargetHPForClient(client, arena_index, g_iPlayerMaxHP[client]));
 
     UpdateHud(client);
     ResetClientAmmoCounts(client);
-    CreateTimer(0.1, Timer_Tele, GetClientUserId(client));
+
+    if (!IsTeleportContextCurrent(client, arena_index, player_slot, teleportRevision, "reset_queue", "ResetPlayer"))
+        return 0;
+
+    QueueArenaTeleport(client, 0.1, "ResetPlayer");
+    // Start round timing once both active duel participants are back alive after a point reset.
+    TryStartArenaRoundLoggingOnSpawn(arena_index);
 
     return 1;
 }
@@ -334,7 +617,7 @@ int ResetPlayer(int client)
 // Restores killer's health and regenerates them after scoring a frag
 void ResetKiller(int killer, int arena_index)
 {
-    int reset_hp = g_iPlayerHandicap[killer] ? g_iPlayerHandicap[killer] : RoundToNearest(float(g_iPlayerMaxHP[killer]) * g_fArenaHPRatio[arena_index]);
+    int reset_hp = g_iPlayerHandicap[killer] ? g_iPlayerHandicap[killer] : GetArenaTargetHPForClient(killer, arena_index, g_iPlayerMaxHP[killer]);
     g_iPlayerHP[killer] = reset_hp;
     SetEntProp(killer, Prop_Data, "m_iHealth", reset_hp);
     RequestFrame(RegenKiller, killer);
@@ -380,6 +663,9 @@ void SetPlayerToAllowedClass(int client, int arena_index)
 // Regenerates killer's health and ammo after successful elimination
 void RegenKiller(any killer)
 {
+    if (!IsValidClient(killer))
+        return;
+
     TF2_RegeneratePlayer(killer);
 }
 
@@ -648,10 +934,13 @@ Action ExecuteArenaClassChange(int client, TFClassType new_class, int arena_inde
     g_tfctPlayerClass[client] = new_class;
     
     // Add class to tracking list if class changes are allowed and duel is active
-    if (g_bArenaClassChange[arena_index] && g_iArenaStatus[arena_index] != AS_IDLE && 
-        g_alPlayerDuelClasses[client].FindValue(view_as<int>(new_class)) == -1)
+    if (g_bArenaClassChange[arena_index] && g_iArenaStatus[arena_index] != AS_IDLE)
     {
-        g_alPlayerDuelClasses[client].Push(view_as<int>(new_class));
+        if (g_alPlayerDuelClasses[client] == null)
+            g_alPlayerDuelClasses[client] = new ArrayList();
+
+        if (g_alPlayerDuelClasses[client].FindValue(view_as<int>(new_class)) == -1)
+            g_alPlayerDuelClasses[client].Push(view_as<int>(new_class));
     }
     
     // Handle class change during active combat
@@ -732,8 +1021,13 @@ void HandleActivePlayerClassChange(int client, int arena_index)
         // Award points and provide feedback
         if (g_bArenaClassChange[arena_index])
         {
+            int score_red_before = g_iArenaScore[arena_index][SLOT_ONE];
+            int score_blu_before = g_iArenaScore[arena_index][SLOT_TWO];
             g_iArenaScore[arena_index][killer_team_slot] += 1;
             AddClassPointForPlayer(killer, client);
+            int score_red_after = g_iArenaScore[arena_index][SLOT_ONE];
+            int score_blu_after = g_iArenaScore[arena_index][SLOT_TWO];
+            RecordArenaRoundEnd(arena_index, killer_team_slot, RoundEndReason_ClassChange, killer, client, GetClientScoringWeaponDefIndex(killer), score_red_before, score_blu_before, score_red_after, score_blu_after);
             MC_PrintToChat(killer, "%t", "ClassChangePointOpponent");
             MC_PrintToChat(client, "%t", "ClassChangePoint");
         }
@@ -941,7 +1235,7 @@ Action Command_Handicap(int client, int args)
             return Plugin_Handled;
         }
 
-        if (argint > RoundToNearest(float(g_iPlayerMaxHP[client]) * g_fArenaHPRatio[arena_index]))
+        if (argint > GetArenaTargetHPForClient(client, arena_index, g_iPlayerMaxHP[client]))
         {
             MC_PrintToChat(client, "%t", "InvalidHandicap");
             g_iPlayerHandicap[client] = 0;
@@ -1014,34 +1308,388 @@ Action Command_AutoTeam(int client, int args)
 }
 
 
+// ===== DUEL WEAPON TRACKING =====
+
+bool IsWeaponWearable(int itemDefIndex)
+{
+    switch (itemDefIndex)
+    {
+        case 405, 608, // Demoman boots
+             133, 444, // Soldier backpacks/boots
+             57, 231, 642: // Sniper backpack-style wearables
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void EnsurePlayerDuelWeaponList(int client)
+{
+    if (client <= 0 || client > MaxClients)
+        return;
+
+    if (g_alPlayerDuelWeaponIds[client] == null)
+        g_alPlayerDuelWeaponIds[client] = new ArrayList();
+}
+
+void ClearPlayerDuelWeaponIds(int client)
+{
+    if (client <= 0 || client > MaxClients)
+        return;
+
+    EnsurePlayerDuelWeaponList(client);
+    g_alPlayerDuelWeaponIds[client].Clear();
+}
+
+void AddPlayerDuelWeaponId(int client, int itemDefIndex)
+{
+    if (!IsValidClient(client) || itemDefIndex <= 0)
+        return;
+
+    EnsurePlayerDuelWeaponList(client);
+
+    if (g_alPlayerDuelWeaponIds[client].FindValue(itemDefIndex) == -1)
+        g_alPlayerDuelWeaponIds[client].Push(itemDefIndex);
+}
+
+bool AppendUniqueWeaponId(int itemDefIndex, int[] weaponIds, int &weaponCount, int maxWeaponCount)
+{
+    if (itemDefIndex <= 0 || weaponCount >= maxWeaponCount)
+        return false;
+
+    for (int i = 0; i < weaponCount; i++)
+    {
+        if (weaponIds[i] == itemDefIndex)
+            return false;
+    }
+
+    weaponIds[weaponCount++] = itemDefIndex;
+    return true;
+}
+
+void CaptureCurrentPlayerWeaponIds(int client, int[] weaponIds, int &weaponCount, int maxWeaponCount)
+{
+    weaponCount = 0;
+
+    if (!IsValidClient(client))
+        return;
+
+    for (int slot = 0; slot < 3; slot++)
+    {
+        int weapon = GetPlayerWeaponSlot(client, slot);
+        if (weapon <= MaxClients || !IsValidEntity(weapon))
+            continue;
+        if (!HasEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex"))
+            continue;
+
+        int itemDefIndex = GetEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex");
+        AppendUniqueWeaponId(itemDefIndex, weaponIds, weaponCount, maxWeaponCount);
+    }
+
+    int wearable = -1;
+    while ((wearable = FindEntityByClassname(wearable, "tf_wearable*")) != -1)
+    {
+        if (!IsValidEntity(wearable))
+            continue;
+        if (!HasEntProp(wearable, Prop_Send, "m_hOwnerEntity"))
+            continue;
+        if (!HasEntProp(wearable, Prop_Send, "m_iItemDefinitionIndex"))
+            continue;
+        if (GetEntPropEnt(wearable, Prop_Send, "m_hOwnerEntity") != client)
+            continue;
+
+        int itemDefIndex = GetEntProp(wearable, Prop_Send, "m_iItemDefinitionIndex");
+        if (!IsWeaponWearable(itemDefIndex))
+            continue;
+
+        AppendUniqueWeaponId(itemDefIndex, weaponIds, weaponCount, maxWeaponCount);
+    }
+}
+
+void MergeCurrentPlayerWeaponIdsIntoDuelList(int client)
+{
+    if (!IsValidClient(client))
+        return;
+
+    int weaponIds[32];
+    int weaponCount = 0;
+    CaptureCurrentPlayerWeaponIds(client, weaponIds, weaponCount, sizeof(weaponIds));
+
+    for (int i = 0; i < weaponCount; i++)
+    {
+        AddPlayerDuelWeaponId(client, weaponIds[i]);
+    }
+}
+
+bool IsClientInTrackedDuel(int client)
+{
+    if (!IsValidClient(client))
+        return false;
+
+    int arena_index = g_iPlayerArena[client];
+    if (arena_index <= 0 || arena_index > g_iArenaCount)
+        return false;
+
+    int slot = g_iPlayerSlot[client];
+    if (!g_bFourPersonArena[arena_index] && slot != SLOT_ONE && slot != SLOT_TWO)
+        return false;
+    if (g_bFourPersonArena[arena_index] && (slot < SLOT_ONE || slot > SLOT_FOUR))
+        return false;
+
+    if (g_iArenaDuelStartTime[arena_index] <= 0)
+        return false;
+
+    return (g_iArenaStatus[arena_index] != AS_IDLE && g_iArenaStatus[arena_index] != AS_REPORTED);
+}
+
+void CapturePlayerWeaponEntitiesForDuel(int client)
+{
+    if (!IsValidClient(client))
+        return;
+
+    // Snapshot all weapon entities owned by the player.
+    int entity = -1;
+    while ((entity = FindEntityByClassname(entity, "tf_weapon*")) != -1)
+    {
+        if (!IsValidEntity(entity))
+            continue;
+        if (!HasEntProp(entity, Prop_Send, "m_hOwnerEntity"))
+            continue;
+        if (!HasEntProp(entity, Prop_Send, "m_iItemDefinitionIndex"))
+            continue;
+
+        if (GetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity") != client)
+            continue;
+
+        int itemDefIndex = GetEntProp(entity, Prop_Send, "m_iItemDefinitionIndex");
+        AddPlayerDuelWeaponId(client, itemDefIndex);
+    }
+
+    // Snapshot wearable entities and keep only gameplay wearables by itemdef whitelist.
+    entity = -1;
+    while ((entity = FindEntityByClassname(entity, "tf_wearable*")) != -1)
+    {
+        if (!IsValidEntity(entity))
+            continue;
+        if (!HasEntProp(entity, Prop_Send, "m_hOwnerEntity"))
+            continue;
+        if (!HasEntProp(entity, Prop_Send, "m_iItemDefinitionIndex"))
+            continue;
+
+        if (GetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity") != client)
+            continue;
+
+        int itemDefIndex = GetEntProp(entity, Prop_Send, "m_iItemDefinitionIndex");
+        if (!IsWeaponWearable(itemDefIndex))
+            continue;
+
+        AddPlayerDuelWeaponId(client, itemDefIndex);
+    }
+}
+
+void StartDuelWeaponTrackingForArena(int arena_index)
+{
+    if (arena_index <= 0 || arena_index > g_iArenaCount)
+        return;
+
+    int maxActiveSlot = g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO;
+    for (int slot = SLOT_ONE; slot <= maxActiveSlot; slot++)
+    {
+        int player = g_iArenaQueue[arena_index][slot];
+        if (!IsValidClient(player))
+            continue;
+
+        ClearPlayerDuelWeaponIds(player);
+        CapturePlayerWeaponEntitiesForDuel(player);
+    }
+}
+
+void GetPlayerCurrentWeaponIdsString(int client, char[] buffer, int maxlen)
+{
+    buffer[0] = '\0';
+
+    if (!IsValidClient(client))
+        return;
+
+    int weaponIds[32];
+    int weaponCount = 0;
+    CaptureCurrentPlayerWeaponIds(client, weaponIds, weaponCount, sizeof(weaponIds));
+    if (weaponCount <= 0)
+        return;
+
+    char itemDef[16];
+    for (int i = 0; i < weaponCount; i++)
+    {
+        IntToString(weaponIds[i], itemDef, sizeof(itemDef));
+
+        if (i > 0)
+            StrCat(buffer, maxlen, ",");
+        StrCat(buffer, maxlen, itemDef);
+    }
+}
+
+void GetPlayerWeaponIdsString(int client, char[] buffer, int maxlen)
+{
+    buffer[0] = '\0';
+
+    if (!IsValidClient(client))
+        return;
+    if (IsClientInTrackedDuel(client))
+        MergeCurrentPlayerWeaponIdsIntoDuelList(client);
+    if (g_alPlayerDuelWeaponIds[client] == null || g_alPlayerDuelWeaponIds[client].Length == 0)
+        return;
+
+    char itemDef[16];
+    for (int i = 0; i < g_alPlayerDuelWeaponIds[client].Length; i++)
+    {
+        IntToString(g_alPlayerDuelWeaponIds[client].Get(i), itemDef, sizeof(itemDef));
+
+        if (i > 0)
+            StrCat(buffer, maxlen, ",");
+        StrCat(buffer, maxlen, itemDef);
+    }
+}
+
+public Action TF2Items_OnGiveNamedItem(int client, char[] classname, int itemDefIndex, Handle &item)
+{
+    #pragma unused client
+    #pragma unused classname
+    #pragma unused itemDefIndex
+    #pragma unused item
+    return Plugin_Continue;
+}
+
+public void TF2Items_OnGiveNamedItem_Post(int client, char[] classname, int itemDefIndex, int level, int quality, int entity)
+{
+    #pragma unused level
+    #pragma unused quality
+    #pragma unused entity
+
+    if (!IsClientInTrackedDuel(client) || itemDefIndex <= 0)
+        return;
+
+    if (IsWeaponWearable(itemDefIndex))
+    {
+        AddPlayerDuelWeaponId(client, itemDefIndex);
+        return;
+    }
+
+    if (StrContains(classname, "tf_weapon_", false) == 0)
+        AddPlayerDuelWeaponId(client, itemDefIndex);
+}
+
+
 // ===== GAME EVENT HANDLERS =====
+
+// Handles post-inventory updates (loadout/regen/respawnroom): applies weapon rules and keeps teleport logic.
+Action Event_PostInventoryApplication(Event event, const char[] name, bool dontBroadcast)
+{
+    int client = GetClientOfUserId(event.GetInt("userid"));
+    if (!IsValidClient(client))
+        return Plugin_Continue;
+
+    int arena_index = g_iPlayerArena[client];
+    if (arena_index <= 0)
+        return Plugin_Continue;
+
+    int player_slot = g_iPlayerSlot[client];
+    if (player_slot <= 0)
+        return Plugin_Continue;
+
+    int max_active_slot = g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO;
+    if (!g_bArenaNoFight[arena_index] && player_slot > max_active_slot)
+        return Plugin_Continue;
+
+    ApplyWeaponRulesAfterInventoryUpdate(client, "post_inventory_application");
+
+    bool inRespawnNet = IsClientInRespawnroomByNetprop(client);
+    bool inRespawnOutput = (g_iPlayerRespawnroomTouchDepth[client] > 0);
+    bool inRespawn = (inRespawnNet || inRespawnOutput);
+    if (g_bDebugTeleport)
+    {
+        LogMessage("[MGE tele][debug] post_inventory_application client=%N arena=%d slot=%d in_upgrade_zone=%d rr_depth=%d in_respawn=%d",
+            client, arena_index, player_slot, inRespawnNet ? 1 : 0, g_iPlayerRespawnroomTouchDepth[client], inRespawn ? 1 : 0);
+    }
+
+    // Do not re-teleport on unrelated trigger/inventory updates outside respawnrooms.
+    if (!inRespawn)
+    {
+        if (g_bDebugTeleport)
+            LogMessage("[MGE tele][debug] post_inventory_application skip: not in respawn context client=%N", client);
+        return Plugin_Continue;
+    }
+
+    if (g_bDebugTeleport)
+        LogMessage("[MGE tele][debug] post_inventory_application: teleport suppressed (handled on player_spawn) client=%N", client);
+    return Plugin_Continue;
+}
 
 // Handles player spawn events to set class, reset ammo, and manage team assignments
 Action Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast)
 {
     int client = GetClientOfUserId(event.GetInt("userid"));
+    if (!IsValidClient(client))
+        return Plugin_Continue;
+
     int arena_index = g_iPlayerArena[client];
 
-    g_tfctPlayerClass[client] = TF2_GetPlayerClass(client);
-
+    TFClassType oldClass = g_tfctPlayerClass[client];
+    TFClassType currentClass = TF2_GetPlayerClass(client);
+    g_tfctPlayerClass[client] = currentClass;
+    if (oldClass != TFClass_Unknown && oldClass != currentClass)
+        OnPovTargetClassChanged(client, oldClass, currentClass);
 
     ResetClientAmmoCounts(client);
 
-    if (!g_bFourPersonArena[arena_index] && g_iPlayerSlot[client] != SLOT_ONE && g_iPlayerSlot[client] != SLOT_TWO)
+    if (!g_bArenaNoFight[arena_index] && !g_bFourPersonArena[arena_index] && g_iPlayerSlot[client] != SLOT_ONE && g_iPlayerSlot[client] != SLOT_TWO)
         ChangeClientTeam(client, TEAM_SPEC);
 
-    else if (g_bFourPersonArena[arena_index] && g_iPlayerSlot[client] != SLOT_ONE && g_iPlayerSlot[client] != SLOT_TWO && (g_iPlayerSlot[client] != SLOT_THREE && g_iPlayerSlot[client] != SLOT_FOUR))
+    else if (!g_bArenaNoFight[arena_index] && g_bFourPersonArena[arena_index] && g_iPlayerSlot[client] != SLOT_ONE && g_iPlayerSlot[client] != SLOT_TWO && (g_iPlayerSlot[client] != SLOT_THREE && g_iPlayerSlot[client] != SLOT_FOUR))
         ChangeClientTeam(client, TEAM_SPEC);
 
     if (g_bArenaMGE[arena_index])
     {
-        g_iPlayerHP[client] = RoundToNearest(float(g_iPlayerMaxHP[client]) * g_fArenaHPRatio[arena_index]);
+        g_iPlayerHP[client] = GetArenaTargetHPForClient(client, arena_index, g_iPlayerMaxHP[client]);
         UpdateHudForArena(arena_index);
     }
 
     if (g_bArenaBBall[arena_index])
     {
-        g_bPlayerHasIntel[client] = false;
+        ClearBBallCarryState(client, true);
+    }
+    else if (g_iBBallBackModel[client] != 0 || g_bPlayerHasIntel[client])
+    {
+        ClearBBallCarryState(client, true);
+    }
+
+    // post_inventory/loadout respawns should teleport from this hook; ResetPlayer-initiated spawns already queue teleports.
+    if (arena_index > 0)
+    {
+        bool shouldTeleportOnSpawn = true;
+        if (g_bSkipNextSpawnTeleport[client])
+        {
+            shouldTeleportOnSpawn = false;
+            g_bSkipNextSpawnTeleport[client] = false;
+            if (g_bDebugTeleport)
+                LogMessage("[MGE tele][debug] player_spawn: skip teleport (already queued by ResetPlayer) client=%N", client);
+        }
+
+        int player_slot = g_iPlayerSlot[client];
+        int max_active_slot = g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO;
+        if (!g_bArenaNoFight[arena_index] && player_slot > max_active_slot)
+            shouldTeleportOnSpawn = false;
+
+        if (shouldTeleportOnSpawn)
+        {
+            QueueArenaTeleport(client, 0.05, "player_spawn");
+            if (g_bDebugTeleport)
+                LogMessage("[MGE tele][debug] player_spawn: queue teleport client=%N arena=%d slot=%d", client, arena_index, player_slot);
+        }
+
+        // Duration tracking: start next round only when all duel participants are alive in active fight.
+        TryStartArenaRoundLoggingOnSpawn(arena_index);
     }
 
     return Plugin_Continue;
@@ -1195,7 +1843,7 @@ Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
     if (g_iArenaStatus[arena_index] < AS_FIGHT && IsValidClient(attacker) && IsPlayerAlive(attacker))
     {
         TF2_RegeneratePlayer(attacker);
-        int raised_hp = RoundToNearest(float(g_iPlayerMaxHP[attacker]) * g_fArenaHPRatio[arena_index]);
+        int raised_hp = GetArenaTargetHPForClient(attacker, arena_index, g_iPlayerMaxHP[attacker]);
         g_iPlayerHP[attacker] = raised_hp;
         SetEntProp(attacker, Prop_Data, "m_iHealth", raised_hp);
     }
@@ -1224,8 +1872,13 @@ Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
         Action result = CallForward_OnPlayerScorePoint(killer, victim, arena_index);
         if (result == Plugin_Continue)
         {
+            int score_red_before = g_iArenaScore[arena_index][SLOT_ONE];
+            int score_blu_before = g_iArenaScore[arena_index][SLOT_TWO];
             g_iArenaScore[arena_index][killer_team_slot] += 1;
             AddClassPointForPlayer(killer, victim);
+            int score_red_after = g_iArenaScore[arena_index][SLOT_ONE];
+            int score_blu_after = g_iArenaScore[arena_index][SLOT_TWO];
+            RecordArenaRoundEnd(arena_index, killer_team_slot, RoundEndReason_Kill, killer, victim, GetClientScoringWeaponDefIndex(killer), score_red_before, score_blu_before, score_red_after, score_blu_after);
             // Call forward after successful scoring
             CallForward_OnPlayerScoredPoint(killer, victim, arena_index, g_iArenaScore[arena_index][killer_team_slot]);
         }
@@ -1281,7 +1934,12 @@ Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
             // Set the player as waiting (same as other 2v2 modes)
             g_iPlayerWaiting[victim] = true;
             // Change the player to spec to keep him from respawning
-            CreateTimer(5.0, Timer_ChangePlayerSpec, victim);
+            if (g_hPlayerWaitingSpecTimer[victim] != null)
+            {
+                delete g_hPlayerWaitingSpecTimer[victim];
+                g_hPlayerWaitingSpecTimer[victim] = null;
+            }
+            g_hPlayerWaitingSpecTimer[victim] = CreateTimer(5.0, Timer_ChangePlayerSpec, GetClientUserId(victim), TIMER_FLAG_NO_MAPCHANGE);
         }
 
     }
@@ -1312,7 +1970,12 @@ Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
             // Set the player as waiting
             g_iPlayerWaiting[victim] = true;
             // Change the player to spec to keep him from respawning
-            CreateTimer(5.0, Timer_ChangePlayerSpec, victim);
+            if (g_hPlayerWaitingSpecTimer[victim] != null)
+            {
+                delete g_hPlayerWaitingSpecTimer[victim];
+                g_hPlayerWaitingSpecTimer[victim] = null;
+            }
+            g_hPlayerWaitingSpecTimer[victim] = CreateTimer(5.0, Timer_ChangePlayerSpec, GetClientUserId(victim), TIMER_FLAG_NO_MAPCHANGE);
         }
         else
             CreateTimer(g_fArenaRespawnTime[arena_index], Timer_ResetPlayer, GetClientUserId(victim));
@@ -1354,18 +2017,131 @@ Action Timer_WelcomePlayer(Handle timer, int userid)
     return Plugin_Continue;
 }
 
-// Handles player teleportation to appropriate spawn points based on arena type
-Action Timer_Tele(Handle timer, int userid)
+bool IsClientRedSpawnSide(int client, int arena_index)
 {
-    int client = GetClientOfUserId(userid);
-    int arena_index = g_iPlayerArena[client];
-
-    if (!arena_index)
-        return Plugin_Continue;
-
-    int player_slot = g_iPlayerSlot[client];
-    if ((!g_bFourPersonArena[arena_index] && player_slot > SLOT_TWO) || (g_bFourPersonArena[arena_index] && player_slot > SLOT_FOUR))
+    int slot = g_iPlayerSlot[client];
+    if (slot > 0)
     {
+        if (g_bArenaNoFight[arena_index])
+            return ((slot % 2) == 1);
+
+        return (slot == SLOT_ONE || slot == SLOT_THREE);
+    }
+
+    TFTeam team = TF2_GetClientTeam(client);
+    if (team == TFTeam_Red)
+        return true;
+    if (team == TFTeam_Blue)
+        return false;
+    
+    return false;
+}
+
+int FindAliveTeammateTeamSpawnPoint(int client, int arena_index, bool isRedTeam)
+{
+    int slot = g_iPlayerSlot[client];
+    if (g_bFourPersonArena[arena_index] && slot >= SLOT_ONE && slot <= SLOT_FOUR)
+    {
+        int teammate = GetPlayerTeammate(slot, arena_index);
+        if (IsValidClient(teammate) && IsPlayerAlive(teammate))
+            return GetPlayerCurrentTeamSpawnPoint(teammate, arena_index, isRedTeam);
+    }
+
+    int maxSlot = g_bArenaNoFight[arena_index] ? MaxClients : (g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO);
+    for (int i = SLOT_ONE; i <= maxSlot; i++)
+    {
+        int teammate = g_iArenaQueue[arena_index][i];
+        if (!IsValidClient(teammate) || teammate == client || !IsPlayerAlive(teammate))
+            continue;
+        if (IsClientRedSpawnSide(teammate, arena_index) != isRedTeam)
+            continue;
+
+        int teammateSpawn = GetPlayerCurrentTeamSpawnPoint(teammate, arena_index, isRedTeam);
+        if (teammateSpawn > 0)
+            return teammateSpawn;
+    }
+
+    return -1;
+}
+
+bool TeleportToConfiguredTeamSpawn(int client, int arena_index, float vel[3])
+{
+    if (!g_bArenaUseTeamSpawns[arena_index] || g_iArenaRedSpawns[arena_index] <= 0 || g_iArenaBluSpawns[arena_index] <= 0)
+    {
+        if (g_bDebugTeleport)
+        {
+            LogMessage("[MGE tele][debug] team_spawns skip client=%N arena=%d use_team=%d red_count=%d blu_count=%d",
+                client, arena_index, g_bArenaUseTeamSpawns[arena_index] ? 1 : 0, g_iArenaRedSpawns[arena_index], g_iArenaBluSpawns[arena_index]);
+        }
+        return false;
+    }
+
+    bool isRedTeam = IsClientRedSpawnSide(client, arena_index);
+    int spawnCount = isRedTeam ? g_iArenaRedSpawns[arena_index] : g_iArenaBluSpawns[arena_index];
+    if (spawnCount <= 0)
+    {
+        if (g_bDebugTeleport)
+        {
+            LogMessage("[MGE tele][debug] team_spawns skip client=%N arena=%d side=%s spawn_count=%d",
+                client, arena_index, isRedTeam ? "RED" : "BLU", spawnCount);
+        }
+        return false;
+    }
+
+    int teammateSpawn = FindAliveTeammateTeamSpawnPoint(client, arena_index, isRedTeam);
+    bool useNearSpawn = g_bArenaNearSpawn[arena_index] && !g_bArenaNoFight[arena_index];
+    int spawnIndex = SelectTeamSpawnForPlayer(arena_index, isRedTeam, useNearSpawn, teammateSpawn);
+    if (spawnIndex <= 0 || spawnIndex > spawnCount)
+        spawnIndex = 1;
+
+    float pos[3];
+    if (isRedTeam)
+    {
+        pos[0] = g_fArenaRedSpawnOrigin[arena_index][spawnIndex][0];
+        pos[1] = g_fArenaRedSpawnOrigin[arena_index][spawnIndex][1];
+        pos[2] = g_fArenaRedSpawnOrigin[arena_index][spawnIndex][2];
+        TeleportEntity(client, g_fArenaRedSpawnOrigin[arena_index][spawnIndex], g_fArenaRedSpawnAngles[arena_index][spawnIndex], vel);
+    }
+    else
+    {
+        pos[0] = g_fArenaBluSpawnOrigin[arena_index][spawnIndex][0];
+        pos[1] = g_fArenaBluSpawnOrigin[arena_index][spawnIndex][1];
+        pos[2] = g_fArenaBluSpawnOrigin[arena_index][spawnIndex][2];
+        TeleportEntity(client, g_fArenaBluSpawnOrigin[arena_index][spawnIndex], g_fArenaBluSpawnAngles[arena_index][spawnIndex], vel);
+    }
+
+    EmitAmbientSound("items/spawn_item.wav", pos, _, SNDLEVEL_NORMAL, _, 1.0);
+    UpdateHud(client);
+    if (g_bDebugTeleport)
+    {
+        LogMessage("[MGE tele][debug] team_spawns apply client=%N arena=%d side=%s spawn=%d near=%d teammate_spawn=%d",
+            client, arena_index, isRedTeam ? "RED" : "BLU", spawnIndex, useNearSpawn ? 1 : 0, teammateSpawn);
+    }
+    return true;
+}
+
+// Handles player teleportation to appropriate spawn points based on arena type
+Action Timer_Tele(Handle timer, int userid, int arena_index, int player_slot, int revision, const char[] reason)
+{
+    #pragma unused timer
+    int client = GetClientOfUserId(userid);
+    if (!IsValidClient(client))
+    {
+        if (g_bDebugTeleport)
+            LogMessage("[MGE tele][debug] Timer_Tele skip: invalid client userid=%d", userid);
+        return Plugin_Continue;
+    }
+
+    if (!IsTeleportContextCurrent(client, arena_index, player_slot, revision, "tele_exec", reason))
+        return Plugin_Stop;
+
+    if (!g_bArenaNoFight[arena_index] && ((!g_bFourPersonArena[arena_index] && player_slot > SLOT_TWO) || (g_bFourPersonArena[arena_index] && player_slot > SLOT_FOUR)))
+    {
+        if (g_bDebugTeleport)
+        {
+            LogMessage("[MGE tele][debug] Timer_Tele skip: inactive slot client=%N arena=%d slot=%d four=%d nofight=%d",
+                client, arena_index, player_slot, g_bFourPersonArena[arena_index] ? 1 : 0, g_bArenaNoFight[arena_index] ? 1 : 0);
+        }
         return Plugin_Continue;
     }
 
@@ -1391,29 +2167,91 @@ Action Timer_Tele(Handle timer, int userid)
                 MC_PrintToChat(client, "%t", "EndIfManntreadsRemoval");
                 // Run elo calc so clients can't be cheeky if they're losing
                 RemoveFromQueue(client, true);
+                return Plugin_Continue;
             }
         }
     }
 
 
+    // If arena defines team-specific spawns, always use them for every spawn cycle.
+    if (TeleportToConfiguredTeamSpawn(client, arena_index, vel))
+    {
+        if (g_bDebugTeleport)
+            LogMessage("[MGE tele][debug] Timer_Tele path=team_spawns client=%N arena=%d", client, arena_index);
+        return Plugin_Continue;
+    }
+
     // BBall and 2v2 arenas handle spawns differently, each team, has their own spawns.
     if (g_bArenaBBall[arena_index])
     {
+        bool hasCustomBballNodes =
+            g_bArenaBBallIntelSpawnSet[arena_index] ||
+            g_bArenaBBallIntelSpawnRedSet[arena_index] ||
+            g_bArenaBBallIntelSpawnBluSet[arena_index] ||
+            g_bArenaBBallHoopSpawnSet[arena_index] ||
+            g_bArenaBBallHoopSpawnRedSet[arena_index] ||
+            g_bArenaBBallHoopSpawnBluSet[arena_index];
+
+        int playerSpawnCount = g_iArenaSpawns[arena_index];
+        if (!hasCustomBballNodes)
+        {
+            // Legacy BBall layout: last 5 points are hoop/intel helpers.
+            playerSpawnCount = g_iArenaSpawns[arena_index] - 5;
+        }
+
+        // If map has only a few points (e.g. 2), use them directly for players.
+        if (playerSpawnCount < 2)
+            playerSpawnCount = g_iArenaSpawns[arena_index];
+        if (playerSpawnCount < 1)
+            playerSpawnCount = 1;
+
+        int split = (playerSpawnCount / 2);
+        if (split < 1)
+            split = 1;
+
         int random_int;
         int offset_high, offset_low;
         if (g_iPlayerSlot[client] == SLOT_ONE || g_iPlayerSlot[client] == SLOT_THREE)
         {
-            offset_high = ((g_iArenaSpawns[arena_index] - 5) / 2);
-            random_int = GetRandomInt(1, offset_high); // The first half of the player spawns are for slot one and three.
+            offset_low = 1;
+            offset_high = split;
+            random_int = GetRandomInt(offset_low, offset_high); // RED side
         } else {
-            offset_high = (g_iArenaSpawns[arena_index] - 5);
-            offset_low = (((g_iArenaSpawns[arena_index] - 5) / 2) + 1);
-            random_int = GetRandomInt(offset_low, offset_high); // The last 5 spawns are for the intel and trigger spawns, not players.
+            offset_low = split + 1;
+            offset_high = playerSpawnCount;
+            if (offset_low > offset_high)
+                offset_low = offset_high;
+            random_int = GetRandomInt(offset_low, offset_high); // BLU side
+        }
+
+        int teammate_spawn = -1;
+        if (g_bFourPersonArena[arena_index])
+        {
+            int teammate = GetPlayerTeammate(player_slot, arena_index);
+            if (IsValidClient(teammate) && IsPlayerAlive(teammate))
+                teammate_spawn = GetPlayerCurrentSpawnPoint(teammate, arena_index);
+        }
+
+        int spawn_choices = offset_high - offset_low + 1;
+        if (spawn_choices > 1)
+        {
+            int attempts = 0;
+            do
+            {
+                random_int = GetRandomInt(offset_low, offset_high);
+                attempts++;
+            }
+            while (random_int == teammate_spawn && attempts < 50);
         }
 
         TeleportEntity(client, g_fArenaSpawnOrigin[arena_index][random_int], g_fArenaSpawnAngles[arena_index][random_int], vel);
         EmitAmbientSound("items/spawn_item.wav", g_fArenaSpawnOrigin[arena_index][random_int], _, SNDLEVEL_NORMAL, _, 1.0);
         UpdateHud(client);
+        if (g_bDebugTeleport)
+        {
+            LogMessage("[MGE tele][debug] Timer_Tele path=bball client=%N arena=%d spawn=%d range=[%d..%d] total=%d split=%d teammate_spawn=%d",
+                client, arena_index, random_int, offset_low, offset_high, playerSpawnCount, split, teammate_spawn);
+        }
         return Plugin_Continue;
     }
     else if (g_bArenaKoth[arena_index])
@@ -1433,13 +2271,20 @@ Action Timer_Tele(Handle timer, int userid)
         TeleportEntity(client, g_fArenaSpawnOrigin[arena_index][random_int], g_fArenaSpawnAngles[arena_index][random_int], vel);
         EmitAmbientSound("items/spawn_item.wav", g_fArenaSpawnOrigin[arena_index][random_int], _, SNDLEVEL_NORMAL, _, 1.0);
         UpdateHud(client);
+        if (g_bDebugTeleport)
+        {
+            LogMessage("[MGE tele][debug] Timer_Tele path=koth client=%N arena=%d spawn=%d range=[%d..%d]",
+                client, arena_index, random_int, offset_low, offset_high);
+        }
         return Plugin_Continue;
     }
     else if (g_bFourPersonArena[arena_index])
     {
         int random_int;
         int offset_high, offset_low;
-        if (g_iPlayerSlot[client] == SLOT_ONE || g_iPlayerSlot[client] == SLOT_THREE)
+        bool is_red_team = IsClientRedSpawnSide(client, arena_index);
+
+        if (is_red_team)
         {
             offset_high = ((g_iArenaSpawns[arena_index]) / 2);
             offset_low = 1;
@@ -1465,6 +2310,11 @@ Action Timer_Tele(Handle timer, int userid)
         TeleportEntity(client, g_fArenaSpawnOrigin[arena_index][random_int], g_fArenaSpawnAngles[arena_index][random_int], vel);
         EmitAmbientSound("items/spawn_item.wav", g_fArenaSpawnOrigin[arena_index][random_int], _, SNDLEVEL_NORMAL, _, 1.0);
         UpdateHud(client);
+        if (g_bDebugTeleport)
+        {
+            LogMessage("[MGE tele][debug] Timer_Tele path=2v2_legacy client=%N arena=%d spawn=%d range=[%d..%d] team=%d teammate_spawn=%d",
+                client, arena_index, random_int, offset_low, offset_high, is_red_team ? TEAM_RED : TEAM_BLU, teammate_spawn);
+        }
         return Plugin_Continue;
     }
 
@@ -1499,6 +2349,11 @@ Action Timer_Tele(Handle timer, int userid)
                     TeleportEntity(client, g_fArenaSpawnOrigin[arena_index][RandomSpawn[i]], g_fArenaSpawnAngles[arena_index][RandomSpawn[i]], vel);
                     EmitAmbientSound("items/spawn_item.wav", g_fArenaSpawnOrigin[arena_index][RandomSpawn[i]], _, SNDLEVEL_NORMAL, _, 1.0);
                     UpdateHud(client);
+                    if (g_bDebugTeleport)
+                    {
+                        LogMessage("[MGE tele][debug] Timer_Tele path=random_dist_ok client=%N arena=%d spawn=%d distance=%.1f min=%.1f foe=%N",
+                            client, arena_index, RandomSpawn[i], distance, g_fArenaMinSpawnDist[arena_index], foe);
+                    }
                     return Plugin_Continue;
                 } else if (distance > besteffort_dist) {
                     besteffort_dist = distance;
@@ -1514,6 +2369,11 @@ Action Timer_Tele(Handle timer, int userid)
         TeleportEntity(client, g_fArenaSpawnOrigin[arena_index][besteffort_spawn], g_fArenaSpawnAngles[arena_index][besteffort_spawn], vel);
         EmitAmbientSound("items/spawn_item.wav", g_fArenaSpawnOrigin[arena_index][besteffort_spawn], _, SNDLEVEL_NORMAL, _, 1.0);
         UpdateHud(client);
+        if (g_bDebugTeleport)
+        {
+            LogMessage("[MGE tele][debug] Timer_Tele path=random_best_effort client=%N arena=%d spawn=%d distance=%.1f min=%.1f",
+                client, arena_index, besteffort_spawn, besteffort_dist, g_fArenaMinSpawnDist[arena_index]);
+        }
         return Plugin_Continue;
     } else {
         // No foe, so just pick a random spawn.
@@ -1521,6 +2381,11 @@ Action Timer_Tele(Handle timer, int userid)
         TeleportEntity(client, g_fArenaSpawnOrigin[arena_index][random_int], g_fArenaSpawnAngles[arena_index][random_int], vel);
         EmitAmbientSound("items/spawn_item.wav", g_fArenaSpawnOrigin[arena_index][random_int], _, SNDLEVEL_NORMAL, _, 1.0);
         UpdateHud(client);
+        if (g_bDebugTeleport)
+        {
+            LogMessage("[MGE tele][debug] Timer_Tele path=random_no_foe client=%N arena=%d spawn=%d total=%d",
+                client, arena_index, random_int, g_iArenaSpawns[arena_index]);
+        }
         return Plugin_Continue;
     }
 }
@@ -1638,6 +2503,136 @@ int GetPlayerCurrentSpawnPoint(int client, int arena_index)
         return closest_spawn;
     
     return -1;
+}
+
+int GetPlayerCurrentTeamSpawnPoint(int client, int arena_index, bool isRedTeam)
+{
+    if (!IsValidClient(client) || !IsPlayerAlive(client))
+        return -1;
+
+    int spawnCount = isRedTeam ? g_iArenaRedSpawns[arena_index] : g_iArenaBluSpawns[arena_index];
+    if (spawnCount <= 0)
+        return -1;
+
+    float client_pos[3];
+    GetClientAbsOrigin(client, client_pos);
+
+    int closest_spawn = -1;
+    float closest_distance = 999999.0;
+
+    for (int i = 1; i <= spawnCount; i++)
+    {
+        float distance;
+        if (isRedTeam)
+            distance = GetVectorDistance(client_pos, g_fArenaRedSpawnOrigin[arena_index][i]);
+        else
+            distance = GetVectorDistance(client_pos, g_fArenaBluSpawnOrigin[arena_index][i]);
+
+        if (distance < closest_distance)
+        {
+            closest_distance = distance;
+            closest_spawn = i;
+        }
+    }
+
+    if (closest_distance < 100.0)
+        return closest_spawn;
+
+    return -1;
+}
+
+int FindClosestTeamSpawnIndexToPosition(int arena_index, bool isRedTeam, float targetPos[3], int avoidSpawn)
+{
+    int spawnCount = isRedTeam ? g_iArenaRedSpawns[arena_index] : g_iArenaBluSpawns[arena_index];
+    if (spawnCount <= 0)
+        return -1;
+
+    int bestIndex = -1;
+    float bestDistance = 99999999.0;
+
+    for (int i = 1; i <= spawnCount; i++)
+    {
+        if (i == avoidSpawn)
+            continue;
+
+        float distance;
+        if (isRedTeam)
+            distance = GetVectorDistance(targetPos, g_fArenaRedSpawnOrigin[arena_index][i]);
+        else
+            distance = GetVectorDistance(targetPos, g_fArenaBluSpawnOrigin[arena_index][i]);
+
+        if (distance < bestDistance)
+        {
+            bestDistance = distance;
+            bestIndex = i;
+        }
+    }
+
+    if (bestIndex != -1)
+        return bestIndex;
+
+    if (avoidSpawn != -1)
+    {
+        // Fallback: allow teammate spawn if no alternatives exist.
+        for (int i = 1; i <= spawnCount; i++)
+        {
+            float distance;
+            if (isRedTeam)
+                distance = GetVectorDistance(targetPos, g_fArenaRedSpawnOrigin[arena_index][i]);
+            else
+                distance = GetVectorDistance(targetPos, g_fArenaBluSpawnOrigin[arena_index][i]);
+
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                bestIndex = i;
+            }
+        }
+    }
+
+    return bestIndex;
+}
+
+int SelectTeamSpawnForPlayer(int arena_index, bool isRedTeam, bool nearSpawn, int teammateSpawn)
+{
+    int spawnCount = isRedTeam ? g_iArenaRedSpawns[arena_index] : g_iArenaBluSpawns[arena_index];
+    if (spawnCount <= 0)
+        return -1;
+
+    if (nearSpawn)
+    {
+        int opponentPrimary = isRedTeam ? g_iArenaQueue[arena_index][SLOT_TWO] : g_iArenaQueue[arena_index][SLOT_ONE];
+        int opponentSecondary = isRedTeam ? g_iArenaQueue[arena_index][SLOT_FOUR] : g_iArenaQueue[arena_index][SLOT_THREE];
+        int opponent = 0;
+
+        if (IsValidClient(opponentPrimary) && g_iPlayerArena[opponentPrimary] == arena_index)
+            opponent = opponentPrimary;
+        else if (IsValidClient(opponentSecondary) && g_iPlayerArena[opponentSecondary] == arena_index)
+            opponent = opponentSecondary;
+
+        if (opponent != 0)
+        {
+            float opponentPos[3];
+            GetClientAbsOrigin(opponent, opponentPos);
+            int closest = FindClosestTeamSpawnIndexToPosition(arena_index, isRedTeam, opponentPos, teammateSpawn);
+            if (closest != -1)
+                return closest;
+        }
+    }
+
+    if (spawnCount == 1)
+        return 1;
+
+    int randomIndex = 1;
+    int attempts = 0;
+    do
+    {
+        randomIndex = GetRandomInt(1, spawnCount);
+        attempts++;
+    }
+    while (randomIndex == teammateSpawn && attempts < 30);
+
+    return randomIndex;
 }
 
 // Filter function for ray tracing to exclude player entities
