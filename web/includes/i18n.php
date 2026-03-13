@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 function mge_available_languages(): array {
     return ['ru', 'en'];

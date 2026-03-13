@@ -1422,8 +1422,15 @@ if (isset($_GET['ajax'])) {
     }
 
     if ($_GET['ajax'] === 'get_daily_duels') {
+        header('Content-Type: application/json; charset=utf-8');
         $steamId = sanitizeInput($_GET['steam_id'] ?? '');
         $date = sanitizeInput($_GET['date'] ?? '');
+
+        if (empty($steamId)) {
+            http_response_code(400);
+            echo json_encode(['error' => t('error_invalid_steamid')]);
+            exit;
+        }
 
         // Validate date format
         if (!strtotime($date)) {
@@ -1445,6 +1452,12 @@ if (isset($_GET['ajax'])) {
             GROUP BY HOUR(FROM_UNIXTIME(endtime))
             ORDER BY hour
         ");
+
+        if (!$stmt) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Failed to prepare daily duels query']);
+            exit;
+        }
 
         $stmt->bind_param('ssssssss', $steamId, $steamId, $date, $steamId, $steamId, $steamId, $steamId, $date);
         $stmt->execute();
@@ -1474,14 +1487,27 @@ if (isset($_GET['ajax'])) {
             'fill' => true
         ];
 
-        echo json_encode([
+        $payload = json_encode([
             'labels' => $labels,
             'datasets' => [$dataset]
-        ]);
+        ], JSON_UNESCAPED_UNICODE);
+
+        if ($payload === false) {
+            http_response_code(500);
+            echo json_encode(['error' => 'JSON encode failed: ' . json_last_error_msg()], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        if (ob_get_length()) {
+            ob_clean();
+        }
+
+        echo $payload;
         exit;
     }
 
     if ($_GET['ajax'] === 'get_activity_heatmap') {
+        header('Content-Type: application/json; charset=utf-8');
         $steamId = sanitizeInput($_GET['steam_id'] ?? '');
         $year = (int)$_GET['year'];
 
@@ -1505,6 +1531,12 @@ if (isset($_GET['ajax'])) {
             ORDER BY duel_date
         ");
 
+        if (!$stmt) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Failed to prepare activity query'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
         $stmt->bind_param('ssissssi', $steamId, $steamId, $year, $steamId, $steamId, $steamId, $steamId, $year);
         $stmt->execute();
         $result = $stmt->get_result();
@@ -1521,6 +1553,12 @@ if (isset($_GET['ajax'])) {
             ) AS all_duels
             ORDER BY year DESC
         ");
+        if (!$stmtYears) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Failed to prepare activity years query'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
         $stmtYears->bind_param('ssssss', $steamId, $steamId, $steamId, $steamId, $steamId, $steamId);
         $stmtYears->execute();
         $yearsResult = $stmtYears->get_result();
@@ -1670,11 +1708,23 @@ if (isset($_GET['ajax'])) {
         <?php
         $heatmapHtml = ob_get_clean();
 
-        echo json_encode([
+        $payload = json_encode([
             'heatmap_html' => $heatmapHtml,
             'year' => $year,
             'available_years' => $availableYears
-        ]);
+        ], JSON_UNESCAPED_UNICODE);
+
+        if ($payload === false) {
+            http_response_code(500);
+            echo json_encode(['error' => 'JSON encode failed: ' . json_last_error_msg()], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        if (ob_get_length()) {
+            ob_clean();
+        }
+
+        echo $payload;
         exit;
     }
 }

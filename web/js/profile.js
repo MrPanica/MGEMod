@@ -1,10 +1,68 @@
-﻿/**
+/**
  * Profile Page JavaScript
  * MGE Statistics
  */
 
 const i18n = window.MGE_I18N || {};
 const tJs = (key, fallback = '') => (typeof i18n[key] === 'string' ? i18n[key] : (fallback || key));
+const currentLang = window.MGE_LANG || 'ru';
+
+function buildAjaxUrl(params) {
+    const url = new URL(window.location.pathname, window.location.origin);
+    Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+            url.searchParams.set(key, String(value));
+        }
+    });
+
+    if (!url.searchParams.has('lang') && currentLang) {
+        url.searchParams.set('lang', currentLang);
+    }
+
+    return `${url.pathname}?${url.searchParams.toString()}`;
+}
+
+async function parseJsonResponseSafe(response, contextLabel) {
+    const rawResponse = await response.text();
+    let data = null;
+    let normalizedResponse = rawResponse;
+
+    if (normalizedResponse.charCodeAt(0) === 0xFEFF) {
+        normalizedResponse = normalizedResponse.slice(1);
+    }
+    normalizedResponse = normalizedResponse.trim();
+
+    try {
+        data = JSON.parse(normalizedResponse);
+    } catch (parseError) {
+        const firstBrace = normalizedResponse.indexOf('{');
+        const lastBrace = normalizedResponse.lastIndexOf('}');
+
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+            const maybeJson = normalizedResponse.slice(firstBrace, lastBrace + 1);
+            try {
+                data = JSON.parse(maybeJson);
+            } catch (nestedParseError) {
+                const preview = normalizedResponse.slice(0, 220).replace(/\s+/g, ' ');
+                throw new Error(`Invalid JSON response in ${contextLabel} (${response.status}): ${preview}`);
+            }
+        } else {
+            const preview = normalizedResponse.slice(0, 220).replace(/\s+/g, ' ');
+            throw new Error(`Invalid JSON response in ${contextLabel} (${response.status}): ${preview}`);
+        }
+    }
+
+    if (!response.ok) {
+        throw new Error(data?.error || `HTTP error in ${contextLabel}: ${response.status}`);
+    }
+
+    if (data && data.error) {
+        throw new Error(data.error);
+    }
+
+    return data;
+}
+
 
 // ==================== MATCHUP GRID ====================
 function showMatchupTooltip(event, element) {
@@ -71,12 +129,10 @@ function showMatchupDetails(element) {
 // ==================== ACTIVITY HEATMAP ====================
 // AJAX function to change year without page reload
 async function changeYearAjax(year) {
-    // Update active state in year selector (works for both .year-btn and .year-option)
     document.querySelectorAll('.year-btn, .year-option').forEach(el => {
         el.classList.toggle('active', el.textContent.trim() == year);
     });
 
-    // Show loading indicator
     const heatmapContainer = document.querySelector('.activity-heatmap-container-full-width');
     if (!heatmapContainer) return;
 
@@ -84,29 +140,29 @@ async function changeYearAjax(year) {
     heatmapContainer.innerHTML = '<div style="display: flex; justify-content: center; align-items: center; height: 130px;"><div class="loading-spinner"></div></div>';
 
     try {
-        // Get steam ID from page data
         const steamId = window.PROFILE_STEAM_ID || document.querySelector('[data-player-steamid]')?.getAttribute('data-player-steamid');
         if (!steamId) throw new Error('Steam ID not found');
 
-        const response = await fetch(`?ajax=get_activity_heatmap&steam_id=${encodeURIComponent(steamId)}&year=${year}`);
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+        const response = await fetch(buildAjaxUrl({
+            ajax: 'get_activity_heatmap',
+            steam_id: steamId,
+            year: year
+        }));
+
+        const data = await parseJsonResponseSafe(response, 'activity heatmap');
+        if (!data || typeof data.heatmap_html !== 'string') {
+            throw new Error('Invalid activity heatmap payload');
         }
 
-        const data = await response.json();
-
-        // Update the heatmap with new data
         heatmapContainer.innerHTML = data.heatmap_html;
-
     } catch (error) {
         console.error('Error loading heatmap data:', error);
-        // Restore original content if there's an error
         heatmapContainer.innerHTML = originalContent;
-        alert(tJs('js_error_loading_year', 'Failed to load data for selected year'));
+        const reason = error && error.message ? `: ${error.message}` : '';
+        alert(`${tJs('js_error_loading_year', 'Failed to load data for selected year')}${reason}`);
     }
 }
 
-// Function to show daily duels chart when clicking on a heatmap cell
 async function showDailyDuelsChart(date) {
     const chartContainer = document.getElementById('daily-duels-chart-container');
     const dateDisplay = document.getElementById('selected-date-display');
@@ -126,11 +182,17 @@ async function showDailyDuelsChart(date) {
 
     // Fetch duels data for the selected date
     try {
+        chartContainer.querySelectorAll('.daily-chart-error').forEach((node) => node.remove());
         const duelsData = await fetchDailyDuelsData(date);
         createDailyDuelsChart(duelsData, date);
     } catch (error) {
         console.error('Error fetching daily duels data:', error);
-        chartContainer.innerHTML += `<p style="color: #f85149; padding: 10px;">${tJs('js_error_loading_data', 'Failed to load data')}</p>`;
+        const errorNode = document.createElement('p');
+        errorNode.className = 'daily-chart-error';
+        errorNode.style.color = '#f85149';
+        errorNode.style.padding = '10px';
+        errorNode.textContent = `${tJs('js_error_loading_data', 'Failed to load data')}: ${error.message}`;
+        chartContainer.appendChild(errorNode);
     }
 }
 
@@ -142,22 +204,15 @@ async function fetchDailyDuelsData(date) {
         throw new Error('Unable to determine player Steam ID');
     }
 
-    const response = await fetch(`?ajax=get_daily_duels&steam_id=${encodeURIComponent(steamId)}&date=${encodeURIComponent(date)}`);
+    const response = await fetch(buildAjaxUrl({
+        ajax: 'get_daily_duels',
+        steam_id: steamId,
+        date: date
+    }));
 
-    if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    if (data.error) {
-        throw new Error(data.error);
-    }
-
-    return data;
+    return parseJsonResponseSafe(response, 'daily duels');
 }
 
-// Function to create the daily duels chart
 function createDailyDuelsChart(chartData, date) {
     const canvas = document.getElementById('dailyDuelsChart');
     if (!canvas) return;

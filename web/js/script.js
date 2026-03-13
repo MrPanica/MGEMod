@@ -153,6 +153,19 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     setTimeout(hideLoading, 0);
 
+    async function parseJsonResponseSafe(response, label) {
+        const raw = await response.text();
+        const sanitized = raw.replace(/^\uFEFF+/, '').trim();
+        if (!sanitized) {
+            throw new Error(`Empty JSON response (${label})`);
+        }
+        try {
+            return JSON.parse(sanitized);
+        } catch (error) {
+            throw new Error(`Invalid JSON response (${label}): ${sanitized.slice(0, 200)}`);
+        }
+    }
+
     // AJAX pagination for recent duels
     function loadDuelsPage(page, containerId, tbodyId, paginationId) {
         const container = document.getElementById(containerId);
@@ -167,9 +180,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const duelOrderBy = urlParams.get('duel_sort_by') || 'endtime';
         const duelOrderDir = urlParams.get('duel_sort_dir') || 'DESC';
 
-        fetch(`?ajax=get_duels_page&page=${page}&duel_sort_by=${duelOrderBy}&duel_sort_dir=${duelOrderDir}`)
-            .then(response => response.json())
+        const duelsRequestUrl = `?ajax=get_duels_page&page=${page}&duel_sort_by=${duelOrderBy}&duel_sort_dir=${duelOrderDir}&_=${Date.now()}`;
+        fetch(duelsRequestUrl, { cache: 'no-store' })
+            .then(response => parseJsonResponseSafe(response, 'pagination'))
             .then(data => {
+                console.log('[pagination] duels requested page:', page, 'response page:', data.current_page, 'total:', data.total_pages);
                 console.log('AJAX Response Data:', data);
                 
                 const tbody = document.getElementById(tbodyId);
@@ -257,11 +272,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.current_page > 1) {
                     const prevLink = document.createElement('a');
                     prevLink.href = `?page=${data.current_page - 1}&duel_sort_by=${duelOrderBy}&duel_sort_dir=${duelOrderDir}`;
+                    prevLink.dataset.page = String(data.current_page - 1);
                     prevLink.innerHTML = `<i class="fas fa-chevron-left"></i> ${tJs('js_back', 'Back')}`;
-                    prevLink.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        loadDuelsPage(data.current_page - 1, containerId, tbodyId, paginationId);
-                    });
                     pagination.appendChild(prevLink);
                 }
 
@@ -272,10 +284,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         pageLink.textContent = i;
                     } else {
                         pageLink.className = 'pagination-link';
+                        pageLink.dataset.page = String(i);
                         pageLink.textContent = i;
-                        pageLink.addEventListener('click', function() {
-                            loadDuelsPage(i, containerId, tbodyId, paginationId);
-                        });
                     }
                     pagination.appendChild(pageLink);
                 }
@@ -283,11 +293,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.current_page < data.total_pages) {
                     const nextLink = document.createElement('a');
                     nextLink.href = `?page=${data.current_page + 1}&duel_sort_by=${duelOrderBy}&duel_sort_dir=${duelOrderDir}`;
+                    nextLink.dataset.page = String(data.current_page + 1);
                     nextLink.innerHTML = `${tJs('js_forward', 'Forward')} <i class="fas fa-chevron-right"></i>`;
-                    nextLink.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        loadDuelsPage(data.current_page + 1, containerId, tbodyId, paginationId);
-                    });
                     pagination.appendChild(nextLink);
                 }
 
@@ -304,33 +311,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 container.classList.remove('refreshing');
             });
     }
-
-    // Add event listeners to pagination links - prevent global loading overlay
-    document.querySelectorAll('.pagination a').forEach(link => {
-        link.addEventListener('click', function(e) {
-            e.preventDefault();
-            const href = this.getAttribute('href');
-            const match = href.match(/page=(\d+)/);
-            if (match) {
-                const page = parseInt(match[1]);
-                // Determine which container this pagination link belongs to
-                const container = this.closest('.card').querySelector('.refreshable-content');
-                if (container) {
-                    const containerId = container.id;
-                    const tbodyId = container.querySelector('tbody').id;
-                    const paginationId = this.closest('.pagination').id;
-
-                    if (containerId === 'duels-container') {
-                        loadDuelsPage(page, 'duels-container', 'duels-tbody', 'pagination');
-                    } else if (containerId === 'duels-container-2') {
-                        loadDuelsPage(page, 'duels-container-2', 'duels-tbody-2', 'pagination-2');
-                    } else if (containerId === 'players-container') {
-                        loadPlayersPage(page, 'players-container', 'players-tbody', 'players-pagination');
-                    }
-                }
-            }
-        });
-    });
 
     // Handle sort links in table headers - allow them to navigate normally
     document.querySelectorAll('.duels-table thead th a').forEach(link => {
@@ -374,9 +354,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const orderBy = urlParams.get('sort_by') || 'rating';
         const orderDir = urlParams.get('sort_dir') || 'DESC';
 
-        fetch(`?ajax=get_players_page&page=${page}&sort_by=${orderBy}&sort_dir=${orderDir}`)
-            .then(response => response.json())
+        const playersRequestUrl = `?ajax=get_players_page&page=${page}&sort_by=${orderBy}&sort_dir=${orderDir}&_=${Date.now()}`;
+        fetch(playersRequestUrl, { cache: 'no-store' })
+            .then(response => parseJsonResponseSafe(response, 'pagination'))
             .then(data => {
+                console.log('[pagination] players requested page:', page, 'response page:', data.current_page, 'total:', data.total_pages);
                 const tbody = document.getElementById(tbodyId);
                 if (tbody) {
                     tbody.innerHTML = '';
@@ -406,12 +388,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     if (data.current_page > 1) {
                         const prevLink = document.createElement('a');
-                        prevLink.href = '#';
-                    prevLink.innerHTML = `<i class="fas fa-chevron-left"></i> ${tJs('js_back', 'Back')}`;
-                        prevLink.addEventListener('click', function(e) {
-                            e.preventDefault();
-                            loadPlayersPage(data.current_page - 1, containerId, tbodyId, paginationId);
-                        });
+                        prevLink.href = `?page=${data.current_page - 1}&sort_by=${orderBy}&sort_dir=${orderDir}`;
+                        prevLink.dataset.page = String(data.current_page - 1);
+                        prevLink.innerHTML = `<i class="fas fa-chevron-left"></i> ${tJs('js_back', 'Back')}`;
                         pagination.appendChild(prevLink);
                     }
 
@@ -422,22 +401,17 @@ document.addEventListener('DOMContentLoaded', function() {
                             pageLink.textContent = i;
                         } else {
                             pageLink.className = 'pagination-link';
+                            pageLink.dataset.page = String(i);
                             pageLink.textContent = i;
-                            pageLink.addEventListener('click', function() {
-                                loadPlayersPage(i, containerId, tbodyId, paginationId);
-                            });
                         }
                         pagination.appendChild(pageLink);
                     }
 
                     if (data.current_page < data.total_pages) {
                         const nextLink = document.createElement('a');
-                        nextLink.href = '#';
-                    nextLink.innerHTML = `${tJs('js_forward', 'Forward')} <i class="fas fa-chevron-right"></i>`;
-                        nextLink.addEventListener('click', function(e) {
-                            e.preventDefault();
-                            loadPlayersPage(data.current_page + 1, containerId, tbodyId, paginationId);
-                        });
+                        nextLink.href = `?page=${data.current_page + 1}&sort_by=${orderBy}&sort_dir=${orderDir}`;
+                        nextLink.dataset.page = String(data.current_page + 1);
+                        nextLink.innerHTML = `${tJs('js_forward', 'Forward')} <i class="fas fa-chevron-right"></i>`;
                         pagination.appendChild(nextLink);
                     }
                 }
@@ -458,59 +432,102 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
     }
+    function parsePageFromPaginationTarget(target, pagination) {
+        if (!target || !pagination) {
+            return null;
+        }
 
-    // Add click event to pagination links in both tabs
-    document.querySelectorAll('.pagination-link').forEach(link => {
-        link.addEventListener('click', function(e) {
-            e.preventDefault(); // Prevent default navigation
-            const page = parseInt(this.textContent);
-            const containerId = this.closest('.card')?.querySelector('.refreshable-content')?.id;
+        const dataPage = target.getAttribute('data-page');
+        if (dataPage && /^\d+$/.test(dataPage)) {
+            return parseInt(dataPage, 10);
+        }
 
-            if (containerId) {
-                const tbodyId = this.closest('.card').querySelector('tbody').id;
-                const paginationId = this.closest('.pagination').id;
+        const text = (target.textContent || '').trim();
+        if (/^\d+$/.test(text)) {
+            return parseInt(text, 10);
+        }
 
-                if (containerId === 'duels-container') {
-                    loadDuelsPage(page, 'duels-container', 'duels-tbody', 'pagination');
-                } else if (containerId === 'duels-container-2') {
-                    loadDuelsPage(page, 'duels-container-2', 'duels-tbody-2', 'pagination-2');
-                } else if (containerId === 'players-container') {
-                    loadPlayersPage(page, 'players-container', 'players-tbody', 'players-pagination');
-                }
-            }
-        });
-    });
+        const href = target.getAttribute('href') || '';
+        if (!href) {
+            return null;
+        }
 
-    // Also handle pagination links in the first tab for players
-    document.querySelectorAll('#players-pagination a').forEach(link => {
-        link.addEventListener('click', function(e) {
-            e.preventDefault();
-            const href = this.getAttribute('href');
-            const match = href.match(/page=(\d+)/);
-            if (match) {
-                const page = parseInt(match[1]);
-                loadPlayersPage(page, 'players-container', 'players-tbody', 'players-pagination');
-            }
-        });
-    });
+        const queryIndex = href.indexOf('?');
+        if (queryIndex === -1) {
+            return null;
+        }
 
-    // Use event delegation for profile duels pagination links
+        const params = new URLSearchParams(href.slice(queryIndex + 1));
+        const pageParam = pagination.classList.contains('profile-duels-pagination')
+            ? params.get('duels_page')
+            : params.get('page');
+
+        if (pageParam && /^\d+$/.test(pageParam)) {
+            return parseInt(pageParam, 10);
+        }
+
+        return null;
+    }
+
+    function resolveProfileIdForPagination(target) {
+        const currentParams = new URLSearchParams(window.location.search);
+        const currentProfile = currentParams.get('profile');
+        if (currentProfile) {
+            return currentProfile;
+        }
+
+        const href = target.getAttribute('href') || '';
+        const queryIndex = href.indexOf('?');
+        if (queryIndex === -1) {
+            return null;
+        }
+
+        const params = new URLSearchParams(href.slice(queryIndex + 1));
+        return params.get('profile');
+    }
+
+    // Unified pagination delegation for all paginated blocks
     document.addEventListener('click', function(e) {
-        const target = e.target.closest('.profile-duels-pagination a');
-        if (target) {
+        const target = e.target.closest('.pagination a, .pagination .pagination-link');
+        if (!target) {
+            return;
+        }
+
+        const pagination = target.closest('.pagination');
+        if (!pagination || target.classList.contains('current')) {
+            return;
+        }
+
+        const page = parsePageFromPaginationTarget(target, pagination);
+        if (!Number.isInteger(page) || page < 1) {
+            return;
+        }
+
+        if (pagination.id === 'players-pagination') {
             e.preventDefault();
-            
-            const href = target.getAttribute('href');
-            const profileMatch = href.match(/profile=([^&]*)/);
-            const pageMatch = href.match(/duels_page=(\d+)/);
-            
-            if (profileMatch && pageMatch) {
-                const profileId = decodeURIComponent(profileMatch[1]);
-                const page = parseInt(pageMatch[1]);
-                
-                // Load profile duels page via AJAX
-                loadProfileDuelsPage(page, profileId);
+            loadPlayersPage(page, 'players-container', 'players-tbody', 'players-pagination');
+            return;
+        }
+
+        if (pagination.id === 'pagination-2') {
+            e.preventDefault();
+            loadDuelsPage(page, 'duels-container-2', 'duels-tbody-2', 'pagination-2');
+            return;
+        }
+
+        if (pagination.id === 'pagination') {
+            e.preventDefault();
+            loadDuelsPage(page, 'duels-container', 'duels-tbody', 'pagination');
+            return;
+        }
+
+        if (pagination.classList.contains('profile-duels-pagination')) {
+            const profileId = resolveProfileIdForPagination(target);
+            if (!profileId) {
+                return;
             }
+            e.preventDefault();
+            loadProfileDuelsPage(page, profileId);
         }
     });
 
@@ -541,9 +558,11 @@ document.addEventListener('DOMContentLoaded', function() {
             container.classList.add('refreshing');
         }
 
-        fetch(`?ajax=get_profile_duels_page&steam_id=${encodeURIComponent(steamId)}&page=${page}`)
-            .then(response => response.json())
+        const profileDuelsRequestUrl = `?ajax=get_profile_duels_page&steam_id=${encodeURIComponent(steamId)}&page=${page}&_=${Date.now()}`;
+        fetch(profileDuelsRequestUrl, { cache: 'no-store' })
+            .then(response => parseJsonResponseSafe(response, 'pagination'))
             .then(data => {
+                console.log('[pagination] profile duels requested page:', page, 'response page:', data.current_page, 'total:', data.total_pages);
                 // Hide refresh indicator
                 if (container) {
                     const refreshIndicator = container.querySelector('.refresh-indicator');
@@ -678,11 +697,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.current_page > 1) {
                     const prevLink = document.createElement('a');
                     prevLink.href = `?profile=${encodeURIComponent(steamId)}&duels_page=${data.current_page - 1}`;
+                    prevLink.dataset.page = String(data.current_page - 1);
                     prevLink.innerHTML = `<i class="fas fa-chevron-left"></i> ${tJs('js_back', 'Back')}`;
-                    prevLink.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        loadProfileDuelsPage(data.current_page - 1, steamId);
-                    });
                     pagination.appendChild(prevLink);
                 }
 
@@ -693,10 +709,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         pageLink.textContent = i;
                     } else {
                         pageLink.className = 'pagination-link';
+                        pageLink.dataset.page = String(i);
                         pageLink.textContent = i;
-                        pageLink.addEventListener('click', function() {
-                            loadProfileDuelsPage(i, steamId);
-                        });
                     }
                     pagination.appendChild(pageLink);
                 }
@@ -704,11 +718,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.current_page < data.total_pages) {
                     const nextLink = document.createElement('a');
                     nextLink.href = `?profile=${encodeURIComponent(steamId)}&duels_page=${data.current_page + 1}`;
+                    nextLink.dataset.page = String(data.current_page + 1);
                     nextLink.innerHTML = `${tJs('js_forward', 'Forward')} <i class="fas fa-chevron-right"></i>`;
-                    nextLink.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        loadProfileDuelsPage(data.current_page + 1, steamId);
-                    });
                     pagination.appendChild(nextLink);
                 }
             })
@@ -742,6 +753,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Removed AJAX pagination for sort links to allow normal navigation
 
 });
+
 
 
 

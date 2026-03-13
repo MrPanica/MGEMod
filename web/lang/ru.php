@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 return [
     'lang_name' => 'Русский',
