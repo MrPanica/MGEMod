@@ -1,4 +1,4 @@
-﻿// Add smooth animations and interactions
+// Add smooth animations and interactions
 document.addEventListener('DOMContentLoaded', function() {
     const i18n = window.MGE_I18N || {};
     const locale = window.MGE_LOCALE || 'ru-RU';
@@ -170,13 +170,13 @@ document.addEventListener('DOMContentLoaded', function() {
         fetch(`?ajax=get_duels_page&page=${page}&duel_sort_by=${duelOrderBy}&duel_sort_dir=${duelOrderDir}`)
             .then(response => response.json())
             .then(data => {
-                console.log('AJAX Response Data:', data); // РћС‚Р»Р°РґРєР°
+                console.log('AJAX Response Data:', data);
                 
                 const tbody = document.getElementById(tbodyId);
                 tbody.innerHTML = '';
 
                 data.duels.forEach(duel => {
-                    console.log('Processing duel:', duel); // РћС‚Р»Р°РґРєР°
+                    console.log('Processing duel:', duel);
                     
                     const row = document.createElement('tr');
                     
@@ -194,20 +194,20 @@ document.addEventListener('DOMContentLoaded', function() {
                     winnerCell.innerHTML = `<a href="?profile=${encodeURIComponent(duel.winner)}" style="color: var(--success); text-decoration: none;">${duel.winner_nick}</a>`;
                     
                     const winnerClassCell = document.createElement('td');
-                    console.log('Raw winner_class_html:', duel.winner_class_html); // РћС‚Р»Р°РґРєР°
-                    // РЈРґР°Р»СЏРµРј Р»РёС€РЅРёРµ СЌРєСЂР°РЅРёСЂРѕРІР°РЅРёСЏ, РµСЃР»Рё РѕРЅРё РµСЃС‚СЊ
+                    console.log('Raw winner_class_html:', duel.winner_class_html);
+
                     const processedWinnerClassHtml = duel.winner_class_html.replace(/\\"/g, '"');
-                    console.log('Processed winner_class_html:', processedWinnerClassHtml); // РћС‚Р»Р°РґРєР°
+                    console.log('Processed winner_class_html:', processedWinnerClassHtml);
                     winnerClassCell.innerHTML = processedWinnerClassHtml;
                     
                     const loserCell = document.createElement('td');
                     loserCell.innerHTML = `<a href="?profile=${encodeURIComponent(duel.loser)}" style="color: var(--danger); text-decoration: none;">${duel.loser_nick}</a>`;
                     
                     const loserClassCell = document.createElement('td');
-                    console.log('Raw loser_class_html:', duel.loser_class_html); // РћС‚Р»Р°РґРєР°
-                    // РЈРґР°Р»СЏРµРј Р»РёС€РЅРёРµ СЌРєСЂР°РЅРёСЂРѕРІР°РЅРёСЏ, РµСЃР»Рё РѕРЅРё РµСЃС‚СЊ
+                    console.log('Raw loser_class_html:', duel.loser_class_html);
+
                     const processedLoserClassHtml = duel.loser_class_html.replace(/\\"/g, '"');
-                    console.log('Processed loser_class_html:', processedLoserClassHtml); // РћС‚Р»Р°РґРєР°
+                    console.log('Processed loser_class_html:', processedLoserClassHtml);
                     loserClassCell.innerHTML = processedLoserClassHtml;
                     
                     // Calculate ELO change for winner
@@ -742,6 +742,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Removed AJAX pagination for sort links to allow normal navigation
 
 });
+
 
 
 

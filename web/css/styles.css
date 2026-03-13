@@ -1026,14 +1026,14 @@ body {
     line-height: 18px;
 }
 
-/* Р¦РІРµС‚Р° РґР»СЏ СЏС‡РµРµРє СЃРµС‚РєРё РјР°С‚С‡Р°РїРѕРІ */
+/* Matchup heatmap cell colors */
 .cell-very-high { background-color: #4caf50; }
 .cell-high { background-color: #8bc34a; }
 .cell-medium { background-color: #9ccc65; }
 .cell-low { background-color: #ff9800; }
 .cell-very-low { background-color: #f44336; }
 
-/* Р§Р°СЃС‚Рѕ РёСЃРїРѕР»СЊР·СѓРµРјС‹Рµ СЃС‚РёР»Рё */
+/* Common utility styles */
 .text-color-ccc {
     color: #ccc;
 }
@@ -1245,3 +1245,4 @@ body {
         grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     }
 }
+

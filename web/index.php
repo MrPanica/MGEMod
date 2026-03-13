@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // Modern 2026 design for MGE statistics with Steam authentication
 require_once 'auth/steam_handler.php';
 
@@ -199,7 +199,6 @@ function getMGERating($db, $steamId) {
 }
 
 function getMGEDuels($db, $steamId, $limit = 10) {
-    // Р СџР С•Р Т‘Р С–Р С•РЎвЂљР В°Р Р†Р В»Р С‘Р Р†Р В°Р ВµР С Р В·Р В°Р С—РЎР‚Р С•РЎРѓ РЎРѓ Р Р…РЎС“Р В¶Р Р…РЎвЂ№Р СР С‘ Р С—Р С•Р В»РЎРЏР СР С‘ + Р С—Р В°Р С–Р С‘Р Р…Р В°РЎвЂ Р С‘РЎРЏ РЎвЂЎР ВµРЎР‚Р ВµР В· LIMIT
     $stmt = $db->prepare("
         SELECT * FROM (
             SELECT
@@ -224,7 +223,7 @@ function getMGEDuels($db, $steamId, $limit = 10) {
             WHERE (winner = ? OR loser = ?)
               AND winner IS NOT NULL
               AND loser  IS NOT NULL
-              -- AND canceled = 0    РІвЂ С’ РЎР‚Р В°РЎРѓР С”Р С•Р СР СР ВµР Р…РЎвЂљР С‘РЎР‚РЎС“Р в„–, Р ВµРЎРѓР В»Р С‘ Р Р…РЎС“Р В¶Р Р…РЎвЂ№ РЎвЂљР С•Р В»РЎРЉР С”Р С• Р В·Р В°Р Р†Р ВµРЎР‚РЎв‚¬РЎвЂР Р…Р Р…РЎвЂ№Р Вµ Р В±Р ВµР В· Р С•РЎвЂљР СР ВµР Р…РЎвЂ№
+              -- AND canceled = 0
 
             UNION ALL
 
@@ -250,13 +249,12 @@ function getMGEDuels($db, $steamId, $limit = 10) {
             WHERE (winner = ? OR winner2 = ? OR loser = ? OR loser2 = ?)
               AND winner IS NOT NULL
               AND loser  IS NOT NULL
-              -- AND canceled = 0    РІвЂ С’ РЎР‚Р В°РЎРѓР С”Р С•Р СР СР ВµР Р…РЎвЂљР С‘РЎР‚РЎС“Р в„–, Р ВµРЎРѓР В»Р С‘ Р Р…РЎС“Р В¶Р Р…РЎвЂ№ РЎвЂљР С•Р В»РЎРЉР С”Р С• Р В·Р В°Р Р†Р ВµРЎР‚РЎв‚¬РЎвЂР Р…Р Р…РЎвЂ№Р Вµ Р В±Р ВµР В· Р С•РЎвЂљР СР ВµР Р…РЎвЂ№
+              -- AND canceled = 0
         ) AS combined
         ORDER BY endtime DESC
         LIMIT ?
     ");
 
-    // Р СџРЎР‚Р С‘Р Р†РЎРЏР В·РЎвЂ№Р Р†Р В°Р ВµР С Р С—Р В°РЎР‚Р В°Р СР ВµРЎвЂљРЎР‚РЎвЂ№: 6 РЎР‚Р В°Р В· steamId + limit
     $stmt->bind_param('ssssssi', 
         $steamId, $steamId,     // 1v1: winner / loser
         $steamId, $steamId, $steamId, $steamId,  // 2v2: winner, winner2, loser, loser2
@@ -268,10 +266,8 @@ function getMGEDuels($db, $steamId, $limit = 10) {
     $duels = $result->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
 
-    // РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
 // If processDuelWinners already exists in your build, keep it.
 // Otherwise this is a minimal fallback that sets is_winner.
-    // РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
 
     $processedDuels = [];
     foreach ($duels as $duel) {
@@ -291,10 +287,7 @@ function getMGEDuels($db, $steamId, $limit = 10) {
         $processedDuels[] = $duel;
     }
 
-    // РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
-    // Debug (Р СР С•Р В¶Р Р…Р С• РЎС“Р В±РЎР‚Р В°РЎвЂљРЎРЉ Р Р† Р С—РЎР‚Р С•Р Т‘Р В°Р С”РЎв‚¬Р ВµР Р…Р Вµ)
-    // РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
-    error_log("DEBUG: Fetched {$limit} duels for SteamID $steamId РІвЂ вЂ™ found: " . count($processedDuels));
+    error_log("DEBUG: Fetched {$limit} duels for SteamID $steamId -> found: " . count($processedDuels));
 
     return $processedDuels;
 }
@@ -334,7 +327,6 @@ function getTopPlayers($db, $limit = 10, $orderBy = 'rating', $orderDir = 'DESC'
 
     // Special handling for 'last_duel' sort
     if ($orderBy === 'last_duel') {
-        // Р ВРЎРѓР С—Р С•Р В»РЎРЉР В·РЎС“Р ВµР С Р С•Р С—РЎвЂљР С‘Р СР С‘Р В·Р С‘РЎР‚Р С•Р Р†Р В°Р Р…Р Р…РЎвЂ№Р в„– Р В·Р В°Р С—РЎР‚Р С•РЎРѓ РЎРѓ Р С—Р С•Р Т‘Р В·Р В°Р С—РЎР‚Р С•РЎРѓР В°Р СР С‘
         $sql = "
             SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name,
                    COALESCE(
@@ -950,9 +942,7 @@ function getClassIcon($className) {
         'spy' => 'Spy_emblem_RED.png'
     ];
 
-    // Р СџРЎР‚Р С•Р Р†Р ВµРЎР‚РЎРЏР ВµР С, РЎРѓР С•Р Т‘Р ВµРЎР‚Р В¶Р С‘РЎвЂљ Р В»Р С‘ РЎРѓРЎвЂљРЎР‚Р С•Р С”Р В° Р Р…Р ВµРЎРѓР С”Р С•Р В»РЎРЉР С”Р С• Р С”Р В»Р В°РЎРѓРЎРѓР С•Р Р†, РЎР‚Р В°Р В·Р Т‘Р ВµР В»Р ВµР Р…Р Р…РЎвЂ№РЎвЂ¦ Р В·Р В°Р С—РЎРЏРЎвЂљР С•Р в„–
     if (strpos($className, ',') !== false) {
-        // Р В Р В°Р В·Р В±Р С‘Р Р†Р В°Р ВµР С РЎРѓРЎвЂљРЎР‚Р С•Р С”РЎС“ Р Р…Р В° Р С•РЎвЂљР Т‘Р ВµР В»РЎРЉР Р…РЎвЂ№Р Вµ Р С”Р В»Р В°РЎРѓРЎРѓРЎвЂ№
         $classes = explode(',', $className);
         $icons = [];
 
@@ -965,7 +955,6 @@ function getClassIcon($className) {
 
         return $icons;
     } else {
-        // Р СџРЎР‚Р С‘Р Р†Р С•Р Т‘Р С‘Р С Р С” Р Р…Р С‘Р В¶Р Р…Р ВµР СРЎС“ РЎР‚Р ВµР С–Р С‘РЎРѓРЎвЂљРЎР‚РЎС“ Р Т‘Р В»РЎРЏ Р Р…Р В°Р Т‘Р ВµР В¶Р Р…Р С•РЎРѓРЎвЂљР С‘
         $className = strtolower(trim($className));
 
         return isset($iconMap[$className]) ? $iconMap[$className] : 'default.png';
@@ -977,17 +966,15 @@ function getClassIconsHtml($classNamesStr, $size = "32") {
     $icons = getClassIcon($classNamesStr);
 
     if (is_array($icons)) {
-        // Р В­РЎвЂљР С• РЎРѓРЎвЂљРЎР‚Р С•Р С”Р В° РЎРѓ Р Р…Р ВµРЎРѓР С”Р С•Р В»РЎРЉР С”Р С‘Р СР С‘ Р С”Р В»Р В°РЎРѓРЎРѓР В°Р СР С‘
         $html = '';
         foreach ($icons as $icon) {
             $html .= '<img src="tf_logo/' . $icon . '" class="class-icon" width="' . $size . '" height="' . $size . '" style="margin-right: 2px;">';
         }
-        error_log("DEBUG getClassIconsHtml: Input: $classNamesStr, Output: $html"); // Р С›РЎвЂљР В»Р В°Р Т‘Р С”Р В°
+        error_log("DEBUG getClassIconsHtml: Input: $classNamesStr, Output: $html");
         return $html;
     } else {
-        // Р В­РЎвЂљР С• Р С•Р Т‘Р С‘Р Р…Р С•РЎвЂЎР Р…РЎвЂ№Р в„– Р С”Р В»Р В°РЎРѓРЎРѓ
         $html = '<img src="tf_logo/' . $icons . '" class="class-icon" width="' . $size . '" height="' . $size . '">';
-        error_log("DEBUG getClassIconsHtml: Input: $classNamesStr, Output: $html"); // Р С›РЎвЂљР В»Р В°Р Т‘Р С”Р В°
+        error_log("DEBUG getClassIconsHtml: Input: $classNamesStr, Output: $html");
         return $html;
     }
 }
@@ -1117,7 +1104,6 @@ if (isset($_GET['ajax'])) {
             $duel['winner_nick'] = $winnerNick;
             $duel['loser_nick'] = $loserNick;
 
-            // Р вЂќР С•Р В±Р В°Р Р†Р В»РЎРЏР ВµР С РЎвЂљР В°Р С”Р В¶Р Вµ Р Т‘Р В°Р Р…Р Р…РЎвЂ№Р Вµ Р С• Р С”Р В»Р В°РЎРѓРЎРѓР В°РЎвЂ¦ Р Т‘Р В»РЎРЏ AJAX-Р С•РЎвЂљР Р†Р ВµРЎвЂљР В° (РЎС“Р Р†Р ВµР В»Р С‘РЎвЂЎР ВµР Р…Р Р…РЎвЂ№Р в„– РЎР‚Р В°Р В·Р СР ВµРЎР‚ Р Т‘Р В»РЎРЏ Р В»РЎС“РЎвЂЎРЎв‚¬Р ВµР в„– Р Р†Р С‘Р Т‘Р С‘Р СР С•РЎРѓРЎвЂљР С‘)
             $duel['winner_class_html'] = !empty($duel['winnerclass']) ? getClassIconsHtml($duel['winnerclass'], "38") : '<span class="no-class">-</span>';
             $duel['loser_class_html'] = !empty($duel['loserclass']) ? getClassIconsHtml($duel['loserclass'], "38") : '<span class="no-class">-</span>';
 
@@ -1127,14 +1113,12 @@ if (isset($_GET['ajax'])) {
                 $duel['winner2_nick'] = $winner2Nick;
                 $duel['loser2_nick'] = $loser2Nick;
 
-                // Р вЂќР С•Р В±Р В°Р Р†Р В»РЎРЏР ВµР С РЎвЂљР В°Р С”Р В¶Р Вµ Р Т‘Р В°Р Р…Р Р…РЎвЂ№Р Вµ Р С• Р С”Р В»Р В°РЎРѓРЎРѓР В°РЎвЂ¦ Р Т‘Р В»РЎРЏ Р Р†РЎвЂљР С•РЎР‚РЎвЂ№РЎвЂ¦ Р С‘Р С–РЎР‚Р С•Р С”Р С•Р Р† Р Р† 2v2
                 $duel['winner2_class_html'] = !empty($duel['winner2class']) ? getClassIconsHtml($duel['winner2class'], "38") : '<span class="no-class">-</span>';
                 $duel['loser2_class_html'] = !empty($duel['loser2class']) ? getClassIconsHtml($duel['loser2class'], "38") : '<span class="no-class">-</span>';
             }
         }
 
-        // Р С›РЎвЂљР В»Р В°Р Т‘Р С•РЎвЂЎР Р…РЎвЂ№Р в„– Р Р†РЎвЂ№Р Р†Р С•Р Т‘ Р Т‘Р В»РЎРЏ Р С—РЎР‚Р С•Р Р†Р ВµРЎР‚Р С”Р С‘ Р Т‘Р В°Р Р…Р Р…РЎвЂ№РЎвЂ¦
-        error_log("DEBUG AJAX: Sending duels data: " . json_encode(array_slice($duels, 0, 2))); // Р СћР С•Р В»РЎРЉР С”Р С• Р С—Р ВµРЎР‚Р Р†РЎвЂ№Р Вµ 2 Р В·Р В°Р С—Р С‘РЎРѓР С‘ Р Т‘Р В»РЎРЏ Р С•РЎвЂљР В»Р В°Р Т‘Р С”Р С‘
+        error_log("DEBUG AJAX: Sending duels data: " . json_encode(array_slice($duels, 0, 2)));
 
         echo json_encode([
             'duels' => $duels,
@@ -1282,7 +1266,6 @@ if (isset($_GET['ajax'])) {
 
     // Special handling for 'last_duel' sort
     if ($orderBy === 'last_duel') {
-        // Р С›Р С—РЎвЂљР С‘Р СР С‘Р В·Р С‘РЎР‚Р С•Р Р†Р В°Р Р…Р Р…РЎвЂ№Р в„– Р В·Р В°Р С—РЎР‚Р С•РЎРѓ Р Т‘Р В»РЎРЏ РЎРѓР С•РЎР‚РЎвЂљР С‘РЎР‚Р С•Р Р†Р С”Р С‘ Р С—Р С• Р С—Р С•РЎРѓР В»Р ВµР Т‘Р Р…Р ВµР в„– Р Т‘РЎС“РЎРЊР В»Р С‘
         $sql = "
             SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name,
                    COALESCE(
@@ -1328,9 +1311,8 @@ if (isset($_GET['ajax'])) {
         ");
     }
 
-    // Р С›Р В±РЎР‚Р В°Р В±Р С•РЎвЂљР С”Р В° РЎР‚Р ВµР В·РЎС“Р В»РЎРЉРЎвЂљР В°РЎвЂљР С•Р Р† (Р Р…Р Вµ Р С‘Р В·Р СР ВµР Р…РЎРЏР В»Р В°РЎРѓРЎРЉ)
     $players = [];
-    if ($orderBy !== 'last_duel') { // Р вЂќР В»РЎРЏ last_duel РЎС“Р В¶Р Вµ Р С—Р С•Р В»РЎС“РЎвЂЎР С‘Р В»Р С‘ Р Т‘Р В°Р Р…Р Р…РЎвЂ№Р Вµ Р Р†РЎвЂ№РЎв‚¬Р Вµ
+    if ($orderBy !== 'last_duel') {
         if ($stmt) {
             $stmt->bind_param('ii', $limit, $offset);
             $stmt->execute();
@@ -1396,7 +1378,6 @@ if (isset($_GET['ajax'])) {
             $duel['winner_nick'] = $winnerNick;
             $duel['loser_nick'] = $loserNick;
 
-            // Р вЂќР С•Р В±Р В°Р Р†Р В»РЎРЏР ВµР С РЎвЂљР В°Р С”Р В¶Р Вµ Р Т‘Р В°Р Р…Р Р…РЎвЂ№Р Вµ Р С• Р С”Р В»Р В°РЎРѓРЎРѓР В°РЎвЂ¦ Р Т‘Р В»РЎРЏ AJAX-Р С•РЎвЂљР Р†Р ВµРЎвЂљР В°
             $duel['winnerclass_html'] = !empty($duel['winnerclass']) ? getClassIconsHtml($duel['winnerclass'], "32") : '<span class="no-class">-</span>';
             $duel['loserclass_html'] = !empty($duel['loserclass']) ? getClassIconsHtml($duel['loserclass'], "32") : '<span class="no-class">-</span>';
 
@@ -1406,7 +1387,6 @@ if (isset($_GET['ajax'])) {
                 $duel['winner2_nick'] = $winner2Nick;
                 $duel['loser2_nick'] = $loser2Nick;
 
-                // Р вЂќР С•Р В±Р В°Р Р†Р В»РЎРЏР ВµР С РЎвЂљР В°Р С”Р В¶Р Вµ Р Т‘Р В°Р Р…Р Р…РЎвЂ№Р Вµ Р С• Р С”Р В»Р В°РЎРѓРЎРѓР В°РЎвЂ¦ Р Т‘Р В»РЎРЏ Р Р†РЎвЂљР С•РЎР‚РЎвЂ№РЎвЂ¦ Р С‘Р С–РЎР‚Р С•Р С”Р С•Р Р† Р Р† 2v2
                 $duel['winner2class_html'] = !empty($duel['winner2class']) ? getClassIconsHtml($duel['winner2class'], "32") : '<span class="no-class">-</span>';
                 $duel['loser2class_html'] = !empty($duel['loser2class']) ? getClassIconsHtml($duel['loser2class'], "32") : '<span class="no-class">-</span>';
             }
@@ -2132,7 +2112,6 @@ if ($searchQuery) {
         $searchResults = $result->fetch_all(MYSQLI_ASSOC);
         $stmt->close();
 
-        // Update nick field for search results - Р С‘РЎРѓР С—Р С•Р В»РЎРЉР В·РЎС“Р ВµР С Р С‘Р СРЎРЏ Р С‘Р В· РЎвЂљР В°Р В±Р В»Р С‘РЎвЂ РЎвЂ№
         foreach ($searchResults as &$player) {
             $player['nick'] = $player['name'] ?: $player['steamid'];
             $winrate = ($player['wins'] + $player['losses']) > 0 ?
@@ -2261,7 +2240,6 @@ if ($isAuthenticated) {
 }
 
 // Pagination for players
-// Р СџР В°Р С–Р С‘Р Р…Р В°РЎвЂ Р С‘РЎРЏ Р Т‘Р В»РЎРЏ Р С‘Р С–РЎР‚Р С•Р С”Р С•Р Р†
 $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
 $limit = 25; // Using 25 players per page
 $offset = ($page - 1) * $limit;
@@ -2269,7 +2247,6 @@ $offset = ($page - 1) * $limit;
 // Get top players with pagination
 // Special handling for 'last_duel' sort
 if ($orderBy === 'last_duel') {
-    // Р РЋР Р…Р В°РЎвЂЎР В°Р В»Р В° Р С—Р С•Р В»РЎС“РЎвЂЎР В°Р ВµР С ID Р С‘Р С–РЎР‚Р С•Р С”Р С•Р Р† РЎРѓ РЎР‚Р ВµР в„–РЎвЂљР С‘Р Р…Р С–Р С•Р С
     $sql = "
         SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name
         FROM mgemod_stats ms
@@ -2285,11 +2262,9 @@ if ($orderBy === 'last_duel') {
     $topPlayers = $result->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
     
-    // Р вЂ”Р В°РЎвЂљР ВµР С Р Т‘Р В»РЎРЏ Р С”Р В°Р В¶Р Т‘Р С•Р С–Р С• Р С‘Р С–РЎР‚Р С•Р С”Р В° Р С—Р С•Р В»РЎС“РЎвЂЎР В°Р ВµР С Р Р†РЎР‚Р ВµР СРЎРЏ Р С—Р С•РЎРѓР В»Р ВµР Т‘Р Р…Р ВµР в„– Р Т‘РЎС“РЎРЊР В»Р С‘ (Р СР С•Р В¶Р Р…Р С• Р С•Р С—РЎвЂљР С‘Р СР С‘Р В·Р С‘РЎР‚Р С•Р Р†Р В°РЎвЂљРЎРЉ)
     foreach ($topPlayers as &$player) {
         $steamId = $player['steamid'];
         
-        // Р С›Р С—РЎвЂљР С‘Р СР С‘Р В·Р С‘РЎР‚Р С•Р Р†Р В°Р Р…Р Р…РЎвЂ№Р в„– Р В·Р В°Р С—РЎР‚Р С•РЎРѓ Р Т‘Р В»РЎРЏ Р С•Р Т‘Р Р…Р С•Р С–Р С• Р С‘Р С–РЎР‚Р С•Р С”Р В°
         $lastDuelSql = "
             SELECT MAX(endtime) as last_duel_time FROM (
                 SELECT MAX(endtime) as endtime FROM mgemod_duels WHERE winner = ? OR loser = ?
@@ -2307,7 +2282,6 @@ if ($orderBy === 'last_duel') {
         $stmt2->close();
     }
     
-    // Р РЋР С•РЎР‚РЎвЂљР С‘РЎР‚РЎС“Р ВµР С Р Р† PHP Р С—Р С• Р Р†РЎР‚Р ВµР СР ВµР Р…Р С‘ Р С—Р С•РЎРѓР В»Р ВµР Т‘Р Р…Р ВµР в„– Р Т‘РЎС“РЎРЊР В»Р С‘
     usort($topPlayers, function($a, $b) use ($orderDir) {
         $aTime = $a['last_duel_time_val'] ?? 0;
         $bTime = $b['last_duel_time_val'] ?? 0;
@@ -3174,13 +3148,10 @@ if ($viewDuel) {
                                         </td>
                                         <td>
                                             <?php
-                                                // Р С›Р С—РЎР‚Р ВµР Т‘Р ВµР В»РЎРЏР ВµР С Р С—РЎР‚Р С•РЎвЂљР С‘Р Р†Р Р…Р С‘Р С”Р В° Р Р† Р В·Р В°Р Р†Р С‘РЎРѓР С‘Р СР С•РЎРѓРЎвЂљР С‘ Р С•РЎвЂљ РЎвЂљР С•Р С–Р С•, Р Р†РЎвЂ№Р С‘Р С–РЎР‚Р В°Р В» Р В»Р С‘ РЎвЂљР ВµР С”РЎС“РЎвЂ°Р С‘Р в„– Р С‘Р С–РЎР‚Р С•Р С”
                                                 if ($isWinner) {
-                                                    // Р ВР С–РЎР‚Р С•Р С” Р Р†РЎвЂ№Р С‘Р С–РЎР‚Р В°Р В», Р В·Р Р…Р В°РЎвЂЎР С‘РЎвЂљ Р С—РЎР‚Р С•РЎвЂљР С‘Р Р†Р Р…Р С‘Р С” - Р С—РЎР‚Р С•Р С‘Р С–РЎР‚Р В°Р Р†РЎв‚¬Р С‘Р в„–
                                                     if ($duel['type'] === '1v1') {
                                                         $opponentId = $duel['loser'];
                                                     } else {
-                                                        // Р вЂ™ 2v2 Р С•Р С—РЎР‚Р ВµР Т‘Р ВµР В»РЎРЏР ВµР С, Р С”РЎвЂљР С• Р В±РЎвЂ№Р В» Р Р†РЎвЂљР С•РЎР‚РЎвЂ№Р С Р С—РЎР‚Р С•Р С‘Р С–РЎР‚Р В°Р Р†РЎв‚¬Р С‘Р С
                                                         if ($duel['loser'] === $profileData['steamid']) {
                                                             $opponentId = $duel['loser2'];
                                                         } else {
@@ -3188,11 +3159,9 @@ if ($viewDuel) {
                                                         }
                                                     }
                                                 } else {
-                                                    // Р ВР С–РЎР‚Р С•Р С” Р С—РЎР‚Р С•Р С‘Р С–РЎР‚Р В°Р В», Р В·Р Р…Р В°РЎвЂЎР С‘РЎвЂљ Р С—РЎР‚Р С•РЎвЂљР С‘Р Р†Р Р…Р С‘Р С” - Р С—Р С•Р В±Р ВµР Т‘Р С‘РЎвЂљР ВµР В»РЎРЉ
                                                     if ($duel['type'] === '1v1') {
                                                         $opponentId = $duel['winner'];
                                                     } else {
-                                                        // Р вЂ™ 2v2 Р С•Р С—РЎР‚Р ВµР Т‘Р ВµР В»РЎРЏР ВµР С, Р С”РЎвЂљР С• Р В±РЎвЂ№Р В» Р Р†РЎвЂљР С•РЎР‚РЎвЂ№Р С Р С—Р С•Р В±Р ВµР Т‘Р С‘РЎвЂљР ВµР В»Р ВµР С
                                                         if ($duel['winner'] === $profileData['steamid']) {
                                                             $opponentId = $duel['winner2'];
                                                         } else {
@@ -3594,7 +3563,6 @@ if ($viewDuel) {
                                 </td>
                                 <td>
                                     <?php
-                                        // Р В Р В°РЎРѓРЎРѓРЎвЂЎР С‘РЎвЂљРЎвЂ№Р Р†Р В°Р ВµР С Р С‘Р В·Р СР ВµР Р…Р ВµР Р…Р С‘Р Вµ ELO Р С—Р С•Р В±Р ВµР Т‘Р С‘РЎвЂљР ВµР В»РЎРЏ
                                         $eloChange = null;
                                         if (isset($duel['winner_new_elo']) && isset($duel['winner_previous_elo'])) {
                                             $eloChange = $duel['winner_new_elo'] - $duel['winner_previous_elo'];
@@ -3718,7 +3686,7 @@ if ($viewDuel) {
             ratings = [];
             dateLabels = [];
             let prevRating = null;
-            let currentSegment = { start: 0, color: 'rgba(76, 175, 80, 0.15)', borderColor: 'rgba(76, 175, 80, 1)' }; // Р Р…Р В°РЎвЂЎР В°Р В»РЎРЉР Р…РЎвЂ№Р в„– РЎвЂ Р Р†Р ВµРЎвЂљ - Р В·Р ВµР В»Р ВµР Р…РЎвЂ№Р в„–
+            let currentSegment = { start: 0, color: 'rgba(76, 175, 80, 0.15)', borderColor: 'rgba(76, 175, 80, 1)' };
             const segments = [];
 
             ratingHistory.forEach((point, index) => {
@@ -3857,7 +3825,6 @@ if ($viewDuel) {
             console.log('First dataset length:', datasets[0].data.length);
         }
 
-        // Р СџРЎР‚Р С•Р Р†Р ВµРЎР‚Р С‘Р С, Р ВµРЎРѓРЎвЂљРЎРЉ Р В»Р С‘ РЎРЊР В»Р ВµР СР ВµР Р…РЎвЂљ canvas Р Р† DOM
         console.log('Canvas element exists in DOM:', document.getElementById('ratingChart') !== null);
 
         const ratingChart = new Chart(ctx, {
