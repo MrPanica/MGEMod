@@ -1635,8 +1635,11 @@ Action Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast)
 
     int arena_index = g_iPlayerArena[client];
 
-    g_tfctPlayerClass[client] = TF2_GetPlayerClass(client);
-
+    TFClassType oldClass = g_tfctPlayerClass[client];
+    TFClassType currentClass = TF2_GetPlayerClass(client);
+    g_tfctPlayerClass[client] = currentClass;
+    if (oldClass != TFClass_Unknown && oldClass != currentClass)
+        OnPovTargetClassChanged(client, oldClass, currentClass);
 
     ResetClientAmmoCounts(client);
 

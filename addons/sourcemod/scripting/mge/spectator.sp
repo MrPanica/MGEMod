@@ -167,16 +167,46 @@ Action Command_SpecNavigation(int client, const char[] command, int args)
     // Get current target
     int current_target = GetEntPropEnt(client, Prop_Send, "m_hObserverTarget");
 
-    // Find all valid arena players
+    // Find all valid arena players in deterministic order: arena -> slot.
     int valid_targets[MAXPLAYERS + 1];
     int target_count = 0;
 
-    for (int i = 1; i <= MaxClients; i++)
+    for (int arena = 1; arena <= g_iArenaCount; arena++)
     {
-        if (IsValidClient(i) && g_iPlayerArena[i] > 0 && IsPlayerAlive(i))
+        int maxSlot = g_bArenaNoFight[arena] ? MAXPLAYERS : (g_bFourPersonArena[arena] ? SLOT_FOUR : SLOT_TWO);
+        if (maxSlot > MAXPLAYERS)
+            maxSlot = MAXPLAYERS;
+
+        for (int slot = SLOT_ONE; slot <= maxSlot; slot++)
         {
-            valid_targets[target_count++] = i;
+            int target = g_iArenaQueue[arena][slot];
+            if (!IsValidClient(target))
+                continue;
+            if (g_iPlayerArena[target] != arena)
+                continue;
+            if (!IsPlayerAlive(target))
+                continue;
+
+            bool alreadyAdded = false;
+            for (int i = 0; i < target_count; i++)
+            {
+                if (valid_targets[i] == target)
+                {
+                    alreadyAdded = true;
+                    break;
+                }
+            }
+
+            if (alreadyAdded)
+                continue;
+
+            valid_targets[target_count++] = target;
+            if (target_count >= MAXPLAYERS)
+                break;
         }
+
+        if (target_count >= MAXPLAYERS)
+            break;
     }
 
     if (target_count == 0)

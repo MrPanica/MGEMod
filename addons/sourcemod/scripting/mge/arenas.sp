@@ -1099,6 +1099,7 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
         g_iArenaDuelStartTime[arena_index] = 0;
         UpdateHudForArena(arena_index);
         CheckWaitingList(arena_index);
+        ResetPovForArenaAfterMatch(arena_index);
         CallForward_OnPlayerArenaRemoved(client, arena_index);
         return;
     }
@@ -1248,6 +1249,7 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
                 g_iArenaDuelStartTime[arena_index] = 0;
 
                 UpdateHudForArena(arena_index);
+                ResetPovForArenaAfterMatch(arena_index);
                 return;
             }
         }
@@ -1341,6 +1343,7 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
                 g_iArenaDuelStartTime[arena_index] = 0;
 
                 UpdateHudForArena(arena_index);
+                ResetPovForArenaAfterMatch(arena_index);
                 return;
             }
         }
@@ -1362,6 +1365,8 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
 
     // Check if we should auto-add players from waiting list
     CheckWaitingList(arena_index);
+
+    ResetPovForArenaAfterMatch(arena_index);
 
     // Call OnPlayerArenaRemoved forward
     CallForward_OnPlayerArenaRemoved(client, arena_index);

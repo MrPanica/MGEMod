@@ -1851,7 +1851,7 @@ void HandleCameraPovToggle(const char[] source, int activator)
     int firstValid = FindNextValidPovTarget(players, count, -1);
     if (firstValid == -1)
     {
-        LogMessage("[MGE camera][WARN] POV %s: no valid players with eyes attachment in arena=%d", source, arenaIndex);
+        LogMessage("[MGE camera][WARN] POV %s: no valid players with eyes/head attachment in arena=%d", source, arenaIndex);
         ExitCameraPovModeToCamera(g_sCurrentCameraName);
         return;
     }
@@ -1889,12 +1889,90 @@ int FindNextValidPovTarget(const int players[MAXPLAYERS + 1], int count, int cur
     return -1;
 }
 
-bool IsPovAttachTargetValid(int client)
+bool ResolvePovAttachment(int client, char[] attachmentName, int maxlen, int &attachmentIndex)
 {
+    attachmentIndex = 0;
     if (!IsValidClient(client))
         return false;
 
-    return (LookupEntityAttachment(client, "head") > 0);
+    attachmentIndex = LookupEntityAttachment(client, "eyes");
+    if (attachmentIndex > 0)
+    {
+        strcopy(attachmentName, maxlen, "eyes");
+        return true;
+    }
+
+    attachmentIndex = LookupEntityAttachment(client, "head");
+    if (attachmentIndex > 0)
+    {
+        strcopy(attachmentName, maxlen, "head");
+        return true;
+    }
+
+    attachmentName[0] = '\0';
+    return false;
+}
+
+bool IsPovAttachTargetValid(int client)
+{
+    char attachmentName[16];
+    int attachmentIndex = 0;
+    return ResolvePovAttachment(client, attachmentName, sizeof(attachmentName), attachmentIndex);
+}
+
+bool TryResolveCameraByName(const char[] cameraName, char[] outName, int outNameLen, int &cameraEnt)
+{
+    if (cameraName[0] == '\0')
+        return false;
+
+    cameraEnt = GetCachedEntityByTargetName("point_camera", cameraName);
+    if (cameraEnt == -1 || !IsValidEntity(cameraEnt))
+        return false;
+
+    strcopy(outName, outNameLen, cameraName);
+    return true;
+}
+
+bool ResolvePovRestoreCamera(int arenaIndex, const char[] requestedCameraName, char[] outName, int outNameLen, int &cameraEnt)
+{
+    outName[0] = '\0';
+    cameraEnt = -1;
+
+    if (TryResolveCameraByName(requestedCameraName, outName, outNameLen, cameraEnt))
+        return true;
+
+    if (arenaIndex > 0)
+    {
+        char arenaCameraName[64];
+        Format(arenaCameraName, sizeof(arenaCameraName), "sg_camera_%d", arenaIndex);
+        if (TryResolveCameraByName(arenaCameraName, outName, outNameLen, cameraEnt))
+            return true;
+
+        if (arenaIndex > 1)
+        {
+            Format(arenaCameraName, sizeof(arenaCameraName), "sg_camera_%d", arenaIndex - 1);
+            if (TryResolveCameraByName(arenaCameraName, outName, outNameLen, cameraEnt))
+                return true;
+        }
+    }
+
+    int ent = -1;
+    while ((ent = FindEntityByClassname(ent, "point_camera")) != -1)
+    {
+        if (!IsValidEntity(ent))
+            continue;
+
+        char targetName[64];
+        GetEntPropString(ent, Prop_Data, "m_iName", targetName, sizeof(targetName));
+        if (targetName[0] == '\0' || StrContains(targetName, "sg_camera_", false) != 0)
+            continue;
+
+        cameraEnt = ent;
+        strcopy(outName, outNameLen, targetName);
+        return true;
+    }
+
+    return false;
 }
 
 public void OnFightButtonPressed(const char[] output, int caller, int activator, float delay)
@@ -2080,6 +2158,21 @@ void ResetPovForArenaAfterMatch(int arenaIndex)
         LogMessage("[MGE camera] POV reset after match: reattached target %N (arena=%d)", g_iCameraPovTarget, arenaIndex);
 }
 
+void OnPovTargetClassChanged(int client, TFClassType oldClass, TFClassType newClass)
+{
+    if (!g_bCameraPovMode || g_iCameraPovTarget != client)
+        return;
+
+    g_iCameraPovAttachedTargetSpectate = 0;
+    g_iCameraPovAttachedTargetArenaCam = 0;
+
+    LogMessage("[MGE camera] POV target class changed: %N %s -> %s, forcing reattach",
+        client, TFClassToString(oldClass), TFClassToString(newClass));
+
+    UpdateCameraPovViewNow();
+    UpdateMonitorMicrophonesPlacement();
+}
+
 void EnterCameraPovMode(int arenaIndex, int target, int listIndex)
 {
     g_bCameraPovMode = true;
@@ -2129,6 +2222,8 @@ void ExitCameraPovModeToCamera(const char[] restoreCameraName, bool fromPovFollo
     if (!g_bCameraPovMode && g_hCameraPovFollowTimer == null)
         return;
 
+    int povArenaIndex = g_iCameraPovArenaIndex;
+
     g_bCameraPovMode = false;
     g_iCameraPovTarget = 0;
     g_iCameraPovArenaIndex = 0;
@@ -2159,17 +2254,22 @@ void ExitCameraPovModeToCamera(const char[] restoreCameraName, bool fromPovFollo
     g_iCameraPovAttachedTargetSpectate = 0;
     g_iCameraPovAttachedTargetArenaCam = 0;
 
-    int arenaCam = GetCachedEntityByTargetName("point_camera", restoreCameraName);
-    if (arenaCam != -1)
+    int arenaCam = -1;
+    char resolvedCameraName[64];
+    bool foundRestoreCamera = ResolvePovRestoreCamera(povArenaIndex, restoreCameraName, resolvedCameraName, sizeof(resolvedCameraName), arenaCam);
+    if (foundRestoreCamera)
     {
+        AcceptEntityInput(arenaCam, "ClearParent");
         SetVariantString("1");
         AcceptEntityInput(arenaCam, "SetOnAndTurnOthersOff");
         AcceptEntityInput(arenaCam, "Enable");
-        LogMessage("[MGE camera] POV OFF: restored camera=%s ent=%d", restoreCameraName, arenaCam);
+        strcopy(g_sCurrentCameraName, sizeof(g_sCurrentCameraName), resolvedCameraName);
+        LogMessage("[MGE camera] POV OFF: restored camera=%s ent=%d", resolvedCameraName, arenaCam);
     }
     else
     {
-        LogMessage("[MGE camera][WARN] POV OFF: restore camera not found (%s)", restoreCameraName);
+        LogMessage("[MGE camera][WARN] POV OFF: restore camera fallback failed (requested=%s, arena=%d)",
+            restoreCameraName, povArenaIndex);
     }
 
     UpdateTvTextForCurrentCamera();
@@ -2250,28 +2350,40 @@ void EnsureCameraAttachedToEyes(int cameraEnt, int target, int &attachedTarget)
         return;
     }
 
-    if (attachedTarget == target)
-        return;
-
-    if (!IsPovAttachTargetValid(target))
+    char attachmentName[16];
+    int attachmentIndex = 0;
+    if (!ResolvePovAttachment(target, attachmentName, sizeof(attachmentName), attachmentIndex))
     {
-        LogMessage("[MGE camera][WARN] POV attach skipped: target=%N has no head attachment", target);
+        LogMessage("[MGE camera][WARN] POV attach skipped: target=%N has no eyes/head attachment", target);
         return;
     }
 
-    float headPos[3];
-    float headAng[3];
-    GetClientEyePosition(target, headPos);
-    GetClientEyeAngles(target, headAng);
-    TeleportEntity(cameraEnt, headPos, headAng, NULL_VECTOR);
+    bool alreadyParentedToTarget = (GetEntPropEnt(cameraEnt, Prop_Data, "m_hMoveParent") == target);
+    if (attachedTarget == target && alreadyParentedToTarget)
+        return;
+
+    float attachPos[3];
+    float attachAng[3];
+    GetClientEyePosition(target, attachPos);
+    GetClientEyeAngles(target, attachAng);
+
+    float fwd[3];
+    float right[3];
+    float up[3];
+    GetAngleVectors(attachAng, fwd, right, up);
+    attachPos[0] += fwd[0] * 2.0;
+    attachPos[1] += fwd[1] * 2.0;
+    attachPos[2] += fwd[2] * 2.0;
+    attachPos[2] += 13.0;
+    TeleportEntity(cameraEnt, attachPos, attachAng, NULL_VECTOR);
 
     AcceptEntityInput(cameraEnt, "ClearParent");
     SetVariantString("!activator");
     AcceptEntityInput(cameraEnt, "SetParent", target, target);
-    SetVariantString("head");
+    SetVariantString(attachmentName);
     AcceptEntityInput(cameraEnt, "SetParentAttachment", target, target);
     attachedTarget = target;
-    LogMessage("[MGE camera] POV attach: cam_ent=%d -> target=%N attachment=head", cameraEnt, target);
+    LogMessage("[MGE camera] POV attach: cam_ent=%d -> target=%N attachment=%s", cameraEnt, target, attachmentName);
 }
 
 int GetCameraSpectateEntity()
