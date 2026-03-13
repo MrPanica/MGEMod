@@ -366,6 +366,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     data.players.forEach((player, index) => {
                         const winrate = player.wins + player.losses > 0 ?
                             ((player.wins / (player.wins + player.losses)) * 100).toFixed(2) : 0;
+                        const lastDuel = player.last_duel_time || tJs('no_data', 'No data');
 
                         const row = document.createElement('tr');
                         row.className = `rank-${(data.current_page - 1) * 25 + index + 1}`;
@@ -376,6 +377,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             <td>${player.wins}</td>
                             <td>${player.losses}</td>
                             <td>${winrate}%</td>
+                            <td>${lastDuel}</td>
                         `;
                         tbody.appendChild(row);
                     });
