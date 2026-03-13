@@ -75,7 +75,7 @@ void PrepareSQL()
     LogMessage("Successfully connected to database config '%s' [%s]", g_sDBConfig, ident);
 
     // Create tables using abstraction layer
-    char query[1024];
+    char query[4096];
     
     GetCreateTableQuery_Stats(query, sizeof(query));
     g_DB.Query(SQL_OnGenericQueryFinished, query);
@@ -93,6 +93,12 @@ void PrepareSQL()
     g_DB.Query(SQL_OnGenericQueryFinished, query);
     
     GetCreateTableQuery_MatchupRatings(query, sizeof(query));
+    g_DB.Query(SQL_OnGenericQueryFinished, query);
+
+    GetCreateTableQuery_DuelRounds1v1(query, sizeof(query));
+    g_DB.Query(SQL_OnGenericQueryFinished, query);
+
+    GetCreateTableQuery_DuelRounds2v2(query, sizeof(query));
     g_DB.Query(SQL_OnGenericQueryFinished, query);
     
     if (g_DatabaseType == DB_POSTGRESQL)
@@ -358,15 +364,15 @@ void GetCreateTableQuery_Duels(char[] query, int maxlen)
     {
         case DB_SQLITE:
         {
-            strcopy(query, maxlen, "CREATE TABLE IF NOT EXISTS mgemod_duels (winner TEXT, loser TEXT, winnerscore INTEGER, loserscore INTEGER, winlimit INTEGER, gametime INTEGER, mapname TEXT, arenaname TEXT)");
+            strcopy(query, maxlen, "CREATE TABLE IF NOT EXISTS mgemod_duels (winner TEXT, loser TEXT, winnerscore INTEGER, loserscore INTEGER, winlimit INTEGER, gametime INTEGER, mapname TEXT, arenaname TEXT, winner_slot INTEGER DEFAULT NULL, loser_slot INTEGER DEFAULT NULL, rounds_compact_json TEXT DEFAULT NULL, server_id INTEGER NOT NULL DEFAULT 1)");
         }
         case DB_MYSQL:
         {
-            strcopy(query, maxlen, "CREATE TABLE IF NOT EXISTS mgemod_duels (winner VARCHAR(32) NOT NULL, loser VARCHAR(32) NOT NULL, winnerscore INT(4) NOT NULL, loserscore INT(4) NOT NULL, winlimit INT(4) NOT NULL, gametime INT(11) NOT NULL, mapname VARCHAR(64) NOT NULL, arenaname VARCHAR(32) NOT NULL) DEFAULT CHARACTER SET utf8 COLLATE utf8_unicode_ci ENGINE = InnoDB");
+            strcopy(query, maxlen, "CREATE TABLE IF NOT EXISTS mgemod_duels (winner VARCHAR(32) NOT NULL, loser VARCHAR(32) NOT NULL, winnerscore INT(4) NOT NULL, loserscore INT(4) NOT NULL, winlimit INT(4) NOT NULL, gametime INT(11) NOT NULL, mapname VARCHAR(64) NOT NULL, arenaname VARCHAR(32) NOT NULL, winner_slot TINYINT NULL DEFAULT NULL, loser_slot TINYINT NULL DEFAULT NULL, rounds_compact_json TEXT DEFAULT NULL, server_id INT(11) NOT NULL DEFAULT 1) DEFAULT CHARACTER SET utf8 COLLATE utf8_unicode_ci ENGINE = InnoDB");
         }
         case DB_POSTGRESQL:
         {
-            strcopy(query, maxlen, "CREATE TABLE IF NOT EXISTS mgemod_duels (id SERIAL PRIMARY KEY, winner VARCHAR(32) NOT NULL, winnerclass VARCHAR(64), loser VARCHAR(32) NOT NULL, loserclass VARCHAR(64), winnerscore INTEGER NOT NULL, loserscore INTEGER NOT NULL, winlimit INTEGER NOT NULL, starttime INTEGER, endtime INTEGER NOT NULL, mapname VARCHAR(64) NOT NULL, arenaname VARCHAR(32) NOT NULL, winner_previous_elo INTEGER, winner_new_elo INTEGER, loser_previous_elo INTEGER, loser_new_elo INTEGER, canceled INTEGER DEFAULT 0, canceled_reason TEXT DEFAULT NULL, canceled_by VARCHAR(32) DEFAULT NULL)");
+            strcopy(query, maxlen, "CREATE TABLE IF NOT EXISTS mgemod_duels (id SERIAL PRIMARY KEY, winner VARCHAR(32) NOT NULL, winnerclass VARCHAR(64), loser VARCHAR(32) NOT NULL, loserclass VARCHAR(64), winnerweaponids TEXT DEFAULT NULL, loserweaponids TEXT DEFAULT NULL, winnerscore INTEGER NOT NULL, loserscore INTEGER NOT NULL, winlimit INTEGER NOT NULL, starttime INTEGER, endtime INTEGER NOT NULL, mapname VARCHAR(64) NOT NULL, arenaname VARCHAR(32) NOT NULL, winner_slot INTEGER DEFAULT NULL, loser_slot INTEGER DEFAULT NULL, rounds_compact_json TEXT DEFAULT NULL, server_id INTEGER NOT NULL DEFAULT 1, winner_previous_elo INTEGER, winner_new_elo INTEGER, loser_previous_elo INTEGER, loser_new_elo INTEGER, canceled INTEGER DEFAULT 0, canceled_reason TEXT DEFAULT NULL, canceled_by VARCHAR(32) DEFAULT NULL)");
         }
     }
 }
@@ -418,15 +424,55 @@ void GetCreateTableQuery_Duels2v2(char[] query, int maxlen)
     {
         case DB_SQLITE:
         {
-            strcopy(query, maxlen, "CREATE TABLE IF NOT EXISTS mgemod_duels_2v2 (winner TEXT, winner2 TEXT, loser TEXT, loser2 TEXT, winnerscore INTEGER, loserscore INTEGER, winlimit INTEGER, gametime INTEGER, mapname TEXT, arenaname TEXT)");
+            strcopy(query, maxlen, "CREATE TABLE IF NOT EXISTS mgemod_duels_2v2 (winner TEXT, winner2 TEXT, loser TEXT, loser2 TEXT, winnerscore INTEGER, loserscore INTEGER, winlimit INTEGER, gametime INTEGER, mapname TEXT, arenaname TEXT, winner_slot INTEGER DEFAULT NULL, winner2_slot INTEGER DEFAULT NULL, loser_slot INTEGER DEFAULT NULL, loser2_slot INTEGER DEFAULT NULL, rounds_compact_json TEXT DEFAULT NULL, server_id INTEGER NOT NULL DEFAULT 1)");
         }
         case DB_MYSQL:
         {
-            strcopy(query, maxlen, "CREATE TABLE IF NOT EXISTS mgemod_duels_2v2 (winner VARCHAR(32) NOT NULL, winner2 VARCHAR(32) NOT NULL, loser VARCHAR(32) NOT NULL, loser2 VARCHAR(32) NOT NULL, winnerscore INT(4) NOT NULL, loserscore INT(4) NOT NULL, winlimit INT(4) NOT NULL, gametime INT(11) NOT NULL, mapname VARCHAR(64) NOT NULL, arenaname VARCHAR(32) NOT NULL) DEFAULT CHARACTER SET utf8 COLLATE utf8_unicode_ci ENGINE = InnoDB");
+            strcopy(query, maxlen, "CREATE TABLE IF NOT EXISTS mgemod_duels_2v2 (winner VARCHAR(32) NOT NULL, winner2 VARCHAR(32) NOT NULL, loser VARCHAR(32) NOT NULL, loser2 VARCHAR(32) NOT NULL, winnerscore INT(4) NOT NULL, loserscore INT(4) NOT NULL, winlimit INT(4) NOT NULL, gametime INT(11) NOT NULL, mapname VARCHAR(64) NOT NULL, arenaname VARCHAR(32) NOT NULL, winner_slot TINYINT NULL DEFAULT NULL, winner2_slot TINYINT NULL DEFAULT NULL, loser_slot TINYINT NULL DEFAULT NULL, loser2_slot TINYINT NULL DEFAULT NULL, rounds_compact_json TEXT DEFAULT NULL, server_id INT(11) NOT NULL DEFAULT 1) DEFAULT CHARACTER SET utf8 COLLATE utf8_unicode_ci ENGINE = InnoDB");
         }
         case DB_POSTGRESQL:
         {
-            strcopy(query, maxlen, "CREATE TABLE IF NOT EXISTS mgemod_duels_2v2 (id SERIAL PRIMARY KEY, winner VARCHAR(32) NOT NULL, winnerclass VARCHAR(64), winner2 VARCHAR(32) NOT NULL, winner2class VARCHAR(64), loser VARCHAR(32) NOT NULL, loserclass VARCHAR(64), loser2 VARCHAR(32) NOT NULL, loser2class VARCHAR(64), winnerscore INTEGER NOT NULL, loserscore INTEGER NOT NULL, winlimit INTEGER NOT NULL, starttime INTEGER, endtime INTEGER NOT NULL, mapname VARCHAR(64) NOT NULL, arenaname VARCHAR(32) NOT NULL, winner_previous_elo INTEGER, winner_new_elo INTEGER, winner2_previous_elo INTEGER, winner2_new_elo INTEGER, loser_previous_elo INTEGER, loser_new_elo INTEGER, loser2_previous_elo INTEGER, loser2_new_elo INTEGER, canceled INTEGER DEFAULT 0, canceled_reason TEXT DEFAULT NULL, canceled_by VARCHAR(32) DEFAULT NULL)");
+            strcopy(query, maxlen, "CREATE TABLE IF NOT EXISTS mgemod_duels_2v2 (id SERIAL PRIMARY KEY, winner VARCHAR(32) NOT NULL, winnerclass VARCHAR(64), winner2 VARCHAR(32) NOT NULL, winner2class VARCHAR(64), loser VARCHAR(32) NOT NULL, loserclass VARCHAR(64), loser2 VARCHAR(32) NOT NULL, loser2class VARCHAR(64), winnerweaponids TEXT DEFAULT NULL, winner2weaponids TEXT DEFAULT NULL, loserweaponids TEXT DEFAULT NULL, loser2weaponids TEXT DEFAULT NULL, winnerscore INTEGER NOT NULL, loserscore INTEGER NOT NULL, winlimit INTEGER NOT NULL, starttime INTEGER, endtime INTEGER NOT NULL, mapname VARCHAR(64) NOT NULL, arenaname VARCHAR(32) NOT NULL, winner_slot INTEGER DEFAULT NULL, winner2_slot INTEGER DEFAULT NULL, loser_slot INTEGER DEFAULT NULL, loser2_slot INTEGER DEFAULT NULL, rounds_compact_json TEXT DEFAULT NULL, server_id INTEGER NOT NULL DEFAULT 1, winner_previous_elo INTEGER, winner_new_elo INTEGER, winner2_previous_elo INTEGER, winner2_new_elo INTEGER, loser_previous_elo INTEGER, loser_new_elo INTEGER, loser2_previous_elo INTEGER, loser2_new_elo INTEGER, canceled INTEGER DEFAULT 0, canceled_reason TEXT DEFAULT NULL, canceled_by VARCHAR(32) DEFAULT NULL)");
+        }
+    }
+}
+
+// Gets database-specific CREATE TABLE statement for mgemod_duel_rounds_1v1
+void GetCreateTableQuery_DuelRounds1v1(char[] query, int maxlen)
+{
+    switch (g_DatabaseType)
+    {
+        case DB_SQLITE:
+        {
+            strcopy(query, maxlen, "CREATE TABLE IF NOT EXISTS mgemod_duel_rounds_1v1 (id INTEGER PRIMARY KEY, duel_id INTEGER NOT NULL, round_number INTEGER NOT NULL, starttime INTEGER NOT NULL, endtime INTEGER NOT NULL, duration INTEGER NOT NULL DEFAULT 0, winner_team_slot INTEGER NOT NULL, end_reason INTEGER NOT NULL, score_red_before INTEGER NOT NULL, score_blu_before INTEGER NOT NULL, score_red_after INTEGER NOT NULL, score_blu_after INTEGER NOT NULL, scorer_slot INTEGER DEFAULT NULL, victim_slot INTEGER DEFAULT NULL, scoring_weapon_defindex INTEGER DEFAULT NULL, slot1_class TEXT DEFAULT NULL, slot1_hp INTEGER DEFAULT NULL, slot1_weaponids TEXT DEFAULT NULL, slot2_class TEXT DEFAULT NULL, slot2_hp INTEGER DEFAULT NULL, slot2_weaponids TEXT DEFAULT NULL, UNIQUE(duel_id, round_number))");
+        }
+        case DB_MYSQL:
+        {
+            strcopy(query, maxlen, "CREATE TABLE IF NOT EXISTS mgemod_duel_rounds_1v1 (id INT AUTO_INCREMENT PRIMARY KEY, duel_id INT NOT NULL, round_number INT NOT NULL, starttime INT(11) NOT NULL, endtime INT(11) NOT NULL, duration INT(11) NOT NULL DEFAULT 0, winner_team_slot TINYINT NOT NULL, end_reason TINYINT NOT NULL, score_red_before INT(4) NOT NULL, score_blu_before INT(4) NOT NULL, score_red_after INT(4) NOT NULL, score_blu_after INT(4) NOT NULL, scorer_slot TINYINT DEFAULT NULL, victim_slot TINYINT DEFAULT NULL, scoring_weapon_defindex INT DEFAULT NULL, slot1_class VARCHAR(16) DEFAULT NULL, slot1_hp INT DEFAULT NULL, slot1_weaponids TEXT DEFAULT NULL, slot2_class VARCHAR(16) DEFAULT NULL, slot2_hp INT DEFAULT NULL, slot2_weaponids TEXT DEFAULT NULL, UNIQUE KEY uq_mge_rounds1v1_duel_round (duel_id, round_number), INDEX idx_mge_rounds1v1_duel (duel_id)) DEFAULT CHARACTER SET utf8 COLLATE utf8_unicode_ci ENGINE = InnoDB");
+        }
+        case DB_POSTGRESQL:
+        {
+            strcopy(query, maxlen, "CREATE TABLE IF NOT EXISTS mgemod_duel_rounds_1v1 (id SERIAL PRIMARY KEY, duel_id INTEGER NOT NULL, round_number INTEGER NOT NULL, starttime INTEGER NOT NULL, endtime INTEGER NOT NULL, duration INTEGER NOT NULL DEFAULT 0, winner_team_slot INTEGER NOT NULL, end_reason INTEGER NOT NULL, score_red_before INTEGER NOT NULL, score_blu_before INTEGER NOT NULL, score_red_after INTEGER NOT NULL, score_blu_after INTEGER NOT NULL, scorer_slot INTEGER, victim_slot INTEGER, scoring_weapon_defindex INTEGER, slot1_class VARCHAR(16), slot1_hp INTEGER, slot1_weaponids TEXT, slot2_class VARCHAR(16), slot2_hp INTEGER, slot2_weaponids TEXT, UNIQUE (duel_id, round_number))");
+        }
+    }
+}
+
+// Gets database-specific CREATE TABLE statement for mgemod_duel_rounds_2v2
+void GetCreateTableQuery_DuelRounds2v2(char[] query, int maxlen)
+{
+    switch (g_DatabaseType)
+    {
+        case DB_SQLITE:
+        {
+            strcopy(query, maxlen, "CREATE TABLE IF NOT EXISTS mgemod_duel_rounds_2v2 (id INTEGER PRIMARY KEY, duel_id INTEGER NOT NULL, round_number INTEGER NOT NULL, starttime INTEGER NOT NULL, endtime INTEGER NOT NULL, duration INTEGER NOT NULL DEFAULT 0, winner_team_slot INTEGER NOT NULL, end_reason INTEGER NOT NULL, score_red_before INTEGER NOT NULL, score_blu_before INTEGER NOT NULL, score_red_after INTEGER NOT NULL, score_blu_after INTEGER NOT NULL, scorer_slot INTEGER DEFAULT NULL, victim_slot INTEGER DEFAULT NULL, scoring_weapon_defindex INTEGER DEFAULT NULL, slot1_class TEXT DEFAULT NULL, slot1_hp INTEGER DEFAULT NULL, slot1_weaponids TEXT DEFAULT NULL, slot2_class TEXT DEFAULT NULL, slot2_hp INTEGER DEFAULT NULL, slot2_weaponids TEXT DEFAULT NULL, slot3_class TEXT DEFAULT NULL, slot3_hp INTEGER DEFAULT NULL, slot3_weaponids TEXT DEFAULT NULL, slot4_class TEXT DEFAULT NULL, slot4_hp INTEGER DEFAULT NULL, slot4_weaponids TEXT DEFAULT NULL, UNIQUE(duel_id, round_number))");
+        }
+        case DB_MYSQL:
+        {
+            strcopy(query, maxlen, "CREATE TABLE IF NOT EXISTS mgemod_duel_rounds_2v2 (id INT AUTO_INCREMENT PRIMARY KEY, duel_id INT NOT NULL, round_number INT NOT NULL, starttime INT(11) NOT NULL, endtime INT(11) NOT NULL, duration INT(11) NOT NULL DEFAULT 0, winner_team_slot TINYINT NOT NULL, end_reason TINYINT NOT NULL, score_red_before INT(4) NOT NULL, score_blu_before INT(4) NOT NULL, score_red_after INT(4) NOT NULL, score_blu_after INT(4) NOT NULL, scorer_slot TINYINT DEFAULT NULL, victim_slot TINYINT DEFAULT NULL, scoring_weapon_defindex INT DEFAULT NULL, slot1_class VARCHAR(16) DEFAULT NULL, slot1_hp INT DEFAULT NULL, slot1_weaponids TEXT DEFAULT NULL, slot2_class VARCHAR(16) DEFAULT NULL, slot2_hp INT DEFAULT NULL, slot2_weaponids TEXT DEFAULT NULL, slot3_class VARCHAR(16) DEFAULT NULL, slot3_hp INT DEFAULT NULL, slot3_weaponids TEXT DEFAULT NULL, slot4_class VARCHAR(16) DEFAULT NULL, slot4_hp INT DEFAULT NULL, slot4_weaponids TEXT DEFAULT NULL, UNIQUE KEY uq_mge_rounds2v2_duel_round (duel_id, round_number), INDEX idx_mge_rounds2v2_duel (duel_id)) DEFAULT CHARACTER SET utf8 COLLATE utf8_unicode_ci ENGINE = InnoDB");
+        }
+        case DB_POSTGRESQL:
+        {
+            strcopy(query, maxlen, "CREATE TABLE IF NOT EXISTS mgemod_duel_rounds_2v2 (id SERIAL PRIMARY KEY, duel_id INTEGER NOT NULL, round_number INTEGER NOT NULL, starttime INTEGER NOT NULL, endtime INTEGER NOT NULL, duration INTEGER NOT NULL DEFAULT 0, winner_team_slot INTEGER NOT NULL, end_reason INTEGER NOT NULL, score_red_before INTEGER NOT NULL, score_blu_before INTEGER NOT NULL, score_red_after INTEGER NOT NULL, score_blu_after INTEGER NOT NULL, scorer_slot INTEGER, victim_slot INTEGER, scoring_weapon_defindex INTEGER, slot1_class VARCHAR(16), slot1_hp INTEGER, slot1_weaponids TEXT, slot2_class VARCHAR(16), slot2_hp INTEGER, slot2_weaponids TEXT, slot3_class VARCHAR(16), slot3_hp INTEGER, slot3_weaponids TEXT, slot4_class VARCHAR(16), slot4_hp INTEGER, slot4_weaponids TEXT, UNIQUE (duel_id, round_number))");
         }
     }
 }
@@ -519,73 +565,81 @@ void GetUpdateLoserStatsQuery(char[] query, int maxlen, int rating, int timestam
 
 
 // Gets database-specific INSERT statement for duel results
-void GetInsertDuelQuery(char[] query, int maxlen, const char[] winner, const char[] loser, int winnerScore, int loserScore, int fragLimit, int endTime, int startTime, const char[] mapName, const char[] arenaName, const char[] winnerClass, const char[] loserClass, int winnerPrevElo, int winnerNewElo, int loserPrevElo, int loserNewElo)
+void GetInsertDuelQuery(char[] query, int maxlen, const char[] winner, const char[] loser, int winnerScore, int loserScore, int fragLimit, int endTime, int startTime, const char[] mapName, const char[] arenaName, const char[] winnerClass, const char[] loserClass, const char[] winnerWeaponIds, const char[] loserWeaponIds, int winnerPrevElo, int winnerNewElo, int loserPrevElo, int loserNewElo, int winnerSlot, int loserSlot)
 {
     switch (g_DatabaseType)
     {
         case DB_SQLITE:
         {
-            g_DB.Format(query, maxlen, "INSERT INTO mgemod_duels VALUES (NULL, '%s', '%s', %i, %i, %i, %i, %i, '%s', '%s', '%s', '%s', %i, %i, %i, %i)", 
-                winner, loser, winnerScore, loserScore, fragLimit, endTime, startTime, mapName, arenaName, winnerClass, loserClass, winnerPrevElo, winnerNewElo, loserPrevElo, loserNewElo);
+            g_DB.Format(query, maxlen, "INSERT INTO mgemod_duels (id, winner, loser, winnerscore, loserscore, winlimit, endtime, starttime, mapname, arenaname, winnerclass, loserclass, winnerweaponids, loserweaponids, winner_previous_elo, winner_new_elo, loser_previous_elo, loser_new_elo, winner_slot, loser_slot, server_id) VALUES (NULL, '%s', '%s', %i, %i, %i, %i, %i, '%s', '%s', '%s', '%s', '%s', '%s', %i, %i, %i, %i, %i, %i, %i)", 
+                winner, loser, winnerScore, loserScore, fragLimit, endTime, startTime, mapName, arenaName, winnerClass, loserClass, winnerWeaponIds, loserWeaponIds, winnerPrevElo, winnerNewElo, loserPrevElo, loserNewElo, winnerSlot, loserSlot, g_iServerId);
         }
         case DB_MYSQL:
         {
-            g_DB.Format(query, maxlen, "INSERT INTO mgemod_duels (winner, loser, winnerscore, loserscore, winlimit, endtime, starttime, mapname, arenaname, winnerclass, loserclass, winner_previous_elo, winner_new_elo, loser_previous_elo, loser_new_elo) VALUES ('%s', '%s', %i, %i, %i, %i, %i, '%s', '%s', '%s', '%s', %i, %i, %i, %i)",
-                winner, loser, winnerScore, loserScore, fragLimit, endTime, startTime, mapName, arenaName, winnerClass, loserClass, winnerPrevElo, winnerNewElo, loserPrevElo, loserNewElo);
+            g_DB.Format(query, maxlen, "INSERT INTO mgemod_duels (winner, loser, winnerscore, loserscore, winlimit, endtime, starttime, mapname, arenaname, winnerclass, loserclass, winnerweaponids, loserweaponids, winner_previous_elo, winner_new_elo, loser_previous_elo, loser_new_elo, winner_slot, loser_slot, server_id) VALUES ('%s', '%s', %i, %i, %i, %i, %i, '%s', '%s', '%s', '%s', '%s', '%s', %i, %i, %i, %i, %i, %i, %i)",
+                winner, loser, winnerScore, loserScore, fragLimit, endTime, startTime, mapName, arenaName, winnerClass, loserClass, winnerWeaponIds, loserWeaponIds, winnerPrevElo, winnerNewElo, loserPrevElo, loserNewElo, winnerSlot, loserSlot, g_iServerId);
         }
         case DB_POSTGRESQL:
         {
-            g_DB.Format(query, maxlen, "INSERT INTO mgemod_duels (winner, loser, winnerscore, loserscore, winlimit, endtime, starttime, mapname, arenaname, winnerclass, loserclass, winner_previous_elo, winner_new_elo, loser_previous_elo, loser_new_elo) VALUES ('%s', '%s', %i, %i, %i, %i, %i, '%s', '%s', '%s', '%s', %i, %i, %i, %i) RETURNING id",
-                winner, loser, winnerScore, loserScore, fragLimit, endTime, startTime, mapName, arenaName, winnerClass, loserClass, winnerPrevElo, winnerNewElo, loserPrevElo, loserNewElo);
+            g_DB.Format(query, maxlen, "INSERT INTO mgemod_duels (winner, loser, winnerscore, loserscore, winlimit, endtime, starttime, mapname, arenaname, winnerclass, loserclass, winnerweaponids, loserweaponids, winner_previous_elo, winner_new_elo, loser_previous_elo, loser_new_elo, winner_slot, loser_slot, server_id) VALUES ('%s', '%s', %i, %i, %i, %i, %i, '%s', '%s', '%s', '%s', '%s', '%s', %i, %i, %i, %i, %i, %i, %i) RETURNING id",
+                winner, loser, winnerScore, loserScore, fragLimit, endTime, startTime, mapName, arenaName, winnerClass, loserClass, winnerWeaponIds, loserWeaponIds, winnerPrevElo, winnerNewElo, loserPrevElo, loserNewElo, winnerSlot, loserSlot, g_iServerId);
         }
     }
 }
 
 // Gets database-specific INSERT statement for 2v2 duel results
-void GetInsert2v2DuelQuery(char[] query, int maxlen, const char[] winner, const char[] winner2, const char[] loser, const char[] loser2, int winnerScore, int loserScore, int fragLimit, int endTime, int startTime, const char[] mapName, const char[] arenaName, const char[] winnerClass, const char[] winner2Class, const char[] loserClass, const char[] loser2Class, int winnerPrevElo, int winnerNewElo, int winner2PrevElo, int winner2NewElo, int loserPrevElo, int loserNewElo, int loser2PrevElo, int loser2NewElo)
+void GetInsert2v2DuelQuery(char[] query, int maxlen, const char[] winner, const char[] winner2, const char[] loser, const char[] loser2, int winnerScore, int loserScore, int fragLimit, int endTime, int startTime, const char[] mapName, const char[] arenaName, const char[] winnerClass, const char[] winner2Class, const char[] loserClass, const char[] loser2Class, const char[] winnerWeaponIds, const char[] winner2WeaponIds, const char[] loserWeaponIds, const char[] loser2WeaponIds, int winnerPrevElo, int winnerNewElo, int winner2PrevElo, int winner2NewElo, int loserPrevElo, int loserNewElo, int loser2PrevElo, int loser2NewElo, int winnerSlot, int winner2Slot, int loserSlot, int loser2Slot)
 {
     switch (g_DatabaseType)
     {
         case DB_SQLITE:
         {
-            g_DB.Format(query, maxlen, "INSERT INTO mgemod_duels_2v2 VALUES (NULL, '%s', '%s', '%s', '%s', %i, %i, %i, %i, %i, '%s', '%s', '%s', '%s', '%s', '%s', %i, %i, %i, %i, %i, %i, %i, %i)",
-                winner, winner2, loser, loser2, winnerScore, loserScore, fragLimit, endTime, startTime, mapName, arenaName, winnerClass, winner2Class, loserClass, loser2Class, winnerPrevElo, winnerNewElo, winner2PrevElo, winner2NewElo, loserPrevElo, loserNewElo, loser2PrevElo, loser2NewElo);
+            g_DB.Format(query, maxlen, "INSERT INTO mgemod_duels_2v2 (id, winner, winner2, loser, loser2, winnerscore, loserscore, winlimit, endtime, starttime, mapname, arenaname, winnerclass, winner2class, loserclass, loser2class, winnerweaponids, winner2weaponids, loserweaponids, loser2weaponids, winner_previous_elo, winner_new_elo, winner2_previous_elo, winner2_new_elo, loser_previous_elo, loser_new_elo, loser2_previous_elo, loser2_new_elo, winner_slot, winner2_slot, loser_slot, loser2_slot, server_id) VALUES (NULL, '%s', '%s', '%s', '%s', %i, %i, %i, %i, %i, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i)",
+                winner, winner2, loser, loser2, winnerScore, loserScore, fragLimit, endTime, startTime, mapName, arenaName, winnerClass, winner2Class, loserClass, loser2Class, winnerWeaponIds, winner2WeaponIds, loserWeaponIds, loser2WeaponIds, winnerPrevElo, winnerNewElo, winner2PrevElo, winner2NewElo, loserPrevElo, loserNewElo, loser2PrevElo, loser2NewElo, winnerSlot, winner2Slot, loserSlot, loser2Slot, g_iServerId);
         }
         case DB_MYSQL:
         {
-            g_DB.Format(query, maxlen, "INSERT INTO mgemod_duels_2v2 (winner, winner2, loser, loser2, winnerscore, loserscore, winlimit, endtime, starttime, mapname, arenaname, winnerclass, winner2class, loserclass, loser2class, winner_previous_elo, winner_new_elo, winner2_previous_elo, winner2_new_elo, loser_previous_elo, loser_new_elo, loser2_previous_elo, loser2_new_elo) VALUES ('%s', '%s', '%s', '%s', %i, %i, %i, %i, %i, '%s', '%s', '%s', '%s', '%s', '%s', %i, %i, %i, %i, %i, %i, %i, %i)",
-                winner, winner2, loser, loser2, winnerScore, loserScore, fragLimit, endTime, startTime, mapName, arenaName, winnerClass, winner2Class, loserClass, loser2Class, winnerPrevElo, winnerNewElo, winner2PrevElo, winner2NewElo, loserPrevElo, loserNewElo, loser2PrevElo, loser2NewElo);
+            g_DB.Format(query, maxlen, "INSERT INTO mgemod_duels_2v2 (winner, winner2, loser, loser2, winnerscore, loserscore, winlimit, endtime, starttime, mapname, arenaname, winnerclass, winner2class, loserclass, loser2class, winnerweaponids, winner2weaponids, loserweaponids, loser2weaponids, winner_previous_elo, winner_new_elo, winner2_previous_elo, winner2_new_elo, loser_previous_elo, loser_new_elo, loser2_previous_elo, loser2_new_elo, winner_slot, winner2_slot, loser_slot, loser2_slot, server_id) VALUES ('%s', '%s', '%s', '%s', %i, %i, %i, %i, %i, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i)",
+                winner, winner2, loser, loser2, winnerScore, loserScore, fragLimit, endTime, startTime, mapName, arenaName, winnerClass, winner2Class, loserClass, loser2Class, winnerWeaponIds, winner2WeaponIds, loserWeaponIds, loser2WeaponIds, winnerPrevElo, winnerNewElo, winner2PrevElo, winner2NewElo, loserPrevElo, loserNewElo, loser2PrevElo, loser2NewElo, winnerSlot, winner2Slot, loserSlot, loser2Slot, g_iServerId);
         }
         case DB_POSTGRESQL:
         {
-            g_DB.Format(query, maxlen, "INSERT INTO mgemod_duels_2v2 (winner, winner2, loser, loser2, winnerscore, loserscore, winlimit, endtime, starttime, mapname, arenaname, winnerclass, winner2class, loserclass, loser2class, winner_previous_elo, winner_new_elo, winner2_previous_elo, winner2_new_elo, loser_previous_elo, loser_new_elo, loser2_previous_elo, loser2_new_elo) VALUES ('%s', '%s', '%s', '%s', %i, %i, %i, %i, %i, '%s', '%s', '%s', '%s', '%s', '%s', %i, %i, %i, %i, %i, %i, %i, %i) RETURNING id",
-                winner, winner2, loser, loser2, winnerScore, loserScore, fragLimit, endTime, startTime, mapName, arenaName, winnerClass, winner2Class, loserClass, loser2Class, winnerPrevElo, winnerNewElo, winner2PrevElo, winner2NewElo, loserPrevElo, loserNewElo, loser2PrevElo, loser2NewElo);
+            g_DB.Format(query, maxlen, "INSERT INTO mgemod_duels_2v2 (winner, winner2, loser, loser2, winnerscore, loserscore, winlimit, endtime, starttime, mapname, arenaname, winnerclass, winner2class, loserclass, loser2class, winnerweaponids, winner2weaponids, loserweaponids, loser2weaponids, winner_previous_elo, winner_new_elo, winner2_previous_elo, winner2_new_elo, loser_previous_elo, loser_new_elo, loser2_previous_elo, loser2_new_elo, winner_slot, winner2_slot, loser_slot, loser2_slot, server_id) VALUES ('%s', '%s', '%s', '%s', %i, %i, %i, %i, %i, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i) RETURNING id",
+                winner, winner2, loser, loser2, winnerScore, loserScore, fragLimit, endTime, startTime, mapName, arenaName, winnerClass, winner2Class, loserClass, loser2Class, winnerWeaponIds, winner2WeaponIds, loserWeaponIds, loser2WeaponIds, winnerPrevElo, winnerNewElo, winner2PrevElo, winner2NewElo, loserPrevElo, loserNewElo, loser2PrevElo, loser2NewElo, winnerSlot, winner2Slot, loserSlot, loser2Slot, g_iServerId);
         }
     }
 }
 
-void InsertDuelWithClassRatings1v1(int arena_index, int winner, int loser, const char[] winner_steamid, const char[] loser_steamid, int winnerScore, int loserScore, int fragLimit, int endTime, int startTime, const char[] mapName, const char[] arenaName, const char[] winnerClass, const char[] loserClass, int winnerPrevElo, int winnerNewElo, int loserPrevElo, int loserNewElo, ArrayList classEntries)
+void InsertDuelWithClassRatings1v1(int arena_index, int winner, int loser, const char[] winner_steamid, const char[] loser_steamid, int winnerScore, int loserScore, int fragLimit, int endTime, int startTime, const char[] mapName, const char[] arenaName, const char[] winnerClass, const char[] loserClass, const char[] winnerWeaponIds, const char[] loserWeaponIds, int winnerPrevElo, int winnerNewElo, int loserPrevElo, int loserNewElo, int winnerSlot, int loserSlot, ArrayList classEntries)
 {
-    char query[1024];
-    GetInsertDuelQuery(query, sizeof(query), winner_steamid, loser_steamid, winnerScore, loserScore, fragLimit, endTime, startTime, mapName, arenaName, winnerClass, loserClass, winnerPrevElo, winnerNewElo, loserPrevElo, loserNewElo);
+    char query[2048];
+    GetInsertDuelQuery(query, sizeof(query), winner_steamid, loser_steamid, winnerScore, loserScore, fragLimit, endTime, startTime, mapName, arenaName, winnerClass, loserClass, winnerWeaponIds, loserWeaponIds, winnerPrevElo, winnerNewElo, loserPrevElo, loserNewElo, winnerSlot, loserSlot);
+    ArrayList roundEntries = DetachArenaRoundEntriesForPersist(arena_index);
     DataPack pack = new DataPack();
     pack.WriteCell(false); // is2v2
     pack.WriteCell(classEntries);
+    pack.WriteCell(roundEntries);
     pack.WriteCell(arena_index);
     pack.WriteCell(winner);
     pack.WriteCell(loser);
     pack.WriteCell(winnerScore);
     pack.WriteCell(loserScore);
+    pack.WriteString(winner_steamid);
+    pack.WriteString(loser_steamid);
+    pack.WriteCell(startTime);
+    pack.WriteCell(endTime);
     g_DB.Query(SQL_OnDuelInserted, query, pack);
 }
 
-void InsertDuelWithClassRatings2v2(int arena_index, int winning_team, int winnerScore, int loserScore, const char[] winner_steamid, const char[] winner2_steamid, const char[] loser_steamid, const char[] loser2_steamid, int fragLimit, int endTime, int startTime, const char[] mapName, const char[] arenaName, const char[] winnerClass, const char[] winner2Class, const char[] loserClass, const char[] loser2Class, int winnerPrevElo, int winnerNewElo, int winner2PrevElo, int winner2NewElo, int loserPrevElo, int loserNewElo, int loser2PrevElo, int loser2NewElo, ArrayList classEntries)
+void InsertDuelWithClassRatings2v2(int arena_index, int winning_team, int winnerScore, int loserScore, const char[] winner_steamid, const char[] winner2_steamid, const char[] loser_steamid, const char[] loser2_steamid, int fragLimit, int endTime, int startTime, const char[] mapName, const char[] arenaName, const char[] winnerClass, const char[] winner2Class, const char[] loserClass, const char[] loser2Class, const char[] winnerWeaponIds, const char[] winner2WeaponIds, const char[] loserWeaponIds, const char[] loser2WeaponIds, int winnerPrevElo, int winnerNewElo, int winner2PrevElo, int winner2NewElo, int loserPrevElo, int loserNewElo, int loser2PrevElo, int loser2NewElo, int winnerSlot, int winner2Slot, int loserSlot, int loser2Slot, ArrayList classEntries)
 {
-    char query[1024];
-    GetInsert2v2DuelQuery(query, sizeof(query), winner_steamid, winner2_steamid, loser_steamid, loser2_steamid, winnerScore, loserScore, fragLimit, endTime, startTime, mapName, arenaName, winnerClass, winner2Class, loserClass, loser2Class, winnerPrevElo, winnerNewElo, winner2PrevElo, winner2NewElo, loserPrevElo, loserNewElo, loser2PrevElo, loser2NewElo);
+    char query[4096];
+    GetInsert2v2DuelQuery(query, sizeof(query), winner_steamid, winner2_steamid, loser_steamid, loser2_steamid, winnerScore, loserScore, fragLimit, endTime, startTime, mapName, arenaName, winnerClass, winner2Class, loserClass, loser2Class, winnerWeaponIds, winner2WeaponIds, loserWeaponIds, loser2WeaponIds, winnerPrevElo, winnerNewElo, winner2PrevElo, winner2NewElo, loserPrevElo, loserNewElo, loser2PrevElo, loser2NewElo, winnerSlot, winner2Slot, loserSlot, loser2Slot);
+    ArrayList roundEntries = DetachArenaRoundEntriesForPersist(arena_index);
     DataPack pack = new DataPack();
     pack.WriteCell(true); // is2v2
     pack.WriteCell(classEntries);
+    pack.WriteCell(roundEntries);
     pack.WriteCell(arena_index);
     pack.WriteCell(winning_team);
     pack.WriteCell(winnerScore);
@@ -594,20 +648,50 @@ void InsertDuelWithClassRatings2v2(int arena_index, int winning_team, int winner
     pack.WriteCell(g_iArenaQueue[arena_index][SLOT_THREE]);
     pack.WriteCell(g_iArenaQueue[arena_index][SLOT_TWO]);
     pack.WriteCell(g_iArenaQueue[arena_index][SLOT_FOUR]);
+    pack.WriteString(winner_steamid);
+    pack.WriteString(winner2_steamid);
+    pack.WriteString(loser_steamid);
+    pack.WriteString(loser2_steamid);
+    pack.WriteCell(startTime);
+    pack.WriteCell(endTime);
     g_DB.Query(SQL_OnDuelInserted, query, pack);
 }
 
-void SQL_OnDuelInserted(Database db, DBResultSet results, const char[] error, DataPack pack)
+void CleanupDuelInsertPack(DataPack pack)
+{
+    if (pack == null)
+        return;
+
+    pack.Reset();
+    pack.ReadCell(); // is2v2
+    ArrayList classEntries = view_as<ArrayList>(pack.ReadCell());
+    ArrayList roundEntries = view_as<ArrayList>(pack.ReadCell());
+
+    if (classEntries != null)
+        delete classEntries;
+    if (roundEntries != null)
+        delete roundEntries;
+    delete pack;
+}
+
+void FinalizeInsertedDuelById(int duelId, DataPack pack)
 {
     pack.Reset();
     bool is2v2 = pack.ReadCell();
     ArrayList classEntries = view_as<ArrayList>(pack.ReadCell());
+    ArrayList roundEntries = view_as<ArrayList>(pack.ReadCell());
     int arena_index = pack.ReadCell();
-    // Common parameters to pass to SQL_OnDuelIdReceived
-    DataPack idPack = new DataPack();
-    idPack.WriteCell(is2v2);
-    idPack.WriteCell(classEntries);
-    idPack.WriteCell(arena_index);
+
+    if (duelId <= 0)
+    {
+        LogError("FinalizeInsertedDuelById failed: invalid duel id %d (is2v2=%d, db_type=%d)", duelId, view_as<int>(is2v2), g_DatabaseType);
+        CleanupDuelInsertPack(pack);
+        return;
+    }
+
+    int duration = 0;
+    if (g_iArenaDuelStartTime[arena_index] > 0)
+        duration = GetTime() - g_iArenaDuelStartTime[arena_index];
 
     if (is2v2)
     {
@@ -618,158 +702,331 @@ void SQL_OnDuelInserted(Database db, DBResultSet results, const char[] error, Da
         int team1_player2 = pack.ReadCell();
         int team2_player1 = pack.ReadCell();
         int team2_player2 = pack.ReadCell();
-
-        if (g_DatabaseType == DB_POSTGRESQL)
-        {
-            if (results != null && results.FetchRow())
-            {
-                int duelId = results.FetchInt(0);
-                int duration = 0;
-                if (g_iArenaDuelStartTime[arena_index] > 0)
-                {
-                    duration = GetTime() - g_iArenaDuelStartTime[arena_index];
-                }
-                CallForward_On2v2MatchEnd(duelId, arena_index, winning_team, winnerScore, loserScore, team1_player1, team1_player2, team2_player1, team2_player2, duration);
-                InsertClassRatingRows(duelId, classEntries, is2v2);
-            }
-            else
-            {
-                LogError("SQL_OnDuelInserted failed: missing duel id for 2v2");
-                if (classEntries != null)
-                    delete classEntries;
-            }
-            delete pack;
-            return;
-        }
-
-        char idQuery[128];
-        if (g_DatabaseType == DB_MYSQL)
-            strcopy(idQuery, sizeof(idQuery), "SELECT LAST_INSERT_ID()");
-        else
-            strcopy(idQuery, sizeof(idQuery), "SELECT last_insert_rowid()");
-        
-        idPack.WriteCell(winning_team);
-        idPack.WriteCell(winnerScore);
-        idPack.WriteCell(loserScore);
-        idPack.WriteCell(team1_player1);
-        idPack.WriteCell(team1_player2);
-        idPack.WriteCell(team2_player1);
-        idPack.WriteCell(team2_player2);
-        g_DB.Query(SQL_OnDuelIdReceived, idQuery, idPack);
+        CallForward_On2v2MatchEnd(duelId, arena_index, winning_team, winnerScore, loserScore, team1_player1, team1_player2, team2_player1, team2_player2, duration);
     }
-    else // 1v1 case
+    else
     {
         int winner = pack.ReadCell();
         int loser = pack.ReadCell();
         int winnerScore = pack.ReadCell();
         int loserScore = pack.ReadCell();
+        CallForward_On1v1MatchEnd(duelId, arena_index, winner, loser, winnerScore, loserScore, duration);
+    }
 
-        if (g_DatabaseType == DB_POSTGRESQL)
+    InsertClassRatingRows(duelId, classEntries, is2v2);
+    PersistCompactRoundsJson(duelId, is2v2, roundEntries);
+    delete pack;
+}
+
+bool BuildDuelIdLookupQueryFromInsertPack(DataPack pack, char[] query, int maxlen)
+{
+    if (pack == null)
+        return false;
+
+    pack.Reset();
+    bool is2v2 = pack.ReadCell();
+    pack.ReadCell(); // classEntries
+    pack.ReadCell(); // roundEntries
+    pack.ReadCell(); // arena_index
+
+    if (is2v2)
+    {
+        // Existing finalize payload (2v2)
+        pack.ReadCell(); // winning_team
+        pack.ReadCell(); // winnerScore
+        pack.ReadCell(); // loserScore
+        pack.ReadCell(); // team1_player1
+        pack.ReadCell(); // team1_player2
+        pack.ReadCell(); // team2_player1
+        pack.ReadCell(); // team2_player2
+
+        char winner[64], winner2[64], loser[64], loser2[64];
+        pack.ReadString(winner, sizeof(winner));
+        pack.ReadString(winner2, sizeof(winner2));
+        pack.ReadString(loser, sizeof(loser));
+        pack.ReadString(loser2, sizeof(loser2));
+        int startTime = pack.ReadCell();
+        int endTime = pack.ReadCell();
+
+        char winnerEsc[96], winner2Esc[96], loserEsc[96], loser2Esc[96];
+        g_DB.Escape(winner, winnerEsc, sizeof(winnerEsc));
+        g_DB.Escape(winner2, winner2Esc, sizeof(winner2Esc));
+        g_DB.Escape(loser, loserEsc, sizeof(loserEsc));
+        g_DB.Escape(loser2, loser2Esc, sizeof(loser2Esc));
+
+        Format(query, maxlen, "SELECT id FROM mgemod_duels_2v2 WHERE winner='%s' AND winner2='%s' AND loser='%s' AND loser2='%s' AND starttime=%d AND endtime=%d ORDER BY id DESC LIMIT 1",
+            winnerEsc, winner2Esc, loserEsc, loser2Esc, startTime, endTime);
+        return true;
+    }
+
+    // Existing finalize payload (1v1)
+    pack.ReadCell(); // winner
+    pack.ReadCell(); // loser
+    pack.ReadCell(); // winnerScore
+    pack.ReadCell(); // loserScore
+
+    char winner[64], loser[64];
+    pack.ReadString(winner, sizeof(winner));
+    pack.ReadString(loser, sizeof(loser));
+    int startTime = pack.ReadCell();
+    int endTime = pack.ReadCell();
+
+    char winnerEsc[96], loserEsc[96];
+    g_DB.Escape(winner, winnerEsc, sizeof(winnerEsc));
+    g_DB.Escape(loser, loserEsc, sizeof(loserEsc));
+
+    Format(query, maxlen, "SELECT id FROM mgemod_duels WHERE winner='%s' AND loser='%s' AND starttime=%d AND endtime=%d ORDER BY id DESC LIMIT 1",
+        winnerEsc, loserEsc, startTime, endTime);
+    return true;
+}
+
+void SQL_OnDuelInserted(Database db, DBResultSet results, const char[] error, DataPack pack)
+{
+    if (db == null)
+    {
+        LogError("SQL_OnDuelInserted failed: database connection lost");
+        CleanupDuelInsertPack(pack);
+        return;
+    }
+
+    if (!StrEqual("", error))
+    {
+        LogError("SQL_OnDuelInserted failed: %s", error);
+        CleanupDuelInsertPack(pack);
+        return;
+    }
+
+    pack.Reset();
+    bool is2v2 = pack.ReadCell();
+    pack.Reset();
+
+    if (g_DatabaseType == DB_POSTGRESQL)
+    {
+        if (results == null || !results.FetchRow())
         {
-            if (results != null && results.FetchRow())
-            {
-                int duelId = results.FetchInt(0);
-                int duration = 0;
-                if (g_iArenaDuelStartTime[arena_index] > 0)
-                {
-                    duration = GetTime() - g_iArenaDuelStartTime[arena_index];
-                }
-                CallForward_On1v1MatchEnd(duelId, arena_index, winner, loser, winnerScore, loserScore, duration);
-                InsertClassRatingRows(duelId, classEntries, is2v2);
-            }
-            else
-            {
-                LogError("SQL_OnDuelInserted failed: missing duel id for 1v1");
-                if (classEntries != null)
-                    delete classEntries;
-            }
-            delete pack;
+            LogError("SQL_OnDuelInserted failed: missing duel id for PostgreSQL (is2v2=%d)", view_as<int>(is2v2));
+            CleanupDuelInsertPack(pack);
             return;
         }
 
-        char idQuery[128];
-        if (g_DatabaseType == DB_MYSQL)
-            strcopy(idQuery, sizeof(idQuery), "SELECT LAST_INSERT_ID()");
-        else
-            strcopy(idQuery, sizeof(idQuery), "SELECT last_insert_rowid()");
-
-        idPack.WriteCell(winner);
-        idPack.WriteCell(loser);
-        idPack.WriteCell(winnerScore);
-        idPack.WriteCell(loserScore);
-        g_DB.Query(SQL_OnDuelIdReceived, idQuery, idPack);
+        FinalizeInsertedDuelById(results.FetchInt(0), pack);
+        return;
     }
-    delete pack;
+
+    int duelId = 0;
+    if (results != null)
+        duelId = results.InsertId;
+
+    if (duelId > 0)
+    {
+        FinalizeInsertedDuelById(duelId, pack);
+        return;
+    }
+
+    char idQuery[1024];
+    if (!BuildDuelIdLookupQueryFromInsertPack(pack, idQuery, sizeof(idQuery)))
+    {
+        LogError("SQL_OnDuelInserted failed: could not build fallback id lookup query");
+        CleanupDuelInsertPack(pack);
+        return;
+    }
+
+    LogError("SQL_OnDuelInserted: InsertId unavailable (id=%d, is2v2=%d, db_type=%d), falling back to deterministic id lookup query", duelId, view_as<int>(is2v2), g_DatabaseType);
+    db.Query(SQL_OnDuelIdReceived, idQuery, pack);
 }
 
 void SQL_OnDuelIdReceived(Database db, DBResultSet results, const char[] error, DataPack pack)
 {
-    pack.Reset();
-    bool is2v2 = pack.ReadCell();
-    ArrayList classEntries = view_as<ArrayList>(pack.ReadCell());
-    int arena_index = pack.ReadCell();
-
     if (db == null)
     {
         LogError("SQL_OnDuelIdReceived failed: database connection lost");
-        if (classEntries != null)
-            delete classEntries;
-        delete pack;
+        CleanupDuelInsertPack(pack);
         return;
     }
 
     if (!StrEqual("", error))
     {
         LogError("SQL_OnDuelIdReceived failed: %s", error);
-        if (classEntries != null)
-            delete classEntries;
-        delete pack;
+        CleanupDuelInsertPack(pack);
         return;
     }
 
     if (results == null || !results.FetchRow())
     {
         LogError("SQL_OnDuelIdReceived failed: missing duel id");
-        if (classEntries != null)
-            delete classEntries;
-        delete pack;
+        CleanupDuelInsertPack(pack);
         return;
     }
 
     int duelId = results.FetchInt(0);
+    if (duelId <= 0)
+    {
+        LogError("SQL_OnDuelIdReceived failed: invalid duel id %d", duelId);
+        CleanupDuelInsertPack(pack);
+        return;
+    }
 
+    LogMessage("SQL_OnDuelIdReceived: fallback resolved duel id %d", duelId);
+    FinalizeInsertedDuelById(duelId, pack);
+}
+
+int GetCompactRoundClassId(const char[] className)
+{
+    if (className[0] == '\0')
+        return 0;
+
+    if (StrEqual(className, "scout", false))
+        return 1;
+    if (StrEqual(className, "sniper", false))
+        return 2;
+    if (StrEqual(className, "soldier", false))
+        return 3;
+    if (StrEqual(className, "demoman", false))
+        return 4;
+    if (StrEqual(className, "medic", false))
+        return 5;
+    if (StrEqual(className, "heavy", false))
+        return 6;
+    if (StrEqual(className, "pyro", false))
+        return 7;
+    if (StrEqual(className, "spy", false))
+        return 8;
+    if (StrEqual(className, "engineer", false))
+        return 9;
+
+    return 0;
+}
+
+void SanitizeWeaponIdCsv(const char[] input, char[] output, int maxlen)
+{
+    int out = 0;
+    for (int i = 0; input[i] != '\0' && out < maxlen - 1; i++)
+    {
+        char c = input[i];
+        if ((c >= '0' && c <= '9') || c == ',')
+            output[out++] = c;
+    }
+
+    output[out] = '\0';
+}
+
+bool AppendCompactRoundJsonFragment(char[] buffer, int maxlen, const char[] fragment)
+{
+    int currentLen = strlen(buffer);
+    int fragmentLen = strlen(fragment);
+    if (currentLen + fragmentLen >= maxlen)
+        return false;
+
+    StrCat(buffer, maxlen, fragment);
+    return true;
+}
+
+bool BuildCompactRoundJson(char[] json, int maxlen, bool is2v2, ArrayList roundEntries)
+{
+    json[0] = '\0';
+    if (!AppendCompactRoundJsonFragment(json, maxlen, "{\"v\":2,\"r\":["))
+        return false;
+
+    RoundLogEntry entry;
+    char row[4096];
+    char slot1Weapons[256], slot2Weapons[256], slot3Weapons[256], slot4Weapons[256];
+
+    for (int i = 0; i < roundEntries.Length; i++)
+    {
+        roundEntries.GetArray(i, entry, sizeof(entry));
+
+        SanitizeWeaponIdCsv(entry.slot1WeaponIds, slot1Weapons, sizeof(slot1Weapons));
+        SanitizeWeaponIdCsv(entry.slot2WeaponIds, slot2Weapons, sizeof(slot2Weapons));
+        SanitizeWeaponIdCsv(entry.slot3WeaponIds, slot3Weapons, sizeof(slot3Weapons));
+        SanitizeWeaponIdCsv(entry.slot4WeaponIds, slot4Weapons, sizeof(slot4Weapons));
+
+        int scorerSlot = entry.scorerSlot;
+        if (scorerSlot < 0)
+            scorerSlot = 0;
+
+        int roundDuration = entry.duration;
+        if (roundDuration < 0)
+            roundDuration = 0;
+
+        int scoringWeaponDefIndex = entry.scoringWeaponDefIndex;
+        if (scoringWeaponDefIndex < 0)
+            scoringWeaponDefIndex = 0;
+
+        if (is2v2)
+        {
+            Format(row, sizeof(row), "[%d,%d,%d,%d,%d,%d,%d,\"%s\",\"%s\",\"%s\",\"%s\"]",
+                scorerSlot,
+                roundDuration,
+                scoringWeaponDefIndex,
+                GetCompactRoundClassId(entry.slot1Class),
+                GetCompactRoundClassId(entry.slot2Class),
+                GetCompactRoundClassId(entry.slot3Class),
+                GetCompactRoundClassId(entry.slot4Class),
+                slot1Weapons,
+                slot2Weapons,
+                slot3Weapons,
+                slot4Weapons);
+        }
+        else
+        {
+            Format(row, sizeof(row), "[%d,%d,%d,%d,%d,\"%s\",\"%s\"]",
+                scorerSlot,
+                roundDuration,
+                scoringWeaponDefIndex,
+                GetCompactRoundClassId(entry.slot1Class),
+                GetCompactRoundClassId(entry.slot2Class),
+                slot1Weapons,
+                slot2Weapons);
+        }
+
+        if (i > 0 && !AppendCompactRoundJsonFragment(json, maxlen, ","))
+            return false;
+        if (!AppendCompactRoundJsonFragment(json, maxlen, row))
+            return false;
+    }
+
+    return AppendCompactRoundJsonFragment(json, maxlen, "]}");
+}
+
+void PersistCompactRoundsJson(int duelId, bool is2v2, ArrayList roundEntries)
+{
+    if (roundEntries == null || roundEntries.Length == 0)
+    {
+        if (roundEntries != null)
+            delete roundEntries;
+        return;
+    }
+
+    if (!g_bLogDuelRounds)
+    {
+        delete roundEntries;
+        return;
+    }
+
+    char compactJson[32768];
+    if (!BuildCompactRoundJson(compactJson, sizeof(compactJson), is2v2, roundEntries))
+    {
+        LogError("PersistCompactRoundsJson failed: payload exceeded %d bytes (duel_id=%d, is2v2=%d, rounds=%d)",
+            sizeof(compactJson), duelId, view_as<int>(is2v2), roundEntries.Length);
+        delete roundEntries;
+        return;
+    }
+
+    if (StrContains(compactJson, "'") != -1)
+    {
+        LogError("PersistCompactRoundsJson failed: unexpected apostrophe in compact JSON payload (duel_id=%d)", duelId);
+        delete roundEntries;
+        return;
+    }
+
+    char query[33280];
     if (is2v2)
-    {
-        int winning_team = pack.ReadCell();
-        int winnerScore = pack.ReadCell();
-        int loserScore = pack.ReadCell();
-        int team1_player1 = pack.ReadCell();
-        int team1_player2 = pack.ReadCell();
-        int team2_player1 = pack.ReadCell();
-        int team2_player2 = pack.ReadCell();
-        int duration = 0;
-        if (g_iArenaDuelStartTime[arena_index] > 0)
-        {
-            duration = GetTime() - g_iArenaDuelStartTime[arena_index];
-        }
-        CallForward_On2v2MatchEnd(duelId, arena_index, winning_team, winnerScore, loserScore, team1_player1, team1_player2, team2_player1, team2_player2, duration);
-    }
-    else // 1v1 case
-    {
-        int winner = pack.ReadCell();
-        int loser = pack.ReadCell();
-        int winnerScore = pack.ReadCell();
-        int loserScore = pack.ReadCell();
-        int duration = 0;
-        if (g_iArenaDuelStartTime[arena_index] > 0)
-        {
-            duration = GetTime() - g_iArenaDuelStartTime[arena_index];
-        }
-        CallForward_On1v1MatchEnd(duelId, arena_index, winner, loser, winnerScore, loserScore, duration);
-    }
+        g_DB.Format(query, sizeof(query), "UPDATE mgemod_duels_2v2 SET rounds_compact_json='%s' WHERE id=%d", compactJson, duelId);
+    else
+        g_DB.Format(query, sizeof(query), "UPDATE mgemod_duels SET rounds_compact_json='%s' WHERE id=%d", compactJson, duelId);
 
-    InsertClassRatingRows(duelId, classEntries, is2v2);
-    delete pack;
+    g_DB.Query(SQL_OnGenericQueryFinished, query);
+    delete roundEntries;
 }
 
 void InsertClassRatingRows(int duelId, ArrayList classEntries, bool is2v2)
@@ -880,9 +1137,10 @@ void SQL_OnMatchupRatingsReceived(Database db, DBResultSet results, const char[]
         int opponentClass = results.FetchInt(1);
         int rating = results.FetchInt(2);
         
-        if (myClass >= 1 && myClass <= 9 && opponentClass >= 1 && opponentClass <= 9)
+        if (myClass >= 1 && myClass <= MGE_CLASS_MAX && opponentClass >= 1 && opponentClass <= MGE_CLASS_MAX)
         {
             g_iPlayerClassRating[client][myClass][opponentClass] = rating;
+            g_bPlayerMatchupDirty[client][myClass][opponentClass] = false;
         }
     }
 }
@@ -893,18 +1151,23 @@ void UpdateMatchupRatings(int client)
     if (!IsValidClient(client) || strlen(g_sPlayerSteamID[client]) == 0)
         return;
 
-    // Update all matchup ratings that have been set (non-zero)
-    for (int myClass = 1; myClass <= 9; myClass++)
+    // Update only matchup ratings changed during this duel (dirty flags)
+    for (int myClass = 1; myClass <= MGE_CLASS_MAX; myClass++)
     {
-        for (int oppClass = 1; oppClass <= 9; oppClass++)
+        for (int oppClass = 1; oppClass <= MGE_CLASS_MAX; oppClass++)
         {
+            if (!g_bPlayerMatchupDirty[client][myClass][oppClass])
+                continue;
+
             int rating = g_iPlayerClassRating[client][myClass][oppClass];
-            if (rating > 0) // Only update if rating has been set
+            if (rating > 0)
             {
                 char query[256];
                 GetUpsertMatchupRatingQuery(query, sizeof(query), g_sPlayerSteamID[client], myClass, oppClass, rating);
                 g_DB.Query(SQL_OnGenericQueryFinished, query);
             }
+
+            g_bPlayerMatchupDirty[client][myClass][oppClass] = false;
         }
     }
 }

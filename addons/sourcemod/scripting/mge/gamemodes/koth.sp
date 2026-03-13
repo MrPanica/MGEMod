@@ -269,7 +269,11 @@ void ProcessKothArenaCapture(int arena_index)
 void EndKoth(any arena_index, any winner_team)
 {
     PlayEndgameSoundsToArena(arena_index, winner_team);
+    int score_red_before = g_iArenaScore[arena_index][SLOT_ONE];
+    int score_blu_before = g_iArenaScore[arena_index][SLOT_TWO];
     g_iArenaScore[arena_index][winner_team] += 1;
+    int score_red_after = g_iArenaScore[arena_index][SLOT_ONE];
+    int score_blu_after = g_iArenaScore[arena_index][SLOT_TWO];
     int fraglimit = g_iArenaFraglimit[arena_index];
     int client = g_iArenaQueue[arena_index][winner_team];
     int client_slot = winner_team;
@@ -291,6 +295,8 @@ void EndKoth(any arena_index, any winner_team)
         client_teammate = GetPlayerTeammate(client_slot, arena_index);
         foe_teammate = GetPlayerTeammate(foe_slot, arena_index);
     }
+
+    RecordArenaRoundEnd(arena_index, winner_team, RoundEndReason_KothCap, client, 0, GetClientScoringWeaponDefIndex(client), score_red_before, score_blu_before, score_red_after, score_blu_after);
 
     if (fraglimit > 0 && g_iArenaScore[arena_index][winner_team] >= fraglimit && g_iArenaStatus[arena_index] >= AS_FIGHT && g_iArenaStatus[arena_index] < AS_REPORTED)
     {
@@ -368,6 +374,7 @@ void EndKoth(any arena_index, any winner_team)
         g_bOvertimePlayed[arena_index][TEAM_BLU] = false;
         g_tKothTimer[arena_index] = CreateTimer(1.0, Timer_CountDownKoth, arena_index, TIMER_REPEAT);
         g_bTimerRunning[arena_index] = true;
+        StartArenaRoundLogging(arena_index);
     }
 
     UpdateHud(client);

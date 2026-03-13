@@ -20,6 +20,7 @@
 
 #define MAXARENAS 63
 #define MAXSPAWNS 15
+#define MGE_CLASS_MAX 9
 #define HUDFADEOUTTIME 120.0
 #define SPAWN_ANNOTATION_LIFETIME 999999.0
 #define MAX_SPAWN_ANNOTATIONS 512
@@ -98,6 +99,7 @@ int g_iMonitorNoSoundBrush2EntRef;
 StringMap g_smNamedEntityCache;
 
 // Modules
+#include "mge/rounds.sp"
 #include "mge/elo.sp"
 #include "mge/sql.sp"
 #include "mge/hud.sp"
@@ -173,6 +175,8 @@ public void OnPluginStart()
     gcvar_allowedClasses = new Convar("mgemod_allowed_classes", "soldier demoman scout", "Classes that players allowed to choose by default");
     gcvar_blockFallDamage = new Convar("mgemod_blockdmg_fall", "0", "Block falldamage? (0 = Disabled)", FCVAR_NONE, true, 0.0, true, 1.0);
     gcvar_dbConfig = new Convar("mgemod_dbconfig", "mgemod", "Name of database config");
+    gcvar_serverId = new Convar("mgemod_server_id", "1", "Server identifier written to duel rows (rating/stats stay shared)", FCVAR_NONE, true, 1.0);
+    gcvar_logDuelRounds = new Convar("mgemod_log_duel_rounds", "1", "Write compact duel round logs into mgemod_duels(_2v2).rounds_compact_json. (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
     gcvar_stats = new Convar("mgemod_stats", "1", "Enable/Disable stats.");
     gcvar_airshotHeight = new Convar("mgemod_airshot_height", "80", "The minimum height at which it will count airshot", FCVAR_NONE, true, 10.0, true, 500.0);
     gcvar_RocketForceX = new Convar("mgemod_endif_force_x", "1.1", "The amount by which to multiply the X push force on Endif.", FCVAR_NONE, true, 1.0, true, 10.0);
@@ -207,8 +211,10 @@ public void OnPluginStart()
     g_iAirshotHeight = gcvar_airshotHeight.IntValue;
     g_iMidairHP = gcvar_midairHP.IntValue;
     g_bAutoCvar = gcvar_autoCvar.IntValue ? true : false;
+    g_bLogDuelRounds = gcvar_logDuelRounds.IntValue ? true : false;
     g_bNoDisplayRating = gcvar_noDisplayRating.IntValue ? true : false;
     g_iReconnectInterval = gcvar_reconnectInterval.IntValue;
+    g_iServerId = gcvar_serverId.IntValue;
     g_b2v2SkipCountdown = gcvar_2v2SkipCountdown.IntValue ? true : false;
     g_b2v2Elo = gcvar_2v2Elo.IntValue ? true : false;
     g_bClearProjectiles = gcvar_clearProjectiles.IntValue ? true : false;
@@ -250,6 +256,8 @@ public void OnPluginStart()
     gcvar_allowedClasses.AddChangeHook(handler_ConVarChange);
     gcvar_blockFallDamage.AddChangeHook(handler_ConVarChange);
     gcvar_dbConfig.AddChangeHook(handler_ConVarChange);
+    gcvar_serverId.AddChangeHook(handler_ConVarChange);
+    gcvar_logDuelRounds.AddChangeHook(handler_ConVarChange);
     gcvar_stats.AddChangeHook(handler_ConVarChange);
     gcvar_airshotHeight.AddChangeHook(handler_ConVarChange);
     gcvar_midairHP.AddChangeHook(handler_ConVarChange);
@@ -416,6 +424,10 @@ void HandleHotReload()
             if (g_alPlayerDuelClasses[i] != null)
                 delete g_alPlayerDuelClasses[i];
             g_alPlayerDuelClasses[i] = new ArrayList();
+
+            if (g_alPlayerDuelWeaponIds[i] != null)
+                delete g_alPlayerDuelWeaponIds[i];
+            g_alPlayerDuelWeaponIds[i] = new ArrayList();
             
             // Reinitialize basic client state for hot reload
             if (!IsFakeClient(i))
@@ -989,6 +1001,7 @@ public void OnMapStart()
             {
                 g_iPlayerClassRating[i][classId][oppClassId] = 0;
                 g_iPlayerMatchupCount[i][classId][oppClassId] = 0;
+                g_bPlayerMatchupDirty[i][classId][oppClassId] = false;
             }
         }
         // g_bShowQueue is initialized in globals.sp as { true, ... }
@@ -1233,6 +1246,10 @@ void handler_ConVarChange(Handle convar, const char[] oldValue, const char[] new
         g_bBlockFallDamage = boolValue;
     else if (convar == gcvar_dbConfig)
         strcopy(g_sDBConfig, sizeof(g_sDBConfig), newValue);
+    else if (convar == gcvar_serverId)
+        g_iServerId = intValue;
+    else if (convar == gcvar_logDuelRounds)
+        g_bLogDuelRounds = boolValue;
     else if (convar == gcvar_stats)
         g_bNoStats = !boolValue;
     else if (convar == gcvar_airshotHeight)

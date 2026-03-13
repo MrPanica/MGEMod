@@ -41,6 +41,7 @@ char g_sMapName[256];
 
 bool g_bBlockFallDamage,
      g_bAutoCvar,
+     g_bLogDuelRounds,
      g_b2v2SkipCountdown,
      g_b2v2Elo,
      g_bClearProjectiles,
@@ -69,6 +70,7 @@ Handle g_hPlayerWaitingSpecTimer[MAXPLAYERS + 1];
 
 char g_sDBConfig[256];
 int g_iReconnectInterval;
+int g_iServerId;
 
 // Global CVar Handles
 Convar
@@ -76,6 +78,8 @@ Convar
     gcvar_allowedClasses,
     gcvar_blockFallDamage,
     gcvar_dbConfig,
+    gcvar_serverId,
+    gcvar_logDuelRounds,
     gcvar_midairHP,
     gcvar_airshotHeight,
     gcvar_RocketForceX,
@@ -268,6 +272,8 @@ int
     
 // Track matchup interactions during a duel: [player][myClass][opponentClass] = count
 int g_iPlayerMatchupCount   [MAXPLAYERS + 1][10][10];
+// Dirty flags for matchup ratings changed during duel; used to avoid full 9x9 DB writes
+bool g_bPlayerMatchupDirty  [MAXPLAYERS + 1][10][10];
 
 // Pending arena context used when presenting menus without committing to arena changes yet
 int g_iPendingArena[MAXPLAYERS + 1];
@@ -282,6 +288,14 @@ TFClassType g_tfctPlayerDuelClass[MAXPLAYERS + 1];
 
 // Track all classes used during a duel (for arenas with class changes allowed)
 ArrayList g_alPlayerDuelClasses[MAXPLAYERS + 1];
+// Track all weapon item definition indexes used during a duel
+ArrayList g_alPlayerDuelWeaponIds[MAXPLAYERS + 1];
+// Per-arena completed round logs for current duel
+ArrayList g_alArenaRoundLogs[MAXARENAS + 1];
+int g_iArenaRoundNumber[MAXARENAS + 1];
+int g_iArenaRoundStartTime[MAXARENAS + 1];
+float g_fArenaRoundStartGameTime[MAXARENAS + 1];
+bool g_bArenaRoundInProgress[MAXARENAS + 1];
 
 // Bot things
 bool g_bPlayerAskedForBot[MAXPLAYERS + 1];

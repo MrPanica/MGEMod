@@ -816,9 +816,14 @@ bool TryHandleBBallGoalTouch(int client, int entity)
 
     MC_PrintToChat(client, "%t", "bballdunk", foe_name);
 
+    int score_red_before = g_iArenaScore[arena_index][SLOT_ONE];
+    int score_blu_before = g_iArenaScore[arena_index][SLOT_TWO];
     g_iArenaScore[arena_index][client_team_slot] += 1;
+    int score_red_after = g_iArenaScore[arena_index][SLOT_ONE];
+    int score_blu_after = g_iArenaScore[arena_index][SLOT_TWO];
     g_iBBallIntelSkinTeam[arena_index] = (client_team_slot == SLOT_ONE) ? 0 : 1;
     UpdateBBallScoreboardForArena(arena_index);
+    RecordArenaRoundEnd(arena_index, client_team_slot, RoundEndReason_BBallGoal, client, 0, GetClientScoringWeaponDefIndex(client), score_red_before, score_blu_before, score_red_after, score_blu_after);
 
     if (fraglimit > 0 && g_iArenaScore[arena_index][client_team_slot] >= fraglimit && g_iArenaStatus[arena_index] >= AS_FIGHT && g_iArenaStatus[arena_index] < AS_REPORTED)
     {
@@ -897,6 +902,7 @@ bool TryHandleBBallGoalTouch(int client, int entity)
         }
 
         CreateTimer(0.15, Timer_ResetIntel, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
+        StartArenaRoundLogging(arena_index);
     }
 
     UpdateBBallScoreboardForArena(arena_index);

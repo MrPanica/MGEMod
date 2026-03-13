@@ -46,11 +46,22 @@ void HandleClientConnection(int client)
             }
         }
     }
+
+    for (int classId = 1; classId <= 9; classId++)
+    {
+        for (int oppClassId = 1; oppClassId <= 9; oppClassId++)
+            g_bPlayerMatchupDirty[client][classId][oppClassId] = false;
+    }
     
     // Initialize class tracking ArrayList
     if (g_alPlayerDuelClasses[client] != null)
         delete g_alPlayerDuelClasses[client];
     g_alPlayerDuelClasses[client] = new ArrayList();
+
+    // Initialize weapon tracking ArrayList
+    if (g_alPlayerDuelWeaponIds[client] != null)
+        delete g_alPlayerDuelWeaponIds[client];
+    g_alPlayerDuelWeaponIds[client] = new ArrayList();
     
     // Try to load player stats (will retry in HandleClientAuthentication if Steam ID not ready)
     TryLoadPlayerStats(client, false);
@@ -85,6 +96,7 @@ void HandleClientAuthentication(int client)
                     for (int oppClassId = 1; oppClassId <= 9; oppClassId++)
                     {
                         g_iPlayerClassRating[client][classId][oppClassId] = 1551;
+                        g_bPlayerMatchupDirty[client][classId][oppClassId] = false;
                     }
                 }
                 g_bPlayerAskedForBot[i] = false;
@@ -249,6 +261,12 @@ void HandleClientDisconnection(int client)
             delete g_alPlayerDuelClasses[client];
             g_alPlayerDuelClasses[client] = null;
         }
+
+        if (g_alPlayerDuelWeaponIds[client] != null)
+        {
+            delete g_alPlayerDuelWeaponIds[client];
+            g_alPlayerDuelWeaponIds[client] = null;
+        }
         
         // Clear 2v2 ready status
         g_bPlayer2v2Ready[client] = false;
@@ -264,6 +282,7 @@ void HandleClientDisconnection(int client)
             {
                 g_iPlayerClassRating[client][classId][oppClassId] = 0;
                 g_iPlayerMatchupCount[client][classId][oppClassId] = 0;
+                g_bPlayerMatchupDirty[client][classId][oppClassId] = false;
             }
         }
         
@@ -306,6 +325,18 @@ void HandleClientDisconnection(int client)
         // Reset duel start time since player disconnected and arena became idle
         g_iArenaDuelStartTime[arena_index] = 0;
         return;
+    }
+
+    if (g_alPlayerDuelClasses[client] != null)
+    {
+        delete g_alPlayerDuelClasses[client];
+        g_alPlayerDuelClasses[client] = null;
+    }
+
+    if (g_alPlayerDuelWeaponIds[client] != null)
+    {
+        delete g_alPlayerDuelWeaponIds[client];
+        g_alPlayerDuelWeaponIds[client] = null;
     }
 }
 
@@ -577,6 +608,8 @@ int ResetPlayer(int client)
         return 0;
 
     QueueArenaTeleport(client, 0.1, "ResetPlayer");
+    // Start round timing once both active duel participants are back alive after a point reset.
+    TryStartArenaRoundLoggingOnSpawn(arena_index);
 
     return 1;
 }
@@ -901,10 +934,13 @@ Action ExecuteArenaClassChange(int client, TFClassType new_class, int arena_inde
     g_tfctPlayerClass[client] = new_class;
     
     // Add class to tracking list if class changes are allowed and duel is active
-    if (g_bArenaClassChange[arena_index] && g_iArenaStatus[arena_index] != AS_IDLE && 
-        g_alPlayerDuelClasses[client].FindValue(view_as<int>(new_class)) == -1)
+    if (g_bArenaClassChange[arena_index] && g_iArenaStatus[arena_index] != AS_IDLE)
     {
-        g_alPlayerDuelClasses[client].Push(view_as<int>(new_class));
+        if (g_alPlayerDuelClasses[client] == null)
+            g_alPlayerDuelClasses[client] = new ArrayList();
+
+        if (g_alPlayerDuelClasses[client].FindValue(view_as<int>(new_class)) == -1)
+            g_alPlayerDuelClasses[client].Push(view_as<int>(new_class));
     }
     
     // Handle class change during active combat
@@ -985,8 +1021,13 @@ void HandleActivePlayerClassChange(int client, int arena_index)
         // Award points and provide feedback
         if (g_bArenaClassChange[arena_index])
         {
+            int score_red_before = g_iArenaScore[arena_index][SLOT_ONE];
+            int score_blu_before = g_iArenaScore[arena_index][SLOT_TWO];
             g_iArenaScore[arena_index][killer_team_slot] += 1;
             AddClassPointForPlayer(killer, client);
+            int score_red_after = g_iArenaScore[arena_index][SLOT_ONE];
+            int score_blu_after = g_iArenaScore[arena_index][SLOT_TWO];
+            RecordArenaRoundEnd(arena_index, killer_team_slot, RoundEndReason_ClassChange, killer, client, GetClientScoringWeaponDefIndex(killer), score_red_before, score_blu_before, score_red_after, score_blu_after);
             MC_PrintToChat(killer, "%t", "ClassChangePointOpponent");
             MC_PrintToChat(client, "%t", "ClassChangePoint");
         }
@@ -1267,6 +1308,279 @@ Action Command_AutoTeam(int client, int args)
 }
 
 
+// ===== DUEL WEAPON TRACKING =====
+
+bool IsWeaponWearable(int itemDefIndex)
+{
+    switch (itemDefIndex)
+    {
+        case 405, 608, // Demoman boots
+             133, 444, // Soldier backpacks/boots
+             57, 231, 642: // Sniper backpack-style wearables
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void EnsurePlayerDuelWeaponList(int client)
+{
+    if (client <= 0 || client > MaxClients)
+        return;
+
+    if (g_alPlayerDuelWeaponIds[client] == null)
+        g_alPlayerDuelWeaponIds[client] = new ArrayList();
+}
+
+void ClearPlayerDuelWeaponIds(int client)
+{
+    if (client <= 0 || client > MaxClients)
+        return;
+
+    EnsurePlayerDuelWeaponList(client);
+    g_alPlayerDuelWeaponIds[client].Clear();
+}
+
+void AddPlayerDuelWeaponId(int client, int itemDefIndex)
+{
+    if (!IsValidClient(client) || itemDefIndex <= 0)
+        return;
+
+    EnsurePlayerDuelWeaponList(client);
+
+    if (g_alPlayerDuelWeaponIds[client].FindValue(itemDefIndex) == -1)
+        g_alPlayerDuelWeaponIds[client].Push(itemDefIndex);
+}
+
+bool AppendUniqueWeaponId(int itemDefIndex, int[] weaponIds, int &weaponCount, int maxWeaponCount)
+{
+    if (itemDefIndex <= 0 || weaponCount >= maxWeaponCount)
+        return false;
+
+    for (int i = 0; i < weaponCount; i++)
+    {
+        if (weaponIds[i] == itemDefIndex)
+            return false;
+    }
+
+    weaponIds[weaponCount++] = itemDefIndex;
+    return true;
+}
+
+void CaptureCurrentPlayerWeaponIds(int client, int[] weaponIds, int &weaponCount, int maxWeaponCount)
+{
+    weaponCount = 0;
+
+    if (!IsValidClient(client))
+        return;
+
+    for (int slot = 0; slot < 3; slot++)
+    {
+        int weapon = GetPlayerWeaponSlot(client, slot);
+        if (weapon <= MaxClients || !IsValidEntity(weapon))
+            continue;
+        if (!HasEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex"))
+            continue;
+
+        int itemDefIndex = GetEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex");
+        AppendUniqueWeaponId(itemDefIndex, weaponIds, weaponCount, maxWeaponCount);
+    }
+
+    int wearable = -1;
+    while ((wearable = FindEntityByClassname(wearable, "tf_wearable*")) != -1)
+    {
+        if (!IsValidEntity(wearable))
+            continue;
+        if (!HasEntProp(wearable, Prop_Send, "m_hOwnerEntity"))
+            continue;
+        if (!HasEntProp(wearable, Prop_Send, "m_iItemDefinitionIndex"))
+            continue;
+        if (GetEntPropEnt(wearable, Prop_Send, "m_hOwnerEntity") != client)
+            continue;
+
+        int itemDefIndex = GetEntProp(wearable, Prop_Send, "m_iItemDefinitionIndex");
+        if (!IsWeaponWearable(itemDefIndex))
+            continue;
+
+        AppendUniqueWeaponId(itemDefIndex, weaponIds, weaponCount, maxWeaponCount);
+    }
+}
+
+void MergeCurrentPlayerWeaponIdsIntoDuelList(int client)
+{
+    if (!IsValidClient(client))
+        return;
+
+    int weaponIds[32];
+    int weaponCount = 0;
+    CaptureCurrentPlayerWeaponIds(client, weaponIds, weaponCount, sizeof(weaponIds));
+
+    for (int i = 0; i < weaponCount; i++)
+    {
+        AddPlayerDuelWeaponId(client, weaponIds[i]);
+    }
+}
+
+bool IsClientInTrackedDuel(int client)
+{
+    if (!IsValidClient(client))
+        return false;
+
+    int arena_index = g_iPlayerArena[client];
+    if (arena_index <= 0 || arena_index > g_iArenaCount)
+        return false;
+
+    int slot = g_iPlayerSlot[client];
+    if (!g_bFourPersonArena[arena_index] && slot != SLOT_ONE && slot != SLOT_TWO)
+        return false;
+    if (g_bFourPersonArena[arena_index] && (slot < SLOT_ONE || slot > SLOT_FOUR))
+        return false;
+
+    if (g_iArenaDuelStartTime[arena_index] <= 0)
+        return false;
+
+    return (g_iArenaStatus[arena_index] != AS_IDLE && g_iArenaStatus[arena_index] != AS_REPORTED);
+}
+
+void CapturePlayerWeaponEntitiesForDuel(int client)
+{
+    if (!IsValidClient(client))
+        return;
+
+    // Snapshot all weapon entities owned by the player.
+    int entity = -1;
+    while ((entity = FindEntityByClassname(entity, "tf_weapon*")) != -1)
+    {
+        if (!IsValidEntity(entity))
+            continue;
+        if (!HasEntProp(entity, Prop_Send, "m_hOwnerEntity"))
+            continue;
+        if (!HasEntProp(entity, Prop_Send, "m_iItemDefinitionIndex"))
+            continue;
+
+        if (GetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity") != client)
+            continue;
+
+        int itemDefIndex = GetEntProp(entity, Prop_Send, "m_iItemDefinitionIndex");
+        AddPlayerDuelWeaponId(client, itemDefIndex);
+    }
+
+    // Snapshot wearable entities and keep only gameplay wearables by itemdef whitelist.
+    entity = -1;
+    while ((entity = FindEntityByClassname(entity, "tf_wearable*")) != -1)
+    {
+        if (!IsValidEntity(entity))
+            continue;
+        if (!HasEntProp(entity, Prop_Send, "m_hOwnerEntity"))
+            continue;
+        if (!HasEntProp(entity, Prop_Send, "m_iItemDefinitionIndex"))
+            continue;
+
+        if (GetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity") != client)
+            continue;
+
+        int itemDefIndex = GetEntProp(entity, Prop_Send, "m_iItemDefinitionIndex");
+        if (!IsWeaponWearable(itemDefIndex))
+            continue;
+
+        AddPlayerDuelWeaponId(client, itemDefIndex);
+    }
+}
+
+void StartDuelWeaponTrackingForArena(int arena_index)
+{
+    if (arena_index <= 0 || arena_index > g_iArenaCount)
+        return;
+
+    int maxActiveSlot = g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO;
+    for (int slot = SLOT_ONE; slot <= maxActiveSlot; slot++)
+    {
+        int player = g_iArenaQueue[arena_index][slot];
+        if (!IsValidClient(player))
+            continue;
+
+        ClearPlayerDuelWeaponIds(player);
+        CapturePlayerWeaponEntitiesForDuel(player);
+    }
+}
+
+void GetPlayerCurrentWeaponIdsString(int client, char[] buffer, int maxlen)
+{
+    buffer[0] = '\0';
+
+    if (!IsValidClient(client))
+        return;
+
+    int weaponIds[32];
+    int weaponCount = 0;
+    CaptureCurrentPlayerWeaponIds(client, weaponIds, weaponCount, sizeof(weaponIds));
+    if (weaponCount <= 0)
+        return;
+
+    char itemDef[16];
+    for (int i = 0; i < weaponCount; i++)
+    {
+        IntToString(weaponIds[i], itemDef, sizeof(itemDef));
+
+        if (i > 0)
+            StrCat(buffer, maxlen, ",");
+        StrCat(buffer, maxlen, itemDef);
+    }
+}
+
+void GetPlayerWeaponIdsString(int client, char[] buffer, int maxlen)
+{
+    buffer[0] = '\0';
+
+    if (!IsValidClient(client))
+        return;
+    if (IsClientInTrackedDuel(client))
+        MergeCurrentPlayerWeaponIdsIntoDuelList(client);
+    if (g_alPlayerDuelWeaponIds[client] == null || g_alPlayerDuelWeaponIds[client].Length == 0)
+        return;
+
+    char itemDef[16];
+    for (int i = 0; i < g_alPlayerDuelWeaponIds[client].Length; i++)
+    {
+        IntToString(g_alPlayerDuelWeaponIds[client].Get(i), itemDef, sizeof(itemDef));
+
+        if (i > 0)
+            StrCat(buffer, maxlen, ",");
+        StrCat(buffer, maxlen, itemDef);
+    }
+}
+
+public Action TF2Items_OnGiveNamedItem(int client, char[] classname, int itemDefIndex, Handle &item)
+{
+    #pragma unused client
+    #pragma unused classname
+    #pragma unused itemDefIndex
+    #pragma unused item
+    return Plugin_Continue;
+}
+
+public void TF2Items_OnGiveNamedItem_Post(int client, char[] classname, int itemDefIndex, int level, int quality, int entity)
+{
+    #pragma unused level
+    #pragma unused quality
+    #pragma unused entity
+
+    if (!IsClientInTrackedDuel(client) || itemDefIndex <= 0)
+        return;
+
+    if (IsWeaponWearable(itemDefIndex))
+    {
+        AddPlayerDuelWeaponId(client, itemDefIndex);
+        return;
+    }
+
+    if (StrContains(classname, "tf_weapon_", false) == 0)
+        AddPlayerDuelWeaponId(client, itemDefIndex);
+}
+
+
 // ===== GAME EVENT HANDLERS =====
 
 // Handles post-inventory updates (loadout/regen/respawnroom): applies weapon rules and keeps teleport logic.
@@ -1370,6 +1684,9 @@ Action Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast)
             if (g_bDebugTeleport)
                 LogMessage("[MGE tele][debug] player_spawn: queue teleport client=%N arena=%d slot=%d", client, arena_index, player_slot);
         }
+
+        // Duration tracking: start next round only when all duel participants are alive in active fight.
+        TryStartArenaRoundLoggingOnSpawn(arena_index);
     }
 
     return Plugin_Continue;
@@ -1552,8 +1869,13 @@ Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
         Action result = CallForward_OnPlayerScorePoint(killer, victim, arena_index);
         if (result == Plugin_Continue)
         {
+            int score_red_before = g_iArenaScore[arena_index][SLOT_ONE];
+            int score_blu_before = g_iArenaScore[arena_index][SLOT_TWO];
             g_iArenaScore[arena_index][killer_team_slot] += 1;
             AddClassPointForPlayer(killer, victim);
+            int score_red_after = g_iArenaScore[arena_index][SLOT_ONE];
+            int score_blu_after = g_iArenaScore[arena_index][SLOT_TWO];
+            RecordArenaRoundEnd(arena_index, killer_team_slot, RoundEndReason_Kill, killer, victim, GetClientScoringWeaponDefIndex(killer), score_red_before, score_blu_before, score_red_after, score_blu_after);
             // Call forward after successful scoring
             CallForward_OnPlayerScoredPoint(killer, victim, arena_index, g_iArenaScore[arena_index][killer_team_slot]);
         }

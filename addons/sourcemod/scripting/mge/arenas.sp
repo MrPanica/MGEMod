@@ -3890,6 +3890,9 @@ Action Timer_CountDown(Handle timer, any arena_index)
                     g_iArenaDuelStartTime[arena_index] = GetTime();
                 if (isDuelStart)
                     ResetClassPointsForArena(arena_index);
+                if (isDuelStart)
+                    StartDuelWeaponTrackingForArena(arena_index);
+                StartArenaRoundLogging(arena_index);
                 char msg[64];
                 Format(msg, sizeof(msg), "FIGHT", g_iArenaCd[arena_index]);
                 PrintCenterText(red_f1, msg);
@@ -3974,6 +3977,9 @@ Action Timer_CountDown(Handle timer, any arena_index)
                     g_iArenaDuelStartTime[arena_index] = GetTime();
                 if (isDuelStart)
                     ResetClassPointsForArena(arena_index);
+                if (isDuelStart)
+                    StartDuelWeaponTrackingForArena(arena_index);
+                StartArenaRoundLogging(arena_index);
                 char msg[64];
                 Format(msg, sizeof(msg), "FIGHT", g_iArenaCd[arena_index]);
                 PrintCenterText(red_f1, msg);
@@ -4012,6 +4018,7 @@ Action Timer_StartDuel(Handle timer, any arena_index)
     {
         g_iArenaStatus[arena_index] = AS_IDLE;
         g_iArenaDuelStartTime[arena_index] = 0;
+        ResetArenaRoundLogging(arena_index);
 
         int max_slot = g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO;
         for (int slot = SLOT_ONE; slot <= max_slot; slot++)
@@ -4081,6 +4088,7 @@ Action Timer_StartDuel(Handle timer, any arena_index)
 
     g_iArenaScore[arena_index][SLOT_ONE] = 0;
     g_iArenaScore[arena_index][SLOT_TWO] = 0;
+    ResetArenaRoundLogging(arena_index);
     if (g_bArenaBBall[arena_index])
         UpdateBBallScoreboardForArena(arena_index);
     // Don't reset duel start time here - it should persist across rounds until match completion

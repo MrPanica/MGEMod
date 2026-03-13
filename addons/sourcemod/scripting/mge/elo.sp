@@ -60,9 +60,9 @@ void CalculateClassRatingChanges(int player, int opponent, bool didWin, ArrayLis
         return;
 
     int totalInteractions = 0;
-    for (int classId = 1; classId <= 9; classId++)
+    for (int classId = 1; classId <= MGE_CLASS_MAX; classId++)
     {
-        for (int oppClassId = 1; oppClassId <= 9; oppClassId++)
+        for (int oppClassId = 1; oppClassId <= MGE_CLASS_MAX; oppClassId++)
     {
             totalInteractions += g_iPlayerMatchupCount[player][classId][oppClassId];
         }
@@ -72,9 +72,9 @@ void CalculateClassRatingChanges(int player, int opponent, bool didWin, ArrayLis
         return;
 
     // Calculate ELO for each matchup separately
-    for (int classId = 1; classId <= 9; classId++)
+    for (int classId = 1; classId <= MGE_CLASS_MAX; classId++)
     {
-        for (int oppClassId = 1; oppClassId <= 9; oppClassId++)
+        for (int oppClassId = 1; oppClassId <= MGE_CLASS_MAX; oppClassId++)
         {
             int interactions = g_iPlayerMatchupCount[player][classId][oppClassId];
             if (interactions <= 0)
@@ -118,6 +118,8 @@ void CalculateClassRatingChanges(int player, int opponent, bool didWin, ArrayLis
 
             int newRating = previousRating + delta;
             g_iPlayerClassRating[player][classId][oppClassId] = newRating;
+            if (newRating != previousRating)
+                g_bPlayerMatchupDirty[player][classId][oppClassId] = true;
 
             float weight = float(interactions) / float(totalInteractions);
             AddClassRatingEntry(entries, player, classId, oppClassId, previousRating, newRating, delta, weight);
@@ -168,11 +170,24 @@ void CalcELO(int winner, int loser)
     // I don't want to penalize the player that doesn't leave, so only the winners/leavers ELO will be effected.
     int winner_team_slot = (g_iPlayerSlot[winner] > 2) ? (g_iPlayerSlot[winner] - 2) : g_iPlayerSlot[winner];
     int loser_team_slot = (g_iPlayerSlot[loser] > 2) ? (g_iPlayerSlot[loser] - 2) : g_iPlayerSlot[loser];
+    int winner_slot = g_iPlayerSlot[winner];
+    int loser_slot = g_iPlayerSlot[loser];
+    if (winner_slot > SLOT_TWO)
+        winner_slot -= 2;
+    if (loser_slot > SLOT_TWO)
+        loser_slot -= 2;
+    if (winner_slot < SLOT_ONE || winner_slot > SLOT_TWO)
+        winner_slot = winner_team_slot;
+    if (loser_slot < SLOT_ONE || loser_slot > SLOT_TWO)
+        loser_slot = (winner_slot == SLOT_ONE) ? SLOT_TWO : SLOT_ONE;
 
     // DB entry for this specific duel.
     char winnerClass[64], loserClass[64];
+    char winnerWeaponIds[256], loserWeaponIds[256];
     GetPlayerClassString(winner, arena_index, winnerClass, sizeof(winnerClass));
     GetPlayerClassString(loser, arena_index, loserClass, sizeof(loserClass));
+    GetPlayerWeaponIdsString(winner, winnerWeaponIds, sizeof(winnerWeaponIds));
+    GetPlayerWeaponIdsString(loser, loserWeaponIds, sizeof(loserWeaponIds));
     
     int startTime = g_iArenaDuelStartTime[arena_index];
     int endTime = time;
@@ -187,7 +202,7 @@ void CalcELO(int winner, int loser)
     InsertDuelWithClassRatings1v1(arena_index, winner, loser, g_sPlayerSteamID[winner], g_sPlayerSteamID[loser],
         g_iArenaScore[arena_index][winner_team_slot], g_iArenaScore[arena_index][loser_team_slot],
         g_iArenaFraglimit[arena_index], endTime, startTime, g_sMapName, g_sArenaName[arena_index],
-        winnerClass, loserClass, winner_previous_elo, g_iPlayerRating[winner], loser_previous_elo, g_iPlayerRating[loser], classEntries);
+        winnerClass, loserClass, winnerWeaponIds, loserWeaponIds, winner_previous_elo, g_iPlayerRating[winner], loser_previous_elo, g_iPlayerRating[loser], winner_slot, loser_slot, classEntries);
 
     // Winner's stats
     GetUpdateWinnerStatsQuery(query, sizeof(query), g_iPlayerRating[winner], time, g_sPlayerSteamID[winner]);
@@ -263,10 +278,15 @@ void CalcELO2(int winner, int winner2, int loser, int loser2)
 
     // DB entry for this specific duel.
     char winnerClass[64], winner2Class[64], loserClass[64], loser2Class[64];
+    char winnerWeaponIds[256], winner2WeaponIds[256], loserWeaponIds[256], loser2WeaponIds[256];
     GetPlayerClassString(winner, arena_index, winnerClass, sizeof(winnerClass));
     GetPlayerClassString(winner2, arena_index, winner2Class, sizeof(winner2Class));
     GetPlayerClassString(loser, arena_index, loserClass, sizeof(loserClass));
     GetPlayerClassString(loser2, arena_index, loser2Class, sizeof(loser2Class));
+    GetPlayerWeaponIdsString(winner, winnerWeaponIds, sizeof(winnerWeaponIds));
+    GetPlayerWeaponIdsString(winner2, winner2WeaponIds, sizeof(winner2WeaponIds));
+    GetPlayerWeaponIdsString(loser, loserWeaponIds, sizeof(loserWeaponIds));
+    GetPlayerWeaponIdsString(loser2, loser2WeaponIds, sizeof(loser2WeaponIds));
     
     int startTime = g_iArenaDuelStartTime[arena_index];
     int endTime = time;
@@ -288,13 +308,25 @@ void CalcELO2(int winner, int winner2, int loser, int loser2)
     PrintClassRatingMessages(loser2, classEntries);
     
     int winning_team = (winner_team_slot == SLOT_ONE) ? TEAM_RED : TEAM_BLU;
+    int winner_slot = g_iPlayerSlot[winner];
+    int winner2_slot = g_iPlayerSlot[winner2];
+    int loser_slot = g_iPlayerSlot[loser];
+    int loser2_slot = g_iPlayerSlot[loser2];
+    if (winner_slot < SLOT_ONE || winner_slot > SLOT_FOUR)
+        winner_slot = (winning_team == TEAM_RED) ? SLOT_ONE : SLOT_TWO;
+    if (winner2_slot < SLOT_ONE || winner2_slot > SLOT_FOUR)
+        winner2_slot = (winning_team == TEAM_RED) ? SLOT_THREE : SLOT_FOUR;
+    if (loser_slot < SLOT_ONE || loser_slot > SLOT_FOUR)
+        loser_slot = (winning_team == TEAM_RED) ? SLOT_TWO : SLOT_ONE;
+    if (loser2_slot < SLOT_ONE || loser2_slot > SLOT_FOUR)
+        loser2_slot = (winning_team == TEAM_RED) ? SLOT_FOUR : SLOT_THREE;
     
     InsertDuelWithClassRatings2v2(arena_index, winning_team, g_iArenaScore[arena_index][winner_team_slot], g_iArenaScore[arena_index][loser_team_slot],
         g_sPlayerSteamID[winner], g_sPlayerSteamID[winner2], g_sPlayerSteamID[loser], g_sPlayerSteamID[loser2],
         g_iArenaFraglimit[arena_index], endTime, startTime, g_sMapName, g_sArenaName[arena_index],
-        winnerClass, winner2Class, loserClass, loser2Class, winner_previous_elo, g_iPlayerRating[winner],
+        winnerClass, winner2Class, loserClass, loser2Class, winnerWeaponIds, winner2WeaponIds, loserWeaponIds, loser2WeaponIds, winner_previous_elo, g_iPlayerRating[winner],
         winner2_previous_elo, g_iPlayerRating[winner2], loser_previous_elo, g_iPlayerRating[loser], loser2_previous_elo, g_iPlayerRating[loser2],
-        classEntries);
+        winner_slot, winner2_slot, loser_slot, loser2_slot, classEntries);
 
     // Winner's stats
     GetUpdateWinnerStatsQuery(query, sizeof(query), g_iPlayerRating[winner], time, g_sPlayerSteamID[winner]);
