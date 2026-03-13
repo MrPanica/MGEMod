@@ -50,6 +50,95 @@ body {
     background-clip: text;
 }
 
+.header {
+    position: relative;
+}
+
+.header {
+    position: relative;
+}
+
+.lang-menu {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    min-width: 94px;
+    text-align: left;
+    z-index: 30;
+}
+
+.lang-menu summary {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 10px;
+    background: rgba(8, 16, 34, 0.75);
+    border: 1px solid rgba(120, 155, 205, 0.35);
+    color: #dbe7ff;
+    cursor: pointer;
+    user-select: none;
+}
+
+.lang-menu summary::-webkit-details-marker {
+    display: none;
+}
+
+.lang-menu[open] summary {
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+
+.lang-menu-code {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+}
+
+.lang-menu-caret {
+    margin-left: auto;
+    font-size: 11px;
+    color: #9fb6de;
+}
+
+.lang-menu-list {
+    margin-top: 6px;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid rgba(120, 155, 205, 0.35);
+    background: rgba(8, 16, 34, 0.92);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+}
+
+.lang-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    color: #dbe7ff;
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.lang-menu-item:hover {
+    background: rgba(88, 166, 255, 0.2);
+}
+
+.lang-menu-item.active {
+    background: rgba(88, 166, 255, 0.28);
+}
+
+.flag-img {
+    width: 16px;
+    height: 12px;
+    border-radius: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+    flex-shrink: 0;
+}
+
 .auth-section {
     display: flex;
     justify-content: center;
@@ -937,14 +1026,14 @@ body {
     line-height: 18px;
 }
 
-/* Цвета для ячеек сетки матчапов */
+/* Р¦РІРµС‚Р° РґР»СЏ СЏС‡РµРµРє СЃРµС‚РєРё РјР°С‚С‡Р°РїРѕРІ */
 .cell-very-high { background-color: #4caf50; }
 .cell-high { background-color: #8bc34a; }
 .cell-medium { background-color: #9ccc65; }
 .cell-low { background-color: #ff9800; }
 .cell-very-low { background-color: #f44336; }
 
-/* Часто используемые стили */
+/* Р§Р°СЃС‚Рѕ РёСЃРїРѕР»СЊР·СѓРµРјС‹Рµ СЃС‚РёР»Рё */
 .text-color-ccc {
     color: #ccc;
 }
@@ -1145,6 +1234,11 @@ body {
 
     .tabs {
         flex-direction: column;
+    }
+
+    .lang-menu {
+        position: static;
+        margin: 10px auto 0;
     }
 
     .stats-overview {

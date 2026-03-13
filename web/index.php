@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // Modern 2026 design for MGE statistics with Steam authentication
 require_once 'auth/steam_handler.php';
 
@@ -27,6 +27,11 @@ CREATE INDEX idx_player_playtime_steamid_server ON player_playtime(steamid, serv
 */
 
 require_once 'includes/helpers.php';
+require_once 'includes/i18n.php';
+
+$MGE_LANG = mge_resolve_language();
+$MGE_LOCALE = mge_locale_for_language($MGE_LANG);
+$MGE_I18N = mge_load_translations($MGE_LANG);
 
 // Initialize query counter and timer
 $queryCount = 0;
@@ -194,7 +199,7 @@ function getMGERating($db, $steamId) {
 }
 
 function getMGEDuels($db, $steamId, $limit = 10) {
-    // Подготавливаем запрос с нужными полями + пагинация через LIMIT
+    // Р СџР С•Р Т‘Р С–Р С•РЎвЂљР В°Р Р†Р В»Р С‘Р Р†Р В°Р ВµР С Р В·Р В°Р С—РЎР‚Р С•РЎРѓ РЎРѓ Р Р…РЎС“Р В¶Р Р…РЎвЂ№Р СР С‘ Р С—Р С•Р В»РЎРЏР СР С‘ + Р С—Р В°Р С–Р С‘Р Р…Р В°РЎвЂ Р С‘РЎРЏ РЎвЂЎР ВµРЎР‚Р ВµР В· LIMIT
     $stmt = $db->prepare("
         SELECT * FROM (
             SELECT
@@ -219,7 +224,7 @@ function getMGEDuels($db, $steamId, $limit = 10) {
             WHERE (winner = ? OR loser = ?)
               AND winner IS NOT NULL
               AND loser  IS NOT NULL
-              -- AND canceled = 0    ← раскомментируй, если нужны только завершённые без отмены
+              -- AND canceled = 0    РІвЂ С’ РЎР‚Р В°РЎРѓР С”Р С•Р СР СР ВµР Р…РЎвЂљР С‘РЎР‚РЎС“Р в„–, Р ВµРЎРѓР В»Р С‘ Р Р…РЎС“Р В¶Р Р…РЎвЂ№ РЎвЂљР С•Р В»РЎРЉР С”Р С• Р В·Р В°Р Р†Р ВµРЎР‚РЎв‚¬РЎвЂР Р…Р Р…РЎвЂ№Р Вµ Р В±Р ВµР В· Р С•РЎвЂљР СР ВµР Р…РЎвЂ№
 
             UNION ALL
 
@@ -245,13 +250,13 @@ function getMGEDuels($db, $steamId, $limit = 10) {
             WHERE (winner = ? OR winner2 = ? OR loser = ? OR loser2 = ?)
               AND winner IS NOT NULL
               AND loser  IS NOT NULL
-              -- AND canceled = 0    ← раскомментируй, если нужны только завершённые без отмены
+              -- AND canceled = 0    РІвЂ С’ РЎР‚Р В°РЎРѓР С”Р С•Р СР СР ВµР Р…РЎвЂљР С‘РЎР‚РЎС“Р в„–, Р ВµРЎРѓР В»Р С‘ Р Р…РЎС“Р В¶Р Р…РЎвЂ№ РЎвЂљР С•Р В»РЎРЉР С”Р С• Р В·Р В°Р Р†Р ВµРЎР‚РЎв‚¬РЎвЂР Р…Р Р…РЎвЂ№Р Вµ Р В±Р ВµР В· Р С•РЎвЂљР СР ВµР Р…РЎвЂ№
         ) AS combined
         ORDER BY endtime DESC
         LIMIT ?
     ");
 
-    // Привязываем параметры: 6 раз steamId + limit
+    // Р СџРЎР‚Р С‘Р Р†РЎРЏР В·РЎвЂ№Р Р†Р В°Р ВµР С Р С—Р В°РЎР‚Р В°Р СР ВµРЎвЂљРЎР‚РЎвЂ№: 6 РЎР‚Р В°Р В· steamId + limit
     $stmt->bind_param('ssssssi', 
         $steamId, $steamId,     // 1v1: winner / loser
         $steamId, $steamId, $steamId, $steamId,  // 2v2: winner, winner2, loser, loser2
@@ -263,10 +268,10 @@ function getMGEDuels($db, $steamId, $limit = 10) {
     $duels = $result->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
 
-    // ────────────────────────────────────────────────
-    // Если у тебя есть функция processDuelWinners — оставляем
-    // Если нет — ниже пример минимальной версии, которая добавляет is_winner
-    // ────────────────────────────────────────────────
+    // РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
+// If processDuelWinners already exists in your build, keep it.
+// Otherwise this is a minimal fallback that sets is_winner.
+    // РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
 
     $processedDuels = [];
     foreach ($duels as $duel) {
@@ -286,10 +291,10 @@ function getMGEDuels($db, $steamId, $limit = 10) {
         $processedDuels[] = $duel;
     }
 
-    // ────────────────────────────────────────────────
-    // Debug (можно убрать в продакшене)
-    // ────────────────────────────────────────────────
-    error_log("DEBUG: Fetched {$limit} duels for SteamID $steamId → found: " . count($processedDuels));
+    // РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
+    // Debug (Р СР С•Р В¶Р Р…Р С• РЎС“Р В±РЎР‚Р В°РЎвЂљРЎРЉ Р Р† Р С—РЎР‚Р С•Р Т‘Р В°Р С”РЎв‚¬Р ВµР Р…Р Вµ)
+    // РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
+    error_log("DEBUG: Fetched {$limit} duels for SteamID $steamId РІвЂ вЂ™ found: " . count($processedDuels));
 
     return $processedDuels;
 }
@@ -329,7 +334,7 @@ function getTopPlayers($db, $limit = 10, $orderBy = 'rating', $orderDir = 'DESC'
 
     // Special handling for 'last_duel' sort
     if ($orderBy === 'last_duel') {
-        // Используем оптимизированный запрос с подзапросами
+        // Р ВРЎРѓР С—Р С•Р В»РЎРЉР В·РЎС“Р ВµР С Р С•Р С—РЎвЂљР С‘Р СР С‘Р В·Р С‘РЎР‚Р С•Р Р†Р В°Р Р…Р Р…РЎвЂ№Р в„– Р В·Р В°Р С—РЎР‚Р С•РЎРѓ РЎРѓ Р С—Р С•Р Т‘Р В·Р В°Р С—РЎР‚Р С•РЎРѓР В°Р СР С‘
         $sql = "
             SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name,
                    COALESCE(
@@ -474,6 +479,309 @@ function getDuelDetails($db, $duelId, $type) {
     ", [$duelId], 'i');
 
     return $duel;
+}
+
+function normalizeMgeSlotValue($value, $defaultSlot) {
+    $slot = (int)$value;
+    return $slot > 0 ? $slot : (int)$defaultSlot;
+}
+
+function getMgeClassNameById($classId) {
+    static $classMap = [
+        0 => 'unknown',
+        1 => 'scout',
+        2 => 'sniper',
+        3 => 'soldier',
+        4 => 'demoman',
+        5 => 'medic',
+        6 => 'heavy',
+        7 => 'pyro',
+        8 => 'spy',
+        9 => 'engineer',
+        10 => 'civilian'
+    ];
+
+    return $classMap[(int)$classId] ?? 'unknown';
+}
+
+function getMgeSlotSteamIdFromDuel(array $duel, string $duelType, int $slot): ?string {
+    if ($slot <= 0) {
+        return null;
+    }
+
+    if ($duelType === '2v2') {
+        $winnerSlot = normalizeMgeSlotValue($duel['winner_slot'] ?? 0, 1);
+        $winner2Slot = normalizeMgeSlotValue($duel['winner2_slot'] ?? 0, 3);
+        $loserSlot = normalizeMgeSlotValue($duel['loser_slot'] ?? 0, 2);
+        $loser2Slot = normalizeMgeSlotValue($duel['loser2_slot'] ?? 0, 4);
+
+        if ($slot === $winnerSlot) return isset($duel['winner']) ? trim((string)$duel['winner']) : null;
+        if ($slot === $winner2Slot) return isset($duel['winner2']) ? trim((string)$duel['winner2']) : null;
+        if ($slot === $loserSlot) return isset($duel['loser']) ? trim((string)$duel['loser']) : null;
+        if ($slot === $loser2Slot) return isset($duel['loser2']) ? trim((string)$duel['loser2']) : null;
+
+        return null;
+    }
+
+    $winnerSlot = normalizeMgeSlotValue($duel['winner_slot'] ?? 0, 1);
+    $loserSlot = normalizeMgeSlotValue($duel['loser_slot'] ?? 0, 2);
+
+    if ($slot === $winnerSlot) return isset($duel['winner']) ? trim((string)$duel['winner']) : null;
+    if ($slot === $loserSlot) return isset($duel['loser']) ? trim((string)$duel['loser']) : null;
+
+    return null;
+}
+
+function getMgeRoundTeamSlotByPlayerSlot($slot, $duelType, $duel = []) {
+    $slot = (int)$slot;
+    if ($slot <= 0) {
+        return 0;
+    }
+
+    if ($duelType === '2v2') {
+        $winnerSlot = normalizeMgeSlotValue($duel['winner_slot'] ?? 0, 1);
+        $winner2Slot = normalizeMgeSlotValue($duel['winner2_slot'] ?? 0, 3);
+        $loserSlot = normalizeMgeSlotValue($duel['loser_slot'] ?? 0, 2);
+        $loser2Slot = normalizeMgeSlotValue($duel['loser2_slot'] ?? 0, 4);
+
+        if ($slot === $winnerSlot || $slot === $winner2Slot) {
+            return 1;
+        }
+        if ($slot === $loserSlot || $slot === $loser2Slot) {
+            return 2;
+        }
+
+        if ($slot === 1 || $slot === 3) {
+            return 1;
+        }
+        if ($slot === 2 || $slot === 4) {
+            return 2;
+        }
+
+        return 0;
+    }
+
+    $winnerSlot = normalizeMgeSlotValue($duel['winner_slot'] ?? 0, 1);
+    $loserSlot = normalizeMgeSlotValue($duel['loser_slot'] ?? 0, 2);
+
+    if ($slot === $winnerSlot) {
+        return 1;
+    }
+    if ($slot === $loserSlot) {
+        return 2;
+    }
+
+    if ($slot === 1 || $slot === 2) {
+        return $slot;
+    }
+
+    return 0;
+}
+
+function buildMgeRoundsFromCompactJson(array $duel, string $duelType): array {
+    $compactRaw = trim((string)($duel['rounds_compact_json'] ?? ''));
+    if ($compactRaw === '') {
+        return [];
+    }
+
+    $decoded = json_decode($compactRaw, true);
+    if (!is_array($decoded) || !isset($decoded['r']) || !is_array($decoded['r'])) {
+        return [];
+    }
+
+    $is2v2 = ($duelType === '2v2');
+    $slots = $is2v2 ? [1, 2, 3, 4] : [1, 2];
+    $version = (int)($decoded['v'] ?? 1);
+    $rows = [];
+    $scoreRed = 0;
+    $scoreBlu = 0;
+
+    foreach ($decoded['r'] as $index => $roundData) {
+        if (!is_array($roundData)) {
+            continue;
+        }
+
+        $isV2Shape = $version >= 2;
+        if (!$isV2Shape) {
+            $roundLen = count($roundData);
+            $isV2Shape = (!$is2v2 && $roundLen >= 7) || ($is2v2 && $roundLen >= 11);
+        }
+
+        $scoringWeaponDefindex = $isV2Shape ? (int)($roundData[2] ?? 0) : 0;
+        $classOffset = $isV2Shape ? 3 : 2;
+        $weaponOffset = $isV2Shape ? ($is2v2 ? 7 : 5) : ($is2v2 ? 6 : 4);
+
+        $scorerSlot = (int)($roundData[0] ?? 0);
+        $duration = max(0, (int)($roundData[1] ?? 0));
+        $winnerTeamSlot = 0;
+        if ($scorerSlot > 0) {
+            $winnerTeamSlot = (int)getMgeRoundTeamSlotByPlayerSlot($scorerSlot, $duelType, $duel);
+            if ($winnerTeamSlot !== 1 && $winnerTeamSlot !== 2) {
+                $winnerTeamSlot = 0;
+            }
+        }
+
+        $row = [
+            'round_number' => ((int)$index + 1),
+            'duration' => $duration,
+            'winner_team_slot' => $winnerTeamSlot,
+            'score_red_before' => $scoreRed,
+            'score_blu_before' => $scoreBlu,
+            'score_red_after' => $scoreRed,
+            'score_blu_after' => $scoreBlu,
+            'scorer_slot' => $scorerSlot,
+            'scoring_weapon_defindex' => $scoringWeaponDefindex
+        ];
+
+        foreach ($slots as $slot) {
+            $classId = (int)($roundData[$classOffset + ($slot - 1)] ?? 0);
+            $weaponValue = $roundData[$weaponOffset + ($slot - 1)] ?? '';
+            $weaponIds = is_string($weaponValue) ? trim($weaponValue) : trim((string)$weaponValue);
+
+            $row["slot{$slot}_steamid"] = (string)(getMgeSlotSteamIdFromDuel($duel, $duelType, $slot) ?? '');
+            $row["slot{$slot}_class_id"] = $classId;
+            $row["slot{$slot}_class"] = getMgeClassNameById($classId);
+            $row["slot{$slot}_weaponids"] = $weaponIds;
+        }
+
+        if ($winnerTeamSlot === 1) {
+            $scoreRed++;
+        } elseif ($winnerTeamSlot === 2) {
+            $scoreBlu++;
+        }
+
+        $row['score_red_after'] = $scoreRed;
+        $row['score_blu_after'] = $scoreBlu;
+        $rows[] = $row;
+    }
+
+    return $rows;
+}
+
+function buildMgeRoundsHtmlSimple(array $duel, string $duelType): string {
+    $rounds = buildMgeRoundsFromCompactJson($duel, $duelType);
+    if (empty($rounds)) {
+        return '<div class="duel-rounds-wrap"><div class="duel-rounds-empty">' . htmlspecialchars(t('rounds_not_found'), ENT_QUOTES, 'UTF-8') . '</div></div>';
+    }
+
+    $is2v2 = ($duelType === '2v2');
+    $slots = $is2v2 ? [1, 2, 3, 4] : [1, 2];
+    $topSlots = $is2v2 ? [1, 3] : [1];
+    $bottomSlots = $is2v2 ? [2, 4] : [2];
+    $slotNickMap = [];
+
+    foreach ($slots as $slot) {
+        $steamid = trim((string)(getMgeSlotSteamIdFromDuel($duel, $duelType, $slot) ?? ''));
+        if ($steamid === '') {
+            continue;
+        }
+
+        $nick = $steamid;
+        if ($is2v2) {
+            $winnerSlot = normalizeMgeSlotValue($duel['winner_slot'] ?? 0, 1);
+            $winner2Slot = normalizeMgeSlotValue($duel['winner2_slot'] ?? 0, 3);
+            $loserSlot = normalizeMgeSlotValue($duel['loser_slot'] ?? 0, 2);
+            $loser2Slot = normalizeMgeSlotValue($duel['loser2_slot'] ?? 0, 4);
+
+            if ($slot === $winnerSlot) $nick = (string)($duel['winner_nick'] ?? $duel['winner'] ?? $steamid);
+            if ($slot === $winner2Slot) $nick = (string)($duel['winner2_nick'] ?? $duel['winner2'] ?? $steamid);
+            if ($slot === $loserSlot) $nick = (string)($duel['loser_nick'] ?? $duel['loser'] ?? $steamid);
+            if ($slot === $loser2Slot) $nick = (string)($duel['loser2_nick'] ?? $duel['loser2'] ?? $steamid);
+        } else {
+            $winnerSlot = normalizeMgeSlotValue($duel['winner_slot'] ?? 0, 1);
+            $loserSlot = normalizeMgeSlotValue($duel['loser_slot'] ?? 0, 2);
+            if ($slot === $winnerSlot) $nick = (string)($duel['winner_nick'] ?? $duel['winner'] ?? $steamid);
+            if ($slot === $loserSlot) $nick = (string)($duel['loser_nick'] ?? $duel['loser'] ?? $steamid);
+        }
+
+        $slotNickMap[$slot] = $nick;
+    }
+
+    $renderSlotCard = static function (int $slot, array $round, int $winnerTeamSlot, int $scorerSlot) use ($duelType, $duel, $slotNickMap): string {
+        $slotTeam = (int)getMgeRoundTeamSlotByPlayerSlot($slot, $duelType, $duel);
+        $sideText = $slotTeam === 1 ? t('team_red') : ($slotTeam === 2 ? t('team_blu') : t('team_unknown'));
+        $steamid = trim((string)($round["slot{$slot}_steamid"] ?? ''));
+        $nick = (string)($slotNickMap[$slot] ?? (t('slot_label') . ' ' . $slot));
+        $className = trim((string)($round["slot{$slot}_class"] ?? t('unknown')));
+
+        $isWinner = ($winnerTeamSlot > 0 && $slotTeam === $winnerTeamSlot);
+        $cardClass = $isWinner ? ' duel-round-card-win' : ' duel-round-card-loss';
+
+        $nickEsc = htmlspecialchars($nick, ENT_QUOTES, 'UTF-8');
+        if ($steamid !== '') {
+            $nickEsc = '<a href="?profile=' . urlencode($steamid) . '&lang=' . urlencode($GLOBALS['MGE_LANG']) . '" class="duel-round-player-link">' . $nickEsc . '</a>';
+        }
+
+        $slotTitle = htmlspecialchars(t('slot_label') . ' ' . $slot . ' (' . $sideText . ')', ENT_QUOTES, 'UTF-8');
+        $classEsc = htmlspecialchars($className, ENT_QUOTES, 'UTF-8');
+
+        $badge = '';
+        if ($scorerSlot === $slot) {
+            $badge = '<span class="duel-round-badge duel-round-badge-scorer">' . htmlspecialchars(t('point_plus'), ENT_QUOTES, 'UTF-8') . '</span>';
+        }
+
+        $html = '<div class="duel-round-card' . $cardClass . '">';
+        $html .= '<div class="duel-round-card-head">' . $slotTitle . $badge . '</div>';
+        $html .= '<div class="duel-round-card-player">' . $nickEsc . '</div>';
+        $html .= '<div class="duel-round-card-meta">' . htmlspecialchars(t('class_label'), ENT_QUOTES, 'UTF-8') . ': ' . $classEsc . '</div>';
+        $html .= '</div>';
+
+        return $html;
+    };
+
+    $html = '<div class="duel-rounds-wrap duel-rounds-wrap-timeline">';
+    $html .= '<h3 class="duel-rounds-title">' . htmlspecialchars(t('rounds_title', ['count' => count($rounds)]), ENT_QUOTES, 'UTF-8') . '</h3>';
+    $html .= '<div class="duel-rounds-timeline" data-rounds-timeline="1">';
+
+    foreach ($rounds as $round) {
+        $roundNumber = (int)($round['round_number'] ?? 0);
+        $duration = max(0, (int)($round['duration'] ?? 0));
+        $winnerTeamSlot = (int)($round['winner_team_slot'] ?? 0);
+        $scoreAfter = (int)($round['score_red_after'] ?? 0) . ':' . (int)($round['score_blu_after'] ?? 0);
+        $scorerSlot = (int)($round['scorer_slot'] ?? 0);
+
+        $winnerClass = '';
+        if ($winnerTeamSlot === 1) {
+            $winnerClass = ' duel-round-center-red';
+        } elseif ($winnerTeamSlot === 2) {
+            $winnerClass = ' duel-round-center-blu';
+        }
+
+        $html .= '<div class="duel-round-timeline-item">';
+        $html .= '<div class="duel-round-side duel-round-side-top">';
+        foreach ($topSlots as $slot) {
+            $html .= $renderSlotCard($slot, $round, $winnerTeamSlot, $scorerSlot);
+        }
+        $html .= '</div>';
+
+        $html .= '<div class="duel-round-center">';
+        $html .= '<div class="duel-round-center-pill' . $winnerClass . '">';
+        $html .= '<div class="duel-round-center-line1">' . htmlspecialchars(t('round_label') . ' #' . $roundNumber . ' - ' . t('score_label') . ': ' . $scoreAfter, ENT_QUOTES, 'UTF-8') . '</div>'; 
+        $html .= '<div class="duel-round-center-line2">' . htmlspecialchars(t('duration_label') . ': ' . $duration . 's', ENT_QUOTES, 'UTF-8') . '</div>'; 
+
+
+
+        $html .= '</div>';
+        $html .= '</div>';
+
+        $html .= '<div class="duel-round-side duel-round-side-bottom">';
+        foreach ($bottomSlots as $slot) {
+            $html .= $renderSlotCard($slot, $round, $winnerTeamSlot, $scorerSlot);
+        }
+        $html .= '</div>';
+        $html .= '</div>';
+    }
+
+    $html .= '</div>';
+    $html .= '</div>';
+
+    static $timelineScriptInjected = false;
+    if (!$timelineScriptInjected) {
+        $timelineScriptInjected = true;
+        $html .= '<script>(function(){function initTimelineDrag(tl){if(!tl||tl.dataset.dragInit==="1"){return;}tl.dataset.dragInit="1";let isDown=false,startX=0,startScroll=0,pid=null;tl.addEventListener("pointerdown",function(e){isDown=true;pid=e.pointerId;startX=e.clientX;startScroll=tl.scrollLeft;tl.classList.add("duel-rounds-timeline-dragging");if(tl.setPointerCapture){try{tl.setPointerCapture(pid);}catch(_){}}});tl.addEventListener("pointermove",function(e){if(!isDown||e.pointerId!==pid){return;}tl.scrollLeft=startScroll-(e.clientX-startX);});function stopDrag(){isDown=false;tl.classList.remove("duel-rounds-timeline-dragging");if(pid!==null&&tl.releasePointerCapture){try{tl.releasePointerCapture(pid);}catch(_){}}pid=null;}tl.addEventListener("pointerup",stopDrag);tl.addEventListener("pointercancel",stopDrag);tl.addEventListener("dragstart",function(e){e.preventDefault();});}function boot(){document.querySelectorAll("[data-rounds-timeline=\"1\"]").forEach(initTimelineDrag);}if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",boot);}else{boot();}})();</script>';
+    }
+
+    return $html;
 }
 
 // Function to get player nemesis (most duels with)
@@ -642,9 +950,9 @@ function getClassIcon($className) {
         'spy' => 'Spy_emblem_RED.png'
     ];
 
-    // Проверяем, содержит ли строка несколько классов, разделенных запятой
+    // Р СџРЎР‚Р С•Р Р†Р ВµРЎР‚РЎРЏР ВµР С, РЎРѓР С•Р Т‘Р ВµРЎР‚Р В¶Р С‘РЎвЂљ Р В»Р С‘ РЎРѓРЎвЂљРЎР‚Р С•Р С”Р В° Р Р…Р ВµРЎРѓР С”Р С•Р В»РЎРЉР С”Р С• Р С”Р В»Р В°РЎРѓРЎРѓР С•Р Р†, РЎР‚Р В°Р В·Р Т‘Р ВµР В»Р ВµР Р…Р Р…РЎвЂ№РЎвЂ¦ Р В·Р В°Р С—РЎРЏРЎвЂљР С•Р в„–
     if (strpos($className, ',') !== false) {
-        // Разбиваем строку на отдельные классы
+        // Р В Р В°Р В·Р В±Р С‘Р Р†Р В°Р ВµР С РЎРѓРЎвЂљРЎР‚Р С•Р С”РЎС“ Р Р…Р В° Р С•РЎвЂљР Т‘Р ВµР В»РЎРЉР Р…РЎвЂ№Р Вµ Р С”Р В»Р В°РЎРѓРЎРѓРЎвЂ№
         $classes = explode(',', $className);
         $icons = [];
 
@@ -657,7 +965,7 @@ function getClassIcon($className) {
 
         return $icons;
     } else {
-        // Приводим к нижнему регистру для надежности
+        // Р СџРЎР‚Р С‘Р Р†Р С•Р Т‘Р С‘Р С Р С” Р Р…Р С‘Р В¶Р Р…Р ВµР СРЎС“ РЎР‚Р ВµР С–Р С‘РЎРѓРЎвЂљРЎР‚РЎС“ Р Т‘Р В»РЎРЏ Р Р…Р В°Р Т‘Р ВµР В¶Р Р…Р С•РЎРѓРЎвЂљР С‘
         $className = strtolower(trim($className));
 
         return isset($iconMap[$className]) ? $iconMap[$className] : 'default.png';
@@ -669,17 +977,17 @@ function getClassIconsHtml($classNamesStr, $size = "32") {
     $icons = getClassIcon($classNamesStr);
 
     if (is_array($icons)) {
-        // Это строка с несколькими классами
+        // Р В­РЎвЂљР С• РЎРѓРЎвЂљРЎР‚Р С•Р С”Р В° РЎРѓ Р Р…Р ВµРЎРѓР С”Р С•Р В»РЎРЉР С”Р С‘Р СР С‘ Р С”Р В»Р В°РЎРѓРЎРѓР В°Р СР С‘
         $html = '';
         foreach ($icons as $icon) {
             $html .= '<img src="tf_logo/' . $icon . '" class="class-icon" width="' . $size . '" height="' . $size . '" style="margin-right: 2px;">';
         }
-        error_log("DEBUG getClassIconsHtml: Input: $classNamesStr, Output: $html"); // Отладка
+        error_log("DEBUG getClassIconsHtml: Input: $classNamesStr, Output: $html"); // Р С›РЎвЂљР В»Р В°Р Т‘Р С”Р В°
         return $html;
     } else {
-        // Это одиночный класс
+        // Р В­РЎвЂљР С• Р С•Р Т‘Р С‘Р Р…Р С•РЎвЂЎР Р…РЎвЂ№Р в„– Р С”Р В»Р В°РЎРѓРЎРѓ
         $html = '<img src="tf_logo/' . $icons . '" class="class-icon" width="' . $size . '" height="' . $size . '">';
-        error_log("DEBUG getClassIconsHtml: Input: $classNamesStr, Output: $html"); // Отладка
+        error_log("DEBUG getClassIconsHtml: Input: $classNamesStr, Output: $html"); // Р С›РЎвЂљР В»Р В°Р Т‘Р С”Р В°
         return $html;
     }
 }
@@ -691,99 +999,55 @@ function getRatingHistory($db, $steamId, $days = 30) {
 
     $history = [];
 
-    // Query 1v1 duels where player won
-    $sql1 = "SELECT endtime, winner_new_elo as rating FROM mgemod_duels WHERE winner = ? AND winner_new_elo IS NOT NULL AND endtime >= ?";
-    $results1 = executeQuery($db, $sql1, [$steamId, $startDate], 'si');
-    $count1 = 0;
-    foreach ($results1 as $row) {
-        if ($row['rating'] !== null) {  // Only add if rating is not null
+    // Use COALESCE(new, previous) so old/partial rows are not dropped.
+    $queries = [
+        ['sql' => "SELECT endtime, COALESCE(winner_new_elo, winner_previous_elo) AS rating FROM mgemod_duels WHERE winner = ? AND endtime >= ? AND (winner_new_elo IS NOT NULL OR winner_previous_elo IS NOT NULL)", 'types' => 'si', 'params' => [$steamId, $startDate], 'label' => '1v1 wins'],
+        ['sql' => "SELECT endtime, COALESCE(loser_new_elo, loser_previous_elo) AS rating FROM mgemod_duels WHERE loser = ? AND endtime >= ? AND (loser_new_elo IS NOT NULL OR loser_previous_elo IS NOT NULL)", 'types' => 'si', 'params' => [$steamId, $startDate], 'label' => '1v1 losses'],
+        ['sql' => "SELECT endtime, COALESCE(winner_new_elo, winner_previous_elo) AS rating FROM mgemod_duels_2v2 WHERE winner = ? AND endtime >= ? AND (winner_new_elo IS NOT NULL OR winner_previous_elo IS NOT NULL)", 'types' => 'si', 'params' => [$steamId, $startDate], 'label' => '2v2 wins'],
+        ['sql' => "SELECT endtime, COALESCE(winner2_new_elo, winner2_previous_elo) AS rating FROM mgemod_duels_2v2 WHERE winner2 = ? AND endtime >= ? AND (winner2_new_elo IS NOT NULL OR winner2_previous_elo IS NOT NULL)", 'types' => 'si', 'params' => [$steamId, $startDate], 'label' => '2v2 wins2'],
+        ['sql' => "SELECT endtime, COALESCE(loser_new_elo, loser_previous_elo) AS rating FROM mgemod_duels_2v2 WHERE loser = ? AND endtime >= ? AND (loser_new_elo IS NOT NULL OR loser_previous_elo IS NOT NULL)", 'types' => 'si', 'params' => [$steamId, $startDate], 'label' => '2v2 losses'],
+        ['sql' => "SELECT endtime, COALESCE(loser2_new_elo, loser2_previous_elo) AS rating FROM mgemod_duels_2v2 WHERE loser2 = ? AND endtime >= ? AND (loser2_new_elo IS NOT NULL OR loser2_previous_elo IS NOT NULL)", 'types' => 'si', 'params' => [$steamId, $startDate], 'label' => '2v2 losses2'],
+    ];
+
+    foreach ($queries as $q) {
+        $rows = executeQuery($db, $q['sql'], $q['params'], $q['types']);
+        $count = 0;
+
+        foreach ((array)$rows as $row) {
+            if (!isset($row['rating']) || $row['rating'] === null) {
+                continue;
+            }
+
+            $row['rating'] = (int)$row['rating'];
+            $row['endtime'] = (int)$row['endtime'];
             $row['date_ts'] = strtotime(date('Y-m-d', $row['endtime']));
             $history[] = $row;
-            $count1++;
+            $count++;
+        }
+
+        error_log($q['label'] . " query for $steamId: $count records");
+    }
+
+    // If no valid ELO rows exist in duels for this period, keep chart alive with current rating.
+    if (empty($history)) {
+        $current = executeQuerySingle($db, "SELECT rating FROM mgemod_stats WHERE steamid = ? AND rating IS NOT NULL LIMIT 1", [$steamId], 's');
+        if ($current && isset($current['rating']) && $current['rating'] !== null) {
+            $history[] = [
+                'endtime' => $endDate,
+                'rating' => (int)$current['rating'],
+                'date_ts' => strtotime(date('Y-m-d', $endDate)),
+                'synthetic' => 1
+            ];
+            error_log("Rating history fallback for $steamId: synthetic point added");
         }
     }
-    // Debug: uncomment next line to see results
-    error_log("1v1 wins query for $steamId: $count1 records");
 
-    // Query 1v1 duels where player lost
-    $sql2 = "SELECT endtime, loser_new_elo as rating FROM mgemod_duels WHERE loser = ? AND loser_new_elo IS NOT NULL AND endtime >= ?";
-    $results2 = executeQuery($db, $sql2, [$steamId, $startDate], 'si');
-    $count2 = 0;
-    foreach ($results2 as $row) {
-        if ($row['rating'] !== null) {  // Only add if rating is not null
-            $row['date_ts'] = strtotime(date('Y-m-d', $row['endtime']));
-            $history[] = $row;
-            $count2++;
-        }
-    }
-    // Debug: uncomment next line to see results
-    error_log("1v1 losses query for $steamId: $count2 records");
-
-    // Query 2v2 duels where player won as first winner
-    $sql3 = "SELECT endtime, winner_new_elo as rating FROM mgemod_duels_2v2 WHERE winner = ? AND winner_new_elo IS NOT NULL AND endtime >= ?";
-    $results3 = executeQuery($db, $sql3, [$steamId, $startDate], 'si');
-    $count3 = 0;
-    foreach ($results3 as $row) {
-        if ($row['rating'] !== null) {  // Only add if rating is not null
-            $row['date_ts'] = strtotime(date('Y-m-d', $row['endtime']));
-            $history[] = $row;
-            $count3++;
-        }
-    }
-    // Debug: uncomment next line to see results
-    error_log("2v2 wins query for $steamId: $count3 records");
-
-    // Query 2v2 duels where player won as second winner
-    $sql4 = "SELECT endtime, winner2_new_elo as rating FROM mgemod_duels_2v2 WHERE winner2 = ? AND winner2_new_elo IS NOT NULL AND endtime >= ?";
-    $results4 = executeQuery($db, $sql4, [$steamId, $startDate], 'si');
-    $count4 = 0;
-    foreach ($results4 as $row) {
-        if ($row['rating'] !== null) {  // Only add if rating is not null
-            $row['date_ts'] = strtotime(date('Y-m-d', $row['endtime']));
-            $history[] = $row;
-            $count4++;
-        }
-    }
-    // Debug: uncomment next line to see results
-    error_log("2v2 wins2 query for $steamId: $count4 records");
-
-    // Query 2v2 duels where player lost as first loser
-    $sql5 = "SELECT endtime, loser_new_elo as rating FROM mgemod_duels_2v2 WHERE loser = ? AND loser_new_elo IS NOT NULL AND endtime >= ?";
-    $results5 = executeQuery($db, $sql5, [$steamId, $startDate], 'si');
-    $count5 = 0;
-    foreach ($results5 as $row) {
-        if ($row['rating'] !== null) {  // Only add if rating is not null
-            $row['date_ts'] = strtotime(date('Y-m-d', $row['endtime']));
-            $history[] = $row;
-            $count5++;
-        }
-    }
-    // Debug: uncomment next line to see results
-    error_log("2v2 losses query for $steamId: $count5 records");
-
-    // Query 2v2 duels where player lost as second loser
-    $sql6 = "SELECT endtime, loser2_new_elo as rating FROM mgemod_duels_2v2 WHERE loser2 = ? AND loser2_new_elo IS NOT NULL AND endtime >= ?";
-    $results6 = executeQuery($db, $sql6, [$steamId, $startDate], 'si');
-    $count6 = 0;
-    foreach ($results6 as $row) {
-        if ($row['rating'] !== null) {  // Only add if rating is not null
-            $row['date_ts'] = strtotime(date('Y-m-d', $row['endtime']));
-            $history[] = $row;
-            $count6++;
-        }
-    }
-    // Debug: uncomment next line to see results
-    error_log("2v2 losses2 query for $steamId: $count6 records");
-
-    // Debug: log total records found
     error_log("Total rating history records for $steamId: " . count($history));
 
-    // Sort by endtime to ensure chronological order
     usort($history, function($a, $b) {
-        return $a['endtime'] - $b['endtime'];
+        return ((int)$a['endtime']) - ((int)$b['endtime']);
     });
 
-    // Return all individual duels as separate points
     return $history;
 }
 
@@ -853,9 +1117,9 @@ if (isset($_GET['ajax'])) {
             $duel['winner_nick'] = $winnerNick;
             $duel['loser_nick'] = $loserNick;
 
-            // Добавляем также данные о классах для AJAX-ответа (увеличенный размер для лучшей видимости)
-            $duel['winner_class_html'] = !empty($duel['winnerclass']) ? getClassIconsHtml($duel['winnerclass'], "38") : '<span class="no-class">—</span>';
-            $duel['loser_class_html'] = !empty($duel['loserclass']) ? getClassIconsHtml($duel['loserclass'], "38") : '<span class="no-class">—</span>';
+            // Р вЂќР С•Р В±Р В°Р Р†Р В»РЎРЏР ВµР С РЎвЂљР В°Р С”Р В¶Р Вµ Р Т‘Р В°Р Р…Р Р…РЎвЂ№Р Вµ Р С• Р С”Р В»Р В°РЎРѓРЎРѓР В°РЎвЂ¦ Р Т‘Р В»РЎРЏ AJAX-Р С•РЎвЂљР Р†Р ВµРЎвЂљР В° (РЎС“Р Р†Р ВµР В»Р С‘РЎвЂЎР ВµР Р…Р Р…РЎвЂ№Р в„– РЎР‚Р В°Р В·Р СР ВµРЎР‚ Р Т‘Р В»РЎРЏ Р В»РЎС“РЎвЂЎРЎв‚¬Р ВµР в„– Р Р†Р С‘Р Т‘Р С‘Р СР С•РЎРѓРЎвЂљР С‘)
+            $duel['winner_class_html'] = !empty($duel['winnerclass']) ? getClassIconsHtml($duel['winnerclass'], "38") : '<span class="no-class">-</span>';
+            $duel['loser_class_html'] = !empty($duel['loserclass']) ? getClassIconsHtml($duel['loserclass'], "38") : '<span class="no-class">-</span>';
 
             if (isset($duel['winner2']) && $duel['winner2']) {
                 $winner2Nick = getPlayerNickname($db, $duel['winner2']);
@@ -863,14 +1127,14 @@ if (isset($_GET['ajax'])) {
                 $duel['winner2_nick'] = $winner2Nick;
                 $duel['loser2_nick'] = $loser2Nick;
 
-                // Добавляем также данные о классах для вторых игроков в 2v2
-                $duel['winner2_class_html'] = !empty($duel['winner2class']) ? getClassIconsHtml($duel['winner2class'], "38") : '<span class="no-class">—</span>';
-                $duel['loser2_class_html'] = !empty($duel['loser2class']) ? getClassIconsHtml($duel['loser2class'], "38") : '<span class="no-class">—</span>';
+                // Р вЂќР С•Р В±Р В°Р Р†Р В»РЎРЏР ВµР С РЎвЂљР В°Р С”Р В¶Р Вµ Р Т‘Р В°Р Р…Р Р…РЎвЂ№Р Вµ Р С• Р С”Р В»Р В°РЎРѓРЎРѓР В°РЎвЂ¦ Р Т‘Р В»РЎРЏ Р Р†РЎвЂљР С•РЎР‚РЎвЂ№РЎвЂ¦ Р С‘Р С–РЎР‚Р С•Р С”Р С•Р Р† Р Р† 2v2
+                $duel['winner2_class_html'] = !empty($duel['winner2class']) ? getClassIconsHtml($duel['winner2class'], "38") : '<span class="no-class">-</span>';
+                $duel['loser2_class_html'] = !empty($duel['loser2class']) ? getClassIconsHtml($duel['loser2class'], "38") : '<span class="no-class">-</span>';
             }
         }
 
-        // Отладочный вывод для проверки данных
-        error_log("DEBUG AJAX: Sending duels data: " . json_encode(array_slice($duels, 0, 2))); // Только первые 2 записи для отладки
+        // Р С›РЎвЂљР В»Р В°Р Т‘Р С•РЎвЂЎР Р…РЎвЂ№Р в„– Р Р†РЎвЂ№Р Р†Р С•Р Т‘ Р Т‘Р В»РЎРЏ Р С—РЎР‚Р С•Р Р†Р ВµРЎР‚Р С”Р С‘ Р Т‘Р В°Р Р…Р Р…РЎвЂ№РЎвЂ¦
+        error_log("DEBUG AJAX: Sending duels data: " . json_encode(array_slice($duels, 0, 2))); // Р СћР С•Р В»РЎРЉР С”Р С• Р С—Р ВµРЎР‚Р Р†РЎвЂ№Р Вµ 2 Р В·Р В°Р С—Р С‘РЎРѓР С‘ Р Т‘Р В»РЎРЏ Р С•РЎвЂљР В»Р В°Р Т‘Р С”Р С‘
 
         echo json_encode([
             'duels' => $duels,
@@ -912,8 +1176,8 @@ if (isset($_GET['ajax'])) {
 
         // Debug: Check if debug mode is enabled
         if (isset($_GET['debug']) && $_GET['debug'] === 'true') {
-            echo "<h3>Отладка поиска игрока</h3>";
-            echo "<p>Поисковый запрос: " . htmlspecialchars($query) . "</p>";
+            echo "<h3>" . htmlspecialchars(t('debug_search_title'), ENT_QUOTES, "UTF-8") . "</h3>";
+            echo "<p>" . htmlspecialchars(t('debug_search_query'), ENT_QUOTES, "UTF-8") . ": " . htmlspecialchars($query) . "</p>";
 
             // Check if the player exists in the database with exact match
             $checkStmt = $db->prepare("SELECT name, steamid FROM mgemod_stats WHERE name = ?");
@@ -924,9 +1188,9 @@ if (isset($_GET['ajax'])) {
             $checkStmt->close();
 
             if ($exactMatch) {
-                echo "<p>Найдено точное совпадение: " . htmlspecialchars($exactMatch['name']) . " (" . htmlspecialchars($exactMatch['steamid']) . ")</p>";
+                echo "<p>" . htmlspecialchars(t('debug_exact_match_found'), ENT_QUOTES, "UTF-8") . ": " . htmlspecialchars($exactMatch['name']) . " (" . htmlspecialchars($exactMatch['steamid']) . ")</p>";
             } else {
-                echo "<p>Точное совпадение не найдено</p>";
+                echo "<p>" . htmlspecialchars(t('debug_exact_match_not_found'), ENT_QUOTES, "UTF-8") . "</p>";
             }
 
             // Check for partial match
@@ -939,12 +1203,12 @@ if (isset($_GET['ajax'])) {
             $checkPartialStmt->close();
 
             if (!empty($partialMatches)) {
-                echo "<p>Найдено частичных совпадений: " . count($partialMatches) . "</p>";
+                echo "<p>" . htmlspecialchars(t('debug_partial_matches_found'), ENT_QUOTES, "UTF-8") . ": " . count($partialMatches) . "</p>";
                 foreach ($partialMatches as $match) {
                     echo "<p>- " . htmlspecialchars($match['name']) . " (" . htmlspecialchars($match['steamid']) . ")</p>";
                 }
             } else {
-                echo "<p>Частичные совпадения не найдены</p>";
+                echo "<p>" . htmlspecialchars(t('debug_partial_matches_not_found'), ENT_QUOTES, "UTF-8") . "</p>";
             }
 
             // Check for case-insensitive match
@@ -956,9 +1220,9 @@ if (isset($_GET['ajax'])) {
             $checkCaseStmt->close();
 
             if ($caseMatch) {
-                echo "<p>Найдено совпадение без учета регистра: " . htmlspecialchars($caseMatch['name']) . " (" . htmlspecialchars($caseMatch['steamid']) . ")</p>";
+                echo "<p>" . htmlspecialchars(t('debug_case_match_found'), ENT_QUOTES, "UTF-8") . ": " . htmlspecialchars($caseMatch['name']) . " (" . htmlspecialchars($caseMatch['steamid']) . ")</p>";
             } else {
-                echo "<p>Совпадение без учета регистра не найдено</p>";
+                echo "<p>" . htmlspecialchars(t('debug_case_match_not_found'), ENT_QUOTES, "UTF-8") . "</p>";
             }
         }
 
@@ -1018,7 +1282,7 @@ if (isset($_GET['ajax'])) {
 
     // Special handling for 'last_duel' sort
     if ($orderBy === 'last_duel') {
-        // Оптимизированный запрос для сортировки по последней дуэли
+        // Р С›Р С—РЎвЂљР С‘Р СР С‘Р В·Р С‘РЎР‚Р С•Р Р†Р В°Р Р…Р Р…РЎвЂ№Р в„– Р В·Р В°Р С—РЎР‚Р С•РЎРѓ Р Т‘Р В»РЎРЏ РЎРѓР С•РЎР‚РЎвЂљР С‘РЎР‚Р С•Р Р†Р С”Р С‘ Р С—Р С• Р С—Р С•РЎРѓР В»Р ВµР Т‘Р Р…Р ВµР в„– Р Т‘РЎС“РЎРЊР В»Р С‘
         $sql = "
             SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name,
                    COALESCE(
@@ -1064,9 +1328,9 @@ if (isset($_GET['ajax'])) {
         ");
     }
 
-    // Обработка результатов (не изменялась)
+    // Р С›Р В±РЎР‚Р В°Р В±Р С•РЎвЂљР С”Р В° РЎР‚Р ВµР В·РЎС“Р В»РЎРЉРЎвЂљР В°РЎвЂљР С•Р Р† (Р Р…Р Вµ Р С‘Р В·Р СР ВµР Р…РЎРЏР В»Р В°РЎРѓРЎРЉ)
     $players = [];
-    if ($orderBy !== 'last_duel') { // Для last_duel уже получили данные выше
+    if ($orderBy !== 'last_duel') { // Р вЂќР В»РЎРЏ last_duel РЎС“Р В¶Р Вµ Р С—Р С•Р В»РЎС“РЎвЂЎР С‘Р В»Р С‘ Р Т‘Р В°Р Р…Р Р…РЎвЂ№Р Вµ Р Р†РЎвЂ№РЎв‚¬Р Вµ
         if ($stmt) {
             $stmt->bind_param('ii', $limit, $offset);
             $stmt->execute();
@@ -1093,7 +1357,7 @@ if (isset($_GET['ajax'])) {
 
         // Get the most recent duel for this player
         $lastDuel = getLastDuelForPlayer($db, $player['steamid']);
-        $player['last_duel_time'] = $lastDuel ? date('d.m.Y H:i', $lastDuel['endtime']) : 'Нет данных';
+        $player['last_duel_time'] = $lastDuel ? date('d.m.Y H:i', $lastDuel['endtime']) : t('no_data');
 
         // Add last duel time value for sorting if needed
         if ($orderBy === 'last_duel') {
@@ -1132,9 +1396,9 @@ if (isset($_GET['ajax'])) {
             $duel['winner_nick'] = $winnerNick;
             $duel['loser_nick'] = $loserNick;
 
-            // Добавляем также данные о классах для AJAX-ответа
-            $duel['winnerclass_html'] = !empty($duel['winnerclass']) ? getClassIconsHtml($duel['winnerclass'], "32") : '<span class="no-class">—</span>';
-            $duel['loserclass_html'] = !empty($duel['loserclass']) ? getClassIconsHtml($duel['loserclass'], "32") : '<span class="no-class">—</span>';
+            // Р вЂќР С•Р В±Р В°Р Р†Р В»РЎРЏР ВµР С РЎвЂљР В°Р С”Р В¶Р Вµ Р Т‘Р В°Р Р…Р Р…РЎвЂ№Р Вµ Р С• Р С”Р В»Р В°РЎРѓРЎРѓР В°РЎвЂ¦ Р Т‘Р В»РЎРЏ AJAX-Р С•РЎвЂљР Р†Р ВµРЎвЂљР В°
+            $duel['winnerclass_html'] = !empty($duel['winnerclass']) ? getClassIconsHtml($duel['winnerclass'], "32") : '<span class="no-class">-</span>';
+            $duel['loserclass_html'] = !empty($duel['loserclass']) ? getClassIconsHtml($duel['loserclass'], "32") : '<span class="no-class">-</span>';
 
             if (isset($duel['winner2']) && $duel['winner2']) {
                 $winner2Nick = getPlayerNickname($db, $duel['winner2']);
@@ -1142,9 +1406,9 @@ if (isset($_GET['ajax'])) {
                 $duel['winner2_nick'] = $winner2Nick;
                 $duel['loser2_nick'] = $loser2Nick;
 
-                // Добавляем также данные о классах для вторых игроков в 2v2
-                $duel['winner2class_html'] = !empty($duel['winner2class']) ? getClassIconsHtml($duel['winner2class'], "32") : '<span class="no-class">—</span>';
-                $duel['loser2class_html'] = !empty($duel['loser2class']) ? getClassIconsHtml($duel['loser2class'], "32") : '<span class="no-class">—</span>';
+                // Р вЂќР С•Р В±Р В°Р Р†Р В»РЎРЏР ВµР С РЎвЂљР В°Р С”Р В¶Р Вµ Р Т‘Р В°Р Р…Р Р…РЎвЂ№Р Вµ Р С• Р С”Р В»Р В°РЎРѓРЎРѓР В°РЎвЂ¦ Р Т‘Р В»РЎРЏ Р Р†РЎвЂљР С•РЎР‚РЎвЂ№РЎвЂ¦ Р С‘Р С–РЎР‚Р С•Р С”Р С•Р Р† Р Р† 2v2
+                $duel['winner2class_html'] = !empty($duel['winner2class']) ? getClassIconsHtml($duel['winner2class'], "32") : '<span class="no-class">-</span>';
+                $duel['loser2class_html'] = !empty($duel['loser2class']) ? getClassIconsHtml($duel['loser2class'], "32") : '<span class="no-class">-</span>';
             }
         }
 
@@ -1168,7 +1432,7 @@ if (isset($_GET['ajax'])) {
 
         if (empty($steamId)) {
             http_response_code(400);
-            echo "Invalid Steam ID";
+            echo htmlspecialchars(t('error_invalid_steamid'), ENT_QUOTES, "UTF-8");
             exit;
         }
 
@@ -1184,7 +1448,7 @@ if (isset($_GET['ajax'])) {
         // Validate date format
         if (!strtotime($date)) {
             http_response_code(400);
-            echo json_encode(['error' => 'Invalid date format']);
+            echo json_encode(['error' => t('error_invalid_date_format')]);
             exit;
         }
 
@@ -1222,7 +1486,7 @@ if (isset($_GET['ajax'])) {
         }, range(0, 23));
 
         $dataset = [
-            'label' => 'Количество дуэлей',
+            'label' => t('js_duels'),
             'data' => array_values($hourlyCounts),
             'borderColor' => 'rgb(74, 222, 128)',
             'backgroundColor' => 'rgba(74, 222, 128, 0.1)',
@@ -1243,7 +1507,7 @@ if (isset($_GET['ajax'])) {
 
         if (!$steamId || !$year) {
             http_response_code(400);
-            echo json_encode(['error' => 'Missing steam_id or year']);
+            echo json_encode(['error' => t('error_missing_steam_year')]);
             exit;
         }
 
@@ -1372,9 +1636,9 @@ if (isset($_GET['ajax'])) {
 
                     <!-- Day of week labels -->
                     <g transform="translate(0, 28)" font-size="10" fill="#7d8590">
-                        <text x="0" y="26">Пн</text>
-                        <text x="0" y="56">Ср</text>
-                        <text x="0" y="86">Пт</text>
+                        <text x="0" y="26"><?= htmlspecialchars(t('weekday_mon_short'), ENT_QUOTES, 'UTF-8') ?></text>
+                        <text x="0" y="56"><?= htmlspecialchars(t('weekday_wed_short'), ENT_QUOTES, 'UTF-8') ?></text>
+                        <text x="0" y="86"><?= htmlspecialchars(t('weekday_fri_short'), ENT_QUOTES, 'UTF-8') ?></text>
                     </g>
 
                     <!-- Heatmap days -->
@@ -1398,7 +1662,7 @@ if (isset($_GET['ajax'])) {
                                 $color = '#39d353';
                             }
 
-                            echo '<rect class="day" width="'.$cellWidth.'" height="'.$cellWidth.'" x="'.$pos['x'].'" y="'.$pos['y'].'" fill="'.$color.'" data-count="'.$count.'" data-date="'.$dateStr.'" rx="2" ry="2" onclick="showDailyDuelsChart(\''.$dateStr.'\')"><title>'.$dateStr.': '.$count.' дуэлей</title></rect>';
+                            echo '<rect class="day" width="'.$cellWidth.'" height="'.$cellWidth.'" x="'.$pos['x'].'" y="'.$pos['y'].'" fill="'.$color.'" data-count="'.$count.'" data-date="'.$dateStr.'" rx="2" ry="2" onclick="showDailyDuelsChart(\''.$dateStr.'\')"><title>'.$dateStr.': '.htmlspecialchars(t('duels_count_short', ['count' => $count]), ENT_QUOTES, 'UTF-8').'</title></rect>'; 
                         }
                         ?>
                     </g>
@@ -1415,13 +1679,13 @@ if (isset($_GET['ajax'])) {
         </div>
 
         <div class="margin-top-12-flex">
-            <span>Меньше</span>
+            <span><?= htmlspecialchars(t('less_label'), ENT_QUOTES, 'UTF-8') ?></span>
             <div class="color-box-14x14 bg-dark-calendar"></div>
             <div class="color-box-14x14 bg-green-light"></div>
             <div class="color-box-14x14 bg-green-medium"></div>
             <div class="color-box-14x14 bg-green-bright"></div>
             <div class="color-box-14x14 bg-green-highlight"></div>
-            <span>Больше</span>
+            <span><?= htmlspecialchars(t('more_label'), ENT_QUOTES, 'UTF-8') ?></span>
         </div>
         <?php
         $heatmapHtml = ob_get_clean();
@@ -1444,8 +1708,8 @@ function getPlayerMatchups($db, $steamId) {
             winner_new_elo, winner_previous_elo, loser_new_elo, loser_previous_elo
         FROM mgemod_duels
         WHERE (winner = ? OR loser = ?)
-        AND mapname = 'Регулировка'
-        AND arenaname LIKE 'Матчап%'
+        AND mapname = '???????????'
+        AND arenaname LIKE '??????%'
         ORDER BY endtime DESC
         LIMIT 10
     ");
@@ -1692,19 +1956,19 @@ function getRatingColor($rating) {
 
 // Function to get class display name
 function getClassDisplayName($className) {
-    $names = [
-        'scout' => 'Скаут',
-        'soldier' => 'Солдат',
-        'pyro' => 'Пироман',
-        'demoman' => 'Демомен',
-        'heavy' => 'Пулемётчик',
-        'engineer' => 'Инженер',
-        'medic' => 'Медик',
-        'sniper' => 'Снайпер',
-        'spy' => 'Шпион'
-    ];
-    return $names[strtolower($className)] ?? ucfirst($className);
+    $classKey = 'class_' . strtolower((string)$className);
+    $translated = t($classKey);
+    if ($translated !== $classKey) {
+        return $translated;
+    }
+
+    return ucfirst((string)$className);
 }
+
+
+
+
+
 
 // Function to get class icon path
 function getClassIconPath($className) {
@@ -1785,8 +2049,8 @@ $searchResults = [];
 if ($searchQuery) {
     // Debug: Check if debug mode is enabled
     if (isset($_GET['debug']) && $_GET['debug'] === 'true') {
-        echo "<h3>Отладка обычного поиска игрока</h3>";
-        echo "<p>Поисковый запрос: " . htmlspecialchars($searchQuery) . "</p>";
+        echo "<h3>" . htmlspecialchars(t('debug_regular_search_title'), ENT_QUOTES, "UTF-8") . "</h3>";
+        echo "<p>" . htmlspecialchars(t('debug_search_query'), ENT_QUOTES, "UTF-8") . ": " . htmlspecialchars($searchQuery) . "</p>";
 
         // Check if the player exists in the database with exact match
         $checkStmt = $db->prepare("SELECT name, steamid FROM mgemod_stats WHERE name = ?");
@@ -1797,9 +2061,9 @@ if ($searchQuery) {
         $checkStmt->close();
 
         if ($exactMatch) {
-            echo "<p>Найдено точное совпадение: " . htmlspecialchars($exactMatch['name']) . " (" . htmlspecialchars($exactMatch['steamid']) . ")</p>";
+            echo "<p>" . htmlspecialchars(t('debug_exact_match_found'), ENT_QUOTES, "UTF-8") . ": " . htmlspecialchars($exactMatch['name']) . " (" . htmlspecialchars($exactMatch['steamid']) . ")</p>";
         } else {
-            echo "<p>Точное совпадение не найдено</p>";
+            echo "<p>" . htmlspecialchars(t('debug_exact_match_not_found'), ENT_QUOTES, "UTF-8") . "</p>";
         }
 
         // Check for partial match
@@ -1812,12 +2076,12 @@ if ($searchQuery) {
         $checkPartialStmt->close();
 
         if (!empty($partialMatches)) {
-            echo "<p>Найдено частичных совпадений: " . count($partialMatches) . "</p>";
+            echo "<p>" . htmlspecialchars(t('debug_partial_matches_found'), ENT_QUOTES, "UTF-8") . ": " . count($partialMatches) . "</p>";
             foreach ($partialMatches as $match) {
                 echo "<p>- " . htmlspecialchars($match['name']) . " (" . htmlspecialchars($match['steamid']) . ")</p>";
             }
         } else {
-            echo "<p>Частичные совпадения не найдены</p>";
+            echo "<p>" . htmlspecialchars(t('debug_partial_matches_not_found'), ENT_QUOTES, "UTF-8") . "</p>";
         }
 
         // Check for case-insensitive match
@@ -1829,9 +2093,9 @@ if ($searchQuery) {
         $checkCaseStmt->close();
 
         if ($caseMatch) {
-            echo "<p>Найдено совпадение без учета регистра: " . htmlspecialchars($caseMatch['name']) . " (" . htmlspecialchars($caseMatch['steamid']) . ")</p>";
+            echo "<p>" . htmlspecialchars(t('debug_case_match_found'), ENT_QUOTES, "UTF-8") . ": " . htmlspecialchars($caseMatch['name']) . " (" . htmlspecialchars($caseMatch['steamid']) . ")</p>";
         } else {
-            echo "<p>Совпадение без учета регистра не найдено</p>";
+            echo "<p>" . htmlspecialchars(t('debug_case_match_not_found'), ENT_QUOTES, "UTF-8") . "</p>";
         }
     }
 
@@ -1868,7 +2132,7 @@ if ($searchQuery) {
         $searchResults = $result->fetch_all(MYSQLI_ASSOC);
         $stmt->close();
 
-        // Update nick field for search results - используем имя из таблицы
+        // Update nick field for search results - Р С‘РЎРѓР С—Р С•Р В»РЎРЉР В·РЎС“Р ВµР С Р С‘Р СРЎРЏ Р С‘Р В· РЎвЂљР В°Р В±Р В»Р С‘РЎвЂ РЎвЂ№
         foreach ($searchResults as &$player) {
             $player['nick'] = $player['name'] ?: $player['steamid'];
             $winrate = ($player['wins'] + $player['losses']) > 0 ?
@@ -1997,7 +2261,7 @@ if ($isAuthenticated) {
 }
 
 // Pagination for players
-// Пагинация для игроков
+// Р СџР В°Р С–Р С‘Р Р…Р В°РЎвЂ Р С‘РЎРЏ Р Т‘Р В»РЎРЏ Р С‘Р С–РЎР‚Р С•Р С”Р С•Р Р†
 $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
 $limit = 25; // Using 25 players per page
 $offset = ($page - 1) * $limit;
@@ -2005,7 +2269,7 @@ $offset = ($page - 1) * $limit;
 // Get top players with pagination
 // Special handling for 'last_duel' sort
 if ($orderBy === 'last_duel') {
-    // Сначала получаем ID игроков с рейтингом
+    // Р РЋР Р…Р В°РЎвЂЎР В°Р В»Р В° Р С—Р С•Р В»РЎС“РЎвЂЎР В°Р ВµР С ID Р С‘Р С–РЎР‚Р С•Р С”Р С•Р Р† РЎРѓ РЎР‚Р ВµР в„–РЎвЂљР С‘Р Р…Р С–Р С•Р С
     $sql = "
         SELECT ms.steamid, ms.rating, ms.wins, ms.losses, ms.name
         FROM mgemod_stats ms
@@ -2021,11 +2285,11 @@ if ($orderBy === 'last_duel') {
     $topPlayers = $result->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
     
-    // Затем для каждого игрока получаем время последней дуэли (можно оптимизировать)
+    // Р вЂ”Р В°РЎвЂљР ВµР С Р Т‘Р В»РЎРЏ Р С”Р В°Р В¶Р Т‘Р С•Р С–Р С• Р С‘Р С–РЎР‚Р С•Р С”Р В° Р С—Р С•Р В»РЎС“РЎвЂЎР В°Р ВµР С Р Р†РЎР‚Р ВµР СРЎРЏ Р С—Р С•РЎРѓР В»Р ВµР Т‘Р Р…Р ВµР в„– Р Т‘РЎС“РЎРЊР В»Р С‘ (Р СР С•Р В¶Р Р…Р С• Р С•Р С—РЎвЂљР С‘Р СР С‘Р В·Р С‘РЎР‚Р С•Р Р†Р В°РЎвЂљРЎРЉ)
     foreach ($topPlayers as &$player) {
         $steamId = $player['steamid'];
         
-        // Оптимизированный запрос для одного игрока
+        // Р С›Р С—РЎвЂљР С‘Р СР С‘Р В·Р С‘РЎР‚Р С•Р Р†Р В°Р Р…Р Р…РЎвЂ№Р в„– Р В·Р В°Р С—РЎР‚Р С•РЎРѓ Р Т‘Р В»РЎРЏ Р С•Р Т‘Р Р…Р С•Р С–Р С• Р С‘Р С–РЎР‚Р С•Р С”Р В°
         $lastDuelSql = "
             SELECT MAX(endtime) as last_duel_time FROM (
                 SELECT MAX(endtime) as endtime FROM mgemod_duels WHERE winner = ? OR loser = ?
@@ -2043,7 +2307,7 @@ if ($orderBy === 'last_duel') {
         $stmt2->close();
     }
     
-    // Сортируем в PHP по времени последней дуэли
+    // Р РЋР С•РЎР‚РЎвЂљР С‘РЎР‚РЎС“Р ВµР С Р Р† PHP Р С—Р С• Р Р†РЎР‚Р ВµР СР ВµР Р…Р С‘ Р С—Р С•РЎРѓР В»Р ВµР Т‘Р Р…Р ВµР в„– Р Т‘РЎС“РЎРЊР В»Р С‘
     usort($topPlayers, function($a, $b) use ($orderDir) {
         $aTime = $a['last_duel_time_val'] ?? 0;
         $bTime = $b['last_duel_time_val'] ?? 0;
@@ -2204,14 +2468,14 @@ if ($viewDuel) {
 ?>
 
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="<?= htmlspecialchars($MGE_LANG, ENT_QUOTES, 'UTF-8') ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php
-        if ($viewDuel) echo "Дуэль #{$viewDuel} - MGE Статистика";
-        elseif ($viewProfile) echo "Профиль {$profileData['name']} - MGE Статистика";
-        else echo "MGE Статистика - 2026";
+        if ($viewDuel) echo t('site_title_duel', ['id' => $viewDuel]);
+        elseif ($viewProfile) echo t('site_title_profile', ['name' => (string)($profileData['name'] ?? '')]);
+        else echo t('site_title_main');
     ?></title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="css/styles.css">
@@ -2225,35 +2489,47 @@ if ($viewDuel) {
     <div class="loading-overlay" id="loadingOverlay">
         <div class="loading-content">
             <div class="loading-spinner"></div>
-            <p>Загрузка данных...</p>
+            <p><?= htmlspecialchars(t('loading_data'), ENT_QUOTES, 'UTF-8') ?></p>
         </div>
     </div>
 
     <div class="container">
         <div class="header">
-            <h1><i class="fas fa-chart-line"></i> MGE Статистика</h1>
-            <p>Дуэльная статистика для MGE серверов</p>
+            <h1><i class="fas fa-chart-line"></i> <?= htmlspecialchars(t('header_title'), ENT_QUOTES, 'UTF-8') ?></h1>
+            <p><?= htmlspecialchars(t('header_subtitle'), ENT_QUOTES, 'UTF-8') ?></p>
+
+            <details class="lang-menu" role="group" aria-label="<?= htmlspecialchars(t('lang_switch_aria'), ENT_QUOTES, 'UTF-8') ?>">
+                <summary>
+                    <img class="flag-img" src="<?= $MGE_LANG === 'ru' ? 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f1f7-1f1fa.svg' : 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f1fa-1f1f8.svg' ?>" alt="" aria-hidden="true" style="width:16px;height:12px;display:inline-block;border-radius:2px;border:1px solid rgba(255,255,255,.35);vertical-align:middle;object-fit:cover;">
+                    <span class="lang-menu-code"><?= strtoupper($MGE_LANG) ?></span>
+                    <i class="fas fa-chevron-down lang-menu-caret" aria-hidden="true"></i>
+                </summary>
+                <div class="lang-menu-list">
+                    <a href="<?= htmlspecialchars(mge_url_with_lang('ru'), ENT_QUOTES, 'UTF-8') ?>" class="lang-menu-item <?= $MGE_LANG === 'ru' ? 'active' : '' ?>">
+                        <img class="flag-img" src="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f1f7-1f1fa.svg" alt="" aria-hidden="true" style="width:16px;height:12px;display:inline-block;border-radius:2px;border:1px solid rgba(255,255,255,.35);vertical-align:middle;object-fit:cover;">
+                        <span>RU</span>
+                    </a>
+                    <a href="<?= htmlspecialchars(mge_url_with_lang('en'), ENT_QUOTES, 'UTF-8') ?>" class="lang-menu-item <?= $MGE_LANG === 'en' ? 'active' : '' ?>">
+                        <img class="flag-img" src="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f1fa-1f1f8.svg" alt="" aria-hidden="true" style="width:16px;height:12px;display:inline-block;border-radius:2px;border:1px solid rgba(255,255,255,.35);vertical-align:middle;object-fit:cover;">
+                        <span>EN</span>
+                    </a>
+                </div>
+            </details>
 
             <div class="auth-section">
                 <?php if ($isAuthenticated): ?>
-                    <span class="player-name">Добро пожаловать, <?= htmlspecialchars($playerData['name'] ?? 'Игрок') ?></span>
+                    <span class="player-name"><?= htmlspecialchars(t('welcome_player', ['name' => (string)($playerData['name'] ?? t('player_default_name'))]), ENT_QUOTES, 'UTF-8') ?></span>
                     <a href="?logout=1" class="btn btn-secondary">
-                        <i class="fas fa-sign-out-alt"></i> Выйти
+                        <i class="fas fa-sign-out-alt"></i> <?= htmlspecialchars(t('btn_logout'), ENT_QUOTES, 'UTF-8') ?>
                     </a>
                     <?php if (!$viewProfile && !$viewDuel): ?>
                         <a href="?profile=<?= urlencode($playerData['steamid']) ?>" class="btn btn-outline">
-                            <i class="fas fa-user"></i> Мой профиль
+                            <i class="fas fa-user"></i> <?= htmlspecialchars(t('btn_my_profile'), ENT_QUOTES, 'UTF-8') ?>
                         </a>
                     <?php endif; ?>
                 <?php else: ?>
                     <a href="<?= getSteamLoginUrl() ?>" class="btn btn-primary">
-                        <i class="fab fa-steam"></i> Войти через Steam
-                    </a>
-                <?php endif; ?>
-
-                <?php if ($viewProfile || $viewDuel): ?>
-                    <a href="<?= $_SERVER['PHP_SELF'] ?>" class="btn btn-outline">
-                        <i class="fas fa-arrow-left"></i> Назад к общей статистике
+                        <i class="fab fa-steam"></i> <?= htmlspecialchars(t('btn_login_steam'), ENT_QUOTES, 'UTF-8') ?>
                     </a>
                 <?php endif; ?>
             </div>
@@ -2315,23 +2591,24 @@ if ($viewDuel) {
 
             // Back URL - return to profile if came from there
             $backUrl = isset($_GET['profile']) ? '?profile=' . urlencode($_GET['profile']) : $_SERVER['PHP_SELF'];
-            $backText = isset($_GET['profile']) ? 'Назад к профилю' : 'Назад к общей статистике';
+            $backText = isset($_GET['profile']) ? t('btn_back_profile') : t('btn_back_stats');
 
             // ELO changes
             $winnerEloDiff = ($duelData['winner_new_elo'] ?? 0) - ($duelData['winner_previous_elo'] ?? 0);
             $loserEloDiff = ($duelData['loser_new_elo'] ?? 0) - ($duelData['loser_previous_elo'] ?? 0);
+            $duelRoundsHtml = buildMgeRoundsHtmlSimple($duelData, $duelType);
             ?>
             <!-- Duel Page -->
             <div class="profile-back">
                 <a href="<?= $backUrl ?>" class="btn btn-outline">
-                    <i class="fas fa-arrow-left"></i> <?= $backText ?>
+                    <i class="fas fa-arrow-left"></i> <?= htmlspecialchars($backText, ENT_QUOTES, 'UTF-8') ?>
                 </a>
             </div>
 
             <div class="card">
                 <div class="card-header">
-                    <h2 class="card-title"><i class="fas fa-fist-raised"></i> Дуэль #<?= $viewDuel ?></h2>
-                    <span class="duel-timestamp"><?= date('d.m.Y H:i', $duelData['endtime']) ?> • <?= htmlspecialchars($duelData['mapname']) ?> • <?= htmlspecialchars($duelData['arenaname']) ?></span>
+                    <h2 class="card-title"><i class="fas fa-fist-raised"></i> <?= htmlspecialchars(t('duel_title', ['id' => $viewDuel]), ENT_QUOTES, 'UTF-8') ?></h2>
+                    <span class="duel-timestamp"><?= date('d.m.Y H:i', $duelData['endtime']) ?> | <?= htmlspecialchars($duelData['mapname']) ?> | <?= htmlspecialchars($duelData['arenaname']) ?></span>
                 </div>
 
                 <div class="duel-page-content">
@@ -2339,14 +2616,14 @@ if ($viewDuel) {
                     <div class="duel-versus-container">
                         <!-- Winner Side -->
                         <div class="duel-player-card winner">
-                            <div class="duel-player-status">ПОБЕДА</div>
+                            <div class="duel-player-status"><?= htmlspecialchars(t('duel_status_win'), ENT_QUOTES, 'UTF-8') ?></div>
                             <a href="?profile=<?= urlencode($duelData['winner']) ?>" class="duel-player-avatar">
                                 <img src="<?= $winnerAvatar ?>" alt="Winner Avatar">
                             </a>
                             <a href="?profile=<?= urlencode($duelData['winner']) ?>" class="duel-player-name"><?= htmlspecialchars($winnerNick) ?></a>
-                            <div class="duel-player-class"><?= htmlspecialchars($duelData['winnerclass'] ?? 'Unknown') ?></div>
+                            <div class="duel-player-class"><?= htmlspecialchars($duelData['winnerclass'] ?? t('unknown')) ?></div>
                             <div class="duel-player-elo">
-                                <span class="elo-value"><?= $duelData['winner_new_elo'] ?? 'N/A' ?></span>
+                                <span class="elo-value"><?= $duelData['winner_new_elo'] ?? t('na') ?></span>
                                 <span class="elo-change positive">+<?= $winnerEloDiff ?></span>
                             </div>
                             <?php if ($duelType === '2v2'): ?>
@@ -2356,7 +2633,7 @@ if ($viewDuel) {
                                 </a>
                                 <div class="teammate-info">
                                     <a href="?profile=<?= urlencode($duelData['winner2']) ?>" class="teammate-name"><?= htmlspecialchars($winner2Nick) ?></a>
-                                    <span class="teammate-class"><?= htmlspecialchars($duelData['winner2class'] ?? 'Unknown') ?></span>
+                                    <span class="teammate-class"><?= htmlspecialchars($duelData['winner2class'] ?? t('unknown')) ?></span>
                                 </div>
                             </div>
                             <?php endif; ?>
@@ -2374,14 +2651,14 @@ if ($viewDuel) {
 
                         <!-- Loser Side -->
                         <div class="duel-player-card loser">
-                            <div class="duel-player-status">ПОРАЖЕНИЕ</div>
+                            <div class="duel-player-status"><?= htmlspecialchars(t('duel_status_loss'), ENT_QUOTES, 'UTF-8') ?></div>
                             <a href="?profile=<?= urlencode($duelData['loser']) ?>" class="duel-player-avatar">
                                 <img src="<?= $loserAvatar ?>" alt="Loser Avatar">
                             </a>
                             <a href="?profile=<?= urlencode($duelData['loser']) ?>" class="duel-player-name"><?= htmlspecialchars($loserNick) ?></a>
-                            <div class="duel-player-class"><?= htmlspecialchars($duelData['loserclass'] ?? 'Unknown') ?></div>
+                            <div class="duel-player-class"><?= htmlspecialchars($duelData['loserclass'] ?? t('unknown')) ?></div>
                             <div class="duel-player-elo">
-                                <span class="elo-value"><?= $duelData['loser_new_elo'] ?? 'N/A' ?></span>
+                                <span class="elo-value"><?= $duelData['loser_new_elo'] ?? t('na') ?></span>
                                 <span class="elo-change negative"><?= $loserEloDiff ?></span>
                             </div>
                             <?php if ($duelType === '2v2'): ?>
@@ -2391,20 +2668,21 @@ if ($viewDuel) {
                                 </a>
                                 <div class="teammate-info">
                                     <a href="?profile=<?= urlencode($duelData['loser2']) ?>" class="teammate-name"><?= htmlspecialchars($loser2Nick) ?></a>
-                                    <span class="teammate-class"><?= htmlspecialchars($duelData['loser2class'] ?? 'Unknown') ?></span>
+                                    <span class="teammate-class"><?= htmlspecialchars($duelData['loser2class'] ?? t('unknown')) ?></span>
                                 </div>
                             </div>
                             <?php endif; ?>
                         </div>
                     </div>
                 </div>
+                <?= $duelRoundsHtml ?>
             </div>
 
         <?php elseif ($viewProfile && $profileData): ?>
             <!-- Profile View -->
             <div class="profile-back">
                 <a href="<?= $_SERVER['PHP_SELF'] ?>" class="btn btn-outline">
-                    <i class="fas fa-arrow-left"></i> Назад к общей статистике
+                    <i class="fas fa-arrow-left"></i> <?= htmlspecialchars(t('btn_back_stats'), ENT_QUOTES, 'UTF-8') ?>
                 </a>
             </div>
 
@@ -2419,23 +2697,23 @@ if ($viewDuel) {
 
                     <div class="profile-stats-grid" style="margin-top: 15px; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));">
                         <div class="profile-stat-card">
-                            <div class="profile-stat-value profile-stat-value-colored"><?= $profileData['rating'] !== null ? $profileData['rating'] : 'N/A' ?></div>
-                            <div class="profile-stat-label">Рейтинг</div>
+                            <div class="profile-stat-value profile-stat-value-colored"><?= $profileData['rating'] !== null ? $profileData['rating'] : t('na') ?></div>
+                            <div class="profile-stat-label"><?= htmlspecialchars(t('profile_rating'), ENT_QUOTES, 'UTF-8') ?></div>
                         </div>
 
                         <div class="profile-stat-card">
                             <div class="profile-stat-value profile-stat-value-success"><?= $profileData['stats']['wins'] ?></div>
-                            <div class="profile-stat-label">Победы</div>
+                            <div class="profile-stat-label"><?= htmlspecialchars(t('profile_wins'), ENT_QUOTES, 'UTF-8') ?></div>
                         </div>
 
                         <div class="profile-stat-card">
                             <div class="profile-stat-value profile-stat-value-danger"><?= $profileData['stats']['losses'] ?></div>
-                            <div class="profile-stat-label">Поражения</div>
+                            <div class="profile-stat-label"><?= htmlspecialchars(t('profile_losses'), ENT_QUOTES, 'UTF-8') ?></div>
                         </div>
 
                         <div class="profile-stat-card">
                             <div class="profile-stat-value profile-stat-value-warning"><?= $profileData['stats']['winrate'] ?>%</div>
-                            <div class="profile-stat-label">Винрейт</div>
+                            <div class="profile-stat-label"><?= htmlspecialchars(t('profile_winrate'), ENT_QUOTES, 'UTF-8') ?></div>
                         </div>
                     </div>
                 </div>
@@ -2443,12 +2721,12 @@ if ($viewDuel) {
 
             <?php if ($profileData['nemesis']): ?>
                 <div class="nemesis-info">
-                    <h3><i class="fas fa-skull-crossbones"></i> Заклятый враг</h3>
+                    <h3><i class="fas fa-skull-crossbones"></i> <?= htmlspecialchars(t('nemesis_title'), ENT_QUOTES, 'UTF-8') ?></h3>
                     <p>
                         <a href="?profile=<?= urlencode($profileData['nemesis']['steamid']) ?>" class="nemesis-link">
                             <?= htmlspecialchars($profileData['nemesis']['nick']) ?> (<?= $profileData['nemesis']['steamid'] ?>)
                         </a>
-                        - <?= $profileData['nemesis']['duels_count'] ?> встреч
+                        - <?= htmlspecialchars(t('nemesis_meetings', ['count' => (int)$profileData['nemesis']['duels_count']]), ENT_QUOTES, 'UTF-8') ?>
                     </p>
                 </div>
             <?php endif; ?>
@@ -2474,7 +2752,7 @@ if ($viewDuel) {
                 <div class="margin-top-20-div">
                     <div class="card">
                         <div class="card-header">
-                            <h2 class="card-title"><i class="fas fa-chart-line"></i> Изменение рейтинга за месяц</h2>
+                            <h2 class="card-title"><i class="fas fa-chart-line"></i> <?= htmlspecialchars(t('rating_history_title'), ENT_QUOTES, 'UTF-8') ?></h2>
                         </div>
                         <div class="chart-container chart-container-height">
                             <canvas id="ratingChart"></canvas>
@@ -2487,182 +2765,6 @@ if ($viewDuel) {
                     <p style="color: orange; margin-top: 20px;">DEBUG: No rating history data available for this player</p>
                 <?php endif; ?>
             <?php endif; ?>
-
-            <div class="card card-margin-top-20">
-                <div class="card-header">
-                    <h2 class="card-title"><i class="fas fa-fist-raised"></i> Последние дуэли</h2>
-                </div>
-
-                <?php if (!empty($profileData['duels'])): ?>
-                    <div class="overflow-auto-div">
-                        <table class="duels-table" id="profile-duels-table">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Тип</th>
-                                    <th>Дата</th>
-                                    <th>Результат</th>
-                                    <th>Класс</th>
-                                    <th>Противник</th>
-                                    <th>Класс противника</th>
-                                    <th>Арена</th>
-                                    <th>Счет</th>
-                                    <th>Изменение ELO</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($profileData['duels'] as $duel):
-                                    $isWinner = $duel['is_winner'] ?? false;
-
-                                    // Calculate ELO change based on whether the player won or lost
-                                    $eloChange = null;
-                                    if ($duel['type'] === '1v1') {
-                                        if ($duel['winner'] === $profileData['steamid']) {
-                                            if (isset($duel['winner_new_elo']) && isset($duel['winner_previous_elo'])) {
-                                                $eloChange = $duel['winner_new_elo'] - $duel['winner_previous_elo'];
-                                            }
-                                        } else {
-                                            if (isset($duel['loser_new_elo']) && isset($duel['loser_previous_elo'])) {
-                                                $eloChange = $duel['loser_new_elo'] - $duel['loser_previous_elo'];
-                                            }
-                                        }
-                                    } else { // 2v2
-                                        if ($duel['winner'] === $profileData['steamid'] || $duel['winner2'] === $profileData['steamid']) {
-                                            if (isset($duel['winner_new_elo']) && isset($duel['winner_previous_elo'])) {
-                                                $eloChange = $duel['winner_new_elo'] - $duel['winner_previous_elo'];
-                                            }
-                                        } else {
-                                            if (isset($duel['loser_new_elo']) && isset($duel['loser_previous_elo'])) {
-                                                $eloChange = $duel['loser_new_elo'] - $duel['loser_previous_elo'];
-                                            }
-                                        }
-                                    }
-
-                                    // Debug: Output the duel data to HTML for inspection
-                                    if (isset($_GET['debug']) && $_GET['debug'] === 'true') {
-                                        echo "<!-- DEBUG DUEL DATA: ID={$duel['id']}, Type={$duel['type']}, Winner={$duel['winner']}, Winner2={$duel['winner2']}, Loser={$duel['loser']}, Loser2={$duel['loser2']}, ProfileID={$profileData['steamid']}, IsWinner=" . ($isWinner ? 'YES' : 'NO') . " -->";
-                                    }
-                                ?>
-                                    <?php if (isset($_GET['debug']) && $_GET['debug'] === 'true'): ?>
-                                    <tr>
-                                        <td colspan="8" style="background-color: #333; color: #0f0; font-family: monospace; font-size: 12px; padding: 5px;">
-                                            DEBUG: ID=<?= $duel['id'] ?>, Type=<?= $duel['type'] ?>, Winner=<?= $duel['winner'] ?>, Winner2=<?= $duel['winner2'] ?? 'NULL' ?>, Loser=<?= $duel['loser'] ?>, Loser2=<?= $duel['loser2'] ?? 'NULL' ?>, ProfileID=<?= $profileData['steamid'] ?>, IsWinner=<?= $isWinner ? 'YES' : 'NO' ?>
-                                        </td>
-                                    </tr>
-                                    <?php endif; ?>
-                                    <tr>
-                                        <td>
-                                            <a href="?duel=<?= $duel['id'] ?>&type=<?= $duel['type'] ?>&profile=<?= urlencode($viewProfile) ?>" class="duel-id-link">
-                                                <?= $duel['id'] ?>
-                                            </a>
-                                        </td>
-                                        <td><?= $duel['type'] ?></td>
-                                        <td><?= date('d.m.Y H:i', $duel['endtime']) ?></td>
-                                        <td>
-                                            <span class="duel-result <?= $isWinner ? 'win' : 'loss' ?>">
-                                                <?= $isWinner ? 'ПОБЕДА' : 'ПОРАЖЕНИЕ' ?>
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <?php if ($isWinner): ?>
-                                                <?php if (!empty($duel['winnerclass'])): ?>
-                                                    <?= getClassIconsHtml($duel['winnerclass'], "38") ?>
-                                                <?php else: ?>
-                                                    <span class="no-class">—</span>
-                                                <?php endif; ?>
-                                            <?php else: ?>
-                                                <?php if (!empty($duel['loserclass'])): ?>
-                                                    <?= getClassIconsHtml($duel['loserclass'], "38") ?>
-                                                <?php else: ?>
-                                                    <span class="no-class">—</span>
-                                                <?php endif; ?>
-                                            <?php endif; ?>
-                                        </td>
-                                        <td>
-                                            <?php
-                                                // Определяем противника в зависимости от того, выиграл ли текущий игрок
-                                                if ($isWinner) {
-                                                    // Игрок выиграл, значит противник - проигравший
-                                                    if ($duel['type'] === '1v1') {
-                                                        $opponentId = $duel['loser'];
-                                                    } else {
-                                                        // В 2v2 определяем, кто был вторым проигравшим
-                                                        if ($duel['loser'] === $profileData['steamid']) {
-                                                            $opponentId = $duel['loser2'];
-                                                        } else {
-                                                            $opponentId = $duel['loser'];
-                                                        }
-                                                    }
-                                                } else {
-                                                    // Игрок проиграл, значит противник - победитель
-                                                    if ($duel['type'] === '1v1') {
-                                                        $opponentId = $duel['winner'];
-                                                    } else {
-                                                        // В 2v2 определяем, кто был вторым победителем
-                                                        if ($duel['winner'] === $profileData['steamid']) {
-                                                            $opponentId = $duel['winner2'];
-                                                        } else {
-                                                            $opponentId = $duel['winner'];
-                                                        }
-                                                    }
-                                                }
-                                                $opponentNick = getPlayerNickname($db, $opponentId);
-                                            ?>
-                                            <a href="?profile=<?= urlencode($opponentId) ?>" class="opponent-link">
-                                                <?= htmlspecialchars($opponentNick) ?>
-                                            </a>
-                                        </td>
-                                        <td>
-                                            <?php if ($isWinner): ?>
-                                                <?php if (!empty($duel['loserclass'])): ?>
-                                                    <?= getClassIconsHtml($duel['loserclass'], "38") ?>
-                                                <?php else: ?>
-                                                    <span class="no-class">—</span>
-                                                <?php endif; ?>
-                                            <?php else: ?>
-                                                <?php if (!empty($duel['winnerclass'])): ?>
-                                                    <?= getClassIconsHtml($duel['winnerclass'], "38") ?>
-                                                <?php else: ?>
-                                                    <span class="no-class">—</span>
-                                                <?php endif; ?>
-                                            <?php endif; ?>
-                                        </td>
-                                        <td><?= htmlspecialchars($duel['arenaname']) ?></td>
-                                        <td><?= $duel['winnerscore'] ?>:<?= $duel['loserscore'] ?></td>
-                                        <td class="elo-change <?= $eloChange !== null ? ($eloChange > 0 ? 'positive' : ($eloChange < 0 ? 'negative' : 'neutral')) : 'neutral' ?>">
-                                            <?= $eloChange !== null ? ($eloChange > 0 ? '+' : '') . $eloChange : '-' ?>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- Pagination for profile duels -->
-                    <?php if ($profileData['duels_total_pages'] > 1): ?>
-                        <div class="pagination profile-duels-pagination">
-                            <?php if ($profileData['duels_current_page'] > 1): ?>
-                                <a href="?profile=<?= urlencode($viewProfile) ?>&duels_page=<?= $profileData['duels_current_page'] - 1 ?>"><i class="fas fa-chevron-left"></i> Назад</a>
-                            <?php endif; ?>
-
-                            <?php for ($i = max(1, $profileData['duels_current_page'] - 2); $i <= min($profileData['duels_total_pages'], $profileData['duels_current_page'] + 2); $i++): ?>
-                                <?php if ($i == $profileData['duels_current_page']): ?>
-                                    <span class="current"><?= $i ?></span>
-                                <?php else: ?>
-                                    <a href="?profile=<?= urlencode($viewProfile) ?>&duels_page=<?= $i ?>"><?= $i ?></a>
-                                <?php endif; ?>
-                            <?php endfor; ?>
-
-                            <?php if ($profileData['duels_current_page'] < $profileData['duels_total_pages']): ?>
-                                <a href="?profile=<?= urlencode($viewProfile) ?>&duels_page=<?= $profileData['duels_current_page'] + 1 ?>">Вперед <i class="fas fa-chevron-right"></i></a>
-                            <?php endif; ?>
-                        </div>
-                    <?php endif; ?>
-                <?php else: ?>
-                    <p>Нет данных о дуэлях</p>
-                <?php endif; ?>
-            </div>
-
 
             <!-- Matchup Grid -->
             <?php if (!empty($profileData['matchup_ratings'])): ?>
@@ -2685,7 +2787,7 @@ if ($viewDuel) {
             ?>
             <div class="card card-margin-top-20">
                 <div class="card-header">
-                    <h2 class="card-title"><i class="fas fa-chess-board"></i> Сетка матчапов</h2>
+                    <h2 class="card-title"><i class="fas fa-chess-board"></i> <?= htmlspecialchars(t('matchup_title'), ENT_QUOTES, 'UTF-8') ?></h2>
                 </div>
 
                 <div class="flex-stretch-gap-20">
@@ -2726,10 +2828,10 @@ if ($viewDuel) {
                                                 <?php
                                                 $rating = $matchupRatings[$myClass][$oppClass];
                                                 $color = getRatingColor($rating);
-                                                $label = $rating > 2000 ? 'Очень высокий' :
-                                                         ($rating > 1700 ? 'Высокий' :
-                                                         ($rating >= 1500 ? 'Средний' :
-                                                         ($rating > 1000 ? 'Низкий' : 'Очень низкий')));
+                                                $label = $rating > 2000 ? t('rating_highest') : ($rating > 1700 ? t('rating_high') : ($rating >= 1500 ? t('rating_medium') : ($rating > 1000 ? t('rating_low') : t('rating_lowest'))));
+
+
+
                                                 $myClassDisplay = getClassDisplayName($myClass);
                                                 $oppClassDisplay = getClassDisplayName($oppClass);
                                                 $stats = $matchupStats[$myClass][$oppClass];
@@ -2763,11 +2865,11 @@ if ($viewDuel) {
                         </div>
                     </div>
                     <div id="matchupDetailsPanel" class="matchup-details-panel">
-                        <div class="matchup-details-header">Детали матчапа</div>
+                        <div class="matchup-details-header"><?= htmlspecialchars(t('matchup_details_title'), ENT_QUOTES, 'UTF-8') ?></div>
                         <div id="matchupDetailsContent" class="matchup-details-content">
                             <div class="matchup-details-placeholder">
                                 <div class="matchup-details-placeholder-text">
-                                    Выберите ячейку для просмотра статистики
+                                    <?= htmlspecialchars(t('matchup_details_empty'), ENT_QUOTES, 'UTF-8') ?>
                                 </div>
                             </div>
                         </div>
@@ -2778,23 +2880,23 @@ if ($viewDuel) {
                 <div class="legend-flex-wrap">
                     <div class="legend-item-flex">
                         <div class="legend-color-box legend-very-high"></div>
-                        <span class="text-color-ccc">Очень высокий (>2000)</span>
+                        <span class="text-color-ccc"><?= htmlspecialchars(t('rating_highest'), ENT_QUOTES, 'UTF-8') ?> (&gt;2000)</span>
                     </div>
                     <div class="legend-item-flex">
                         <div class="legend-color-box legend-high"></div>
-                        <span class="text-color-ccc">Высокий (1700-2000)</span>
+                        <span class="text-color-ccc"><?= htmlspecialchars(t('rating_high'), ENT_QUOTES, 'UTF-8') ?> (1700-2000)</span>
                     </div>
                     <div class="legend-item-flex">
                         <div class="legend-color-box legend-medium"></div>
-                        <span class="text-color-ccc">Средний (1500-1700)</span>
+                        <span class="text-color-ccc"><?= htmlspecialchars(t('rating_medium'), ENT_QUOTES, 'UTF-8') ?> (1500-1700)</span>
                     </div>
                     <div class="legend-item-flex">
                         <div class="legend-color-box legend-low"></div>
-                        <span class="text-color-ccc">Низкий (1000-1500)</span>
+                        <span class="text-color-ccc"><?= htmlspecialchars(t('rating_low'), ENT_QUOTES, 'UTF-8') ?> (1000-1500)</span>
                     </div>
                     <div class="legend-item-flex">
                         <div class="legend-color-box legend-very-low"></div>
-                        <span class="text-color-ccc">Очень низкий (<1000)</span>
+                        <span class="text-color-ccc"><?= htmlspecialchars(t('rating_lowest'), ENT_QUOTES, 'UTF-8') ?> (&lt;1000)</span>
                     </div>
                 </div>
             </div>
@@ -2827,7 +2929,7 @@ if ($viewDuel) {
             ?>
             <div class="card card-margin-top-20">
                 <div class="card-header">
-                    <h2 class="card-title"><i class="fas fa-fire"></i> Активность</h2>
+                    <h2 class="card-title"><i class="fas fa-fire"></i> <?= htmlspecialchars(t('activity_title'), ENT_QUOTES, 'UTF-8') ?></h2>
                 </div>
 
                 <div class="activity-heatmap-container-full-width">
@@ -2909,9 +3011,9 @@ if ($viewDuel) {
 
                             <!-- Day of week labels -->
                             <g transform="translate(0, 28)" font-size="10" fill="#7d8590">
-                                <text x="0" y="26">Пн</text>
-                                <text x="0" y="56">Ср</text>
-                                <text x="0" y="86">Пт</text>
+                                <text x="0" y="26"><?= htmlspecialchars(t('weekday_mon_short'), ENT_QUOTES, 'UTF-8') ?></text>
+                                <text x="0" y="56"><?= htmlspecialchars(t('weekday_wed_short'), ENT_QUOTES, 'UTF-8') ?></text>
+                                <text x="0" y="86"><?= htmlspecialchars(t('weekday_fri_short'), ENT_QUOTES, 'UTF-8') ?></text>
                             </g>
 
                             <!-- Heatmap days -->
@@ -2935,7 +3037,7 @@ if ($viewDuel) {
                                         $color = '#39d353';
                                     }
 
-                                    echo '<rect class="day" width="'.$cellWidth.'" height="'.$cellWidth.'" x="'.$pos['x'].'" y="'.$pos['y'].'" fill="'.$color.'" data-count="'.$count.'" data-date="'.$dateStr.'" rx="2" ry="2" onclick="showDailyDuelsChart(\''.$dateStr.'\')"><title>'.$dateStr.': '.$count.' дуэлей</title></rect>';
+                                    echo '<rect class="day" width="'.$cellWidth.'" height="'.$cellWidth.'" x="'.$pos['x'].'" y="'.$pos['y'].'" fill="'.$color.'" data-count="'.$count.'" data-date="'.$dateStr.'" rx="2" ry="2" onclick="showDailyDuelsChart(\''.$dateStr.'\')"><title>'.$dateStr.': '.t('duels_count_short', ['count' => $count]).'</title></rect>';
                                 }
                                 ?>
                             </g>
@@ -2953,24 +3055,24 @@ if ($viewDuel) {
                     </div>
 
                     <div class="margin-top-12-flex-alt">
-                        <span>Меньше</span>
+                        <span><?= htmlspecialchars(t('less_label'), ENT_QUOTES, 'UTF-8') ?></span>
                         <div class="color-box-14x14 bg-dark-calendar"></div>
                         <div class="color-box-14x14 bg-green-light"></div>
                         <div class="color-box-14x14 bg-green-medium"></div>
                         <div class="color-box-14x14 bg-green-bright"></div>
                         <div class="color-box-14x14 bg-green-highlight"></div>
-                        <span>Больше</span>
+                        <span><?= htmlspecialchars(t('more_label'), ENT_QUOTES, 'UTF-8') ?></span>
                     </div>
 
                 </div>
 
                 <!-- Daily Duels Chart Container (outside of heatmap container for AJAX) -->
                 <div id="daily-duels-chart-container" class="daily-chart-container">
-                    <h3 id="daily-chart-title" class="daily-chart-title">Дуэли за <span id="selected-date-display"></span></h3>
+                    <h3 id="daily-chart-title" class="daily-chart-title"><?= htmlspecialchars(t('duels_for_date', ['date' => '']), ENT_QUOTES, 'UTF-8') ?> <span id="selected-date-display"></span></h3>
                     <div class="chart-wrapper" style="height: 200px;">
                         <canvas id="dailyDuelsChart"></canvas>
                     </div>
-                    <button onclick="hideDailyDuelsChart()" class="hide-chart-button">Скрыть график</button>
+                    <button onclick="hideDailyDuelsChart()" class="hide-chart-button"><?= htmlspecialchars(t('hide_chart'), ENT_QUOTES, 'UTF-8') ?></button>
                 </div>
             </div>
 
@@ -2979,6 +3081,184 @@ if ($viewDuel) {
                 window.PROFILE_STEAM_ID = '<?= $viewProfile ?>';
             </script>
             <?php endif; ?>
+
+            <div class="card card-margin-top-20">
+                <div class="card-header">
+                    <h2 class="card-title"><i class="fas fa-fist-raised"></i> <?= htmlspecialchars(t('recent_duels_title'), ENT_QUOTES, 'UTF-8') ?></h2>
+                </div>
+
+                <?php if (!empty($profileData['duels'])): ?>
+                    <div class="overflow-auto-div">
+                        <table class="duels-table" id="profile-duels-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th><?= htmlspecialchars(t('table_type'), ENT_QUOTES, 'UTF-8') ?></th>
+                                    <th><?= htmlspecialchars(t('table_date'), ENT_QUOTES, 'UTF-8') ?></th>
+                                    <th><?= htmlspecialchars(t('table_result'), ENT_QUOTES, 'UTF-8') ?></th>
+                                    <th><?= htmlspecialchars(t('table_class'), ENT_QUOTES, 'UTF-8') ?></th>
+                                    <th><?= htmlspecialchars(t('table_opponent'), ENT_QUOTES, 'UTF-8') ?></th>
+                                    <th><?= htmlspecialchars(t('table_opponent_class'), ENT_QUOTES, 'UTF-8') ?></th>
+                                    <th><?= htmlspecialchars(t('table_arena'), ENT_QUOTES, 'UTF-8') ?></th>
+                                    <th><?= htmlspecialchars(t('table_score'), ENT_QUOTES, 'UTF-8') ?></th>
+                                    <th><?= htmlspecialchars(t('table_elo_change'), ENT_QUOTES, 'UTF-8') ?></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($profileData['duels'] as $duel):
+                                    $isWinner = $duel['is_winner'] ?? false;
+
+                                    // Calculate ELO change based on whether the player won or lost
+                                    $eloChange = null;
+                                    if ($duel['type'] === '1v1') {
+                                        if ($duel['winner'] === $profileData['steamid']) {
+                                            if (isset($duel['winner_new_elo']) && isset($duel['winner_previous_elo'])) {
+                                                $eloChange = $duel['winner_new_elo'] - $duel['winner_previous_elo'];
+                                            }
+                                        } else {
+                                            if (isset($duel['loser_new_elo']) && isset($duel['loser_previous_elo'])) {
+                                                $eloChange = $duel['loser_new_elo'] - $duel['loser_previous_elo'];
+                                            }
+                                        }
+                                    } else { // 2v2
+                                        if ($duel['winner'] === $profileData['steamid'] || $duel['winner2'] === $profileData['steamid']) {
+                                            if (isset($duel['winner_new_elo']) && isset($duel['winner_previous_elo'])) {
+                                                $eloChange = $duel['winner_new_elo'] - $duel['winner_previous_elo'];
+                                            }
+                                        } else {
+                                            if (isset($duel['loser_new_elo']) && isset($duel['loser_previous_elo'])) {
+                                                $eloChange = $duel['loser_new_elo'] - $duel['loser_previous_elo'];
+                                            }
+                                        }
+                                    }
+
+                                    // Debug: Output the duel data to HTML for inspection
+                                    if (isset($_GET['debug']) && $_GET['debug'] === 'true') {
+                                        echo "<!-- DEBUG DUEL DATA: ID={$duel['id']}, Type={$duel['type']}, Winner={$duel['winner']}, Winner2={$duel['winner2']}, Loser={$duel['loser']}, Loser2={$duel['loser2']}, ProfileID={$profileData['steamid']}, IsWinner=" . ($isWinner ? 'YES' : 'NO') . " -->";
+                                    }
+                                ?>
+                                    <?php if (isset($_GET['debug']) && $_GET['debug'] === 'true'): ?>
+                                    <tr>
+                                        <td colspan="8" style="background-color: #333; color: #0f0; font-family: monospace; font-size: 12px; padding: 5px;">
+                                            DEBUG: ID=<?= $duel['id'] ?>, Type=<?= $duel['type'] ?>, Winner=<?= $duel['winner'] ?>, Winner2=<?= $duel['winner2'] ?? 'NULL' ?>, Loser=<?= $duel['loser'] ?>, Loser2=<?= $duel['loser2'] ?? 'NULL' ?>, ProfileID=<?= $profileData['steamid'] ?>, IsWinner=<?= $isWinner ? 'YES' : 'NO' ?>
+                                        </td>
+                                    </tr>
+                                    <?php endif; ?>
+                                    <tr>
+                                        <td>
+                                            <a href="?duel=<?= $duel['id'] ?>&type=<?= $duel['type'] ?>&profile=<?= urlencode($viewProfile) ?>" class="duel-id-link">
+                                                <?= $duel['id'] ?>
+                                            </a>
+                                        </td>
+                                        <td><?= $duel['type'] ?></td>
+                                        <td><?= date('d.m.Y H:i', $duel['endtime']) ?></td>
+                                        <td>
+                                            <span class="duel-result <?= $isWinner ? 'win' : 'loss' ?>">
+                                                <?= $isWinner ? htmlspecialchars(t('result_win'), ENT_QUOTES, 'UTF-8') : htmlspecialchars(t('result_loss'), ENT_QUOTES, 'UTF-8') ?>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <?php if ($isWinner): ?>
+                                                <?php if (!empty($duel['winnerclass'])): ?>
+                                                    <?= getClassIconsHtml($duel['winnerclass'], "38") ?>
+                                                <?php else: ?>
+                                                    <span class="no-class">-</span>
+                                                <?php endif; ?>
+                                            <?php else: ?>
+                                                <?php if (!empty($duel['loserclass'])): ?>
+                                                    <?= getClassIconsHtml($duel['loserclass'], "38") ?>
+                                                <?php else: ?>
+                                                    <span class="no-class">-</span>
+                                                <?php endif; ?>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <?php
+                                                // Р С›Р С—РЎР‚Р ВµР Т‘Р ВµР В»РЎРЏР ВµР С Р С—РЎР‚Р С•РЎвЂљР С‘Р Р†Р Р…Р С‘Р С”Р В° Р Р† Р В·Р В°Р Р†Р С‘РЎРѓР С‘Р СР С•РЎРѓРЎвЂљР С‘ Р С•РЎвЂљ РЎвЂљР С•Р С–Р С•, Р Р†РЎвЂ№Р С‘Р С–РЎР‚Р В°Р В» Р В»Р С‘ РЎвЂљР ВµР С”РЎС“РЎвЂ°Р С‘Р в„– Р С‘Р С–РЎР‚Р С•Р С”
+                                                if ($isWinner) {
+                                                    // Р ВР С–РЎР‚Р С•Р С” Р Р†РЎвЂ№Р С‘Р С–РЎР‚Р В°Р В», Р В·Р Р…Р В°РЎвЂЎР С‘РЎвЂљ Р С—РЎР‚Р С•РЎвЂљР С‘Р Р†Р Р…Р С‘Р С” - Р С—РЎР‚Р С•Р С‘Р С–РЎР‚Р В°Р Р†РЎв‚¬Р С‘Р в„–
+                                                    if ($duel['type'] === '1v1') {
+                                                        $opponentId = $duel['loser'];
+                                                    } else {
+                                                        // Р вЂ™ 2v2 Р С•Р С—РЎР‚Р ВµР Т‘Р ВµР В»РЎРЏР ВµР С, Р С”РЎвЂљР С• Р В±РЎвЂ№Р В» Р Р†РЎвЂљР С•РЎР‚РЎвЂ№Р С Р С—РЎР‚Р С•Р С‘Р С–РЎР‚Р В°Р Р†РЎв‚¬Р С‘Р С
+                                                        if ($duel['loser'] === $profileData['steamid']) {
+                                                            $opponentId = $duel['loser2'];
+                                                        } else {
+                                                            $opponentId = $duel['loser'];
+                                                        }
+                                                    }
+                                                } else {
+                                                    // Р ВР С–РЎР‚Р С•Р С” Р С—РЎР‚Р С•Р С‘Р С–РЎР‚Р В°Р В», Р В·Р Р…Р В°РЎвЂЎР С‘РЎвЂљ Р С—РЎР‚Р С•РЎвЂљР С‘Р Р†Р Р…Р С‘Р С” - Р С—Р С•Р В±Р ВµР Т‘Р С‘РЎвЂљР ВµР В»РЎРЉ
+                                                    if ($duel['type'] === '1v1') {
+                                                        $opponentId = $duel['winner'];
+                                                    } else {
+                                                        // Р вЂ™ 2v2 Р С•Р С—РЎР‚Р ВµР Т‘Р ВµР В»РЎРЏР ВµР С, Р С”РЎвЂљР С• Р В±РЎвЂ№Р В» Р Р†РЎвЂљР С•РЎР‚РЎвЂ№Р С Р С—Р С•Р В±Р ВµР Т‘Р С‘РЎвЂљР ВµР В»Р ВµР С
+                                                        if ($duel['winner'] === $profileData['steamid']) {
+                                                            $opponentId = $duel['winner2'];
+                                                        } else {
+                                                            $opponentId = $duel['winner'];
+                                                        }
+                                                    }
+                                                }
+                                                $opponentNick = getPlayerNickname($db, $opponentId);
+                                            ?>
+                                            <a href="?profile=<?= urlencode($opponentId) ?>" class="opponent-link">
+                                                <?= htmlspecialchars($opponentNick) ?>
+                                            </a>
+                                        </td>
+                                        <td>
+                                            <?php if ($isWinner): ?>
+                                                <?php if (!empty($duel['loserclass'])): ?>
+                                                    <?= getClassIconsHtml($duel['loserclass'], "38") ?>
+                                                <?php else: ?>
+                                                    <span class="no-class">-</span>
+                                                <?php endif; ?>
+                                            <?php else: ?>
+                                                <?php if (!empty($duel['winnerclass'])): ?>
+                                                    <?= getClassIconsHtml($duel['winnerclass'], "38") ?>
+                                                <?php else: ?>
+                                                    <span class="no-class">-</span>
+                                                <?php endif; ?>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td><?= htmlspecialchars($duel['arenaname']) ?></td>
+                                        <td><?= $duel['winnerscore'] ?>:<?= $duel['loserscore'] ?></td>
+                                        <td class="elo-change <?= $eloChange !== null ? ($eloChange > 0 ? 'positive' : ($eloChange < 0 ? 'negative' : 'neutral')) : 'neutral' ?>">
+                                            <?= $eloChange !== null ? ($eloChange > 0 ? '+' : '') . $eloChange : '-' ?>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination for profile duels -->
+                    <?php if ($profileData['duels_total_pages'] > 1): ?>
+                        <div class="pagination profile-duels-pagination">
+                            <?php if ($profileData['duels_current_page'] > 1): ?>
+                                <a href="?profile=<?= urlencode($viewProfile) ?>&duels_page=<?= $profileData['duels_current_page'] - 1 ?>"><i class="fas fa-chevron-left"></i> <?= htmlspecialchars(t('js_back'), ENT_QUOTES, 'UTF-8') ?></a>
+                            <?php endif; ?>
+
+                            <?php for ($i = max(1, $profileData['duels_current_page'] - 2); $i <= min($profileData['duels_total_pages'], $profileData['duels_current_page'] + 2); $i++): ?>
+                                <?php if ($i == $profileData['duels_current_page']): ?>
+                                    <span class="current"><?= $i ?></span>
+                                <?php else: ?>
+                                    <a href="?profile=<?= urlencode($viewProfile) ?>&duels_page=<?= $i ?>"><?= $i ?></a>
+                                <?php endif; ?>
+                            <?php endfor; ?>
+
+                            <?php if ($profileData['duels_current_page'] < $profileData['duels_total_pages']): ?>
+                                <a href="?profile=<?= urlencode($viewProfile) ?>&duels_page=<?= $profileData['duels_current_page'] + 1 ?>"><?= htmlspecialchars(t('js_forward'), ENT_QUOTES, 'UTF-8') ?> <i class="fas fa-chevron-right"></i></a>
+                            <?php endif; ?>
+                        </div>
+                    <?php endif; ?>
+                <?php else: ?>
+                    <p><?= htmlspecialchars(t('no_duels_data'), ENT_QUOTES, 'UTF-8') ?></p>
+                <?php endif; ?>
+            </div>
+
+
+
         <?php else: ?>
             <!-- Main Statistics View -->
             <div class="search-container">
@@ -2986,10 +3266,10 @@ if ($viewDuel) {
                     <?php if (isset($_GET['profile'])): ?>
                         <input type="hidden" name="profile" value="<?= htmlspecialchars($_GET['profile']) ?>">
                     <?php endif; ?>
-                    <input type="text" name="search" placeholder="Поиск игрока..." class="search-input" value="<?= htmlspecialchars($searchQuery) ?>">
-                    <button type="submit" class="search-btn">Найти</button>
+                    <input type="text" name="search" placeholder="<?= htmlspecialchars(t('search_placeholder'), ENT_QUOTES, 'UTF-8') ?>" class="search-input" value="<?= htmlspecialchars($searchQuery) ?>">
+                    <button type="submit" class="search-btn"><?= htmlspecialchars(t('search_btn'), ENT_QUOTES, 'UTF-8') ?></button>
                     <?php if ($searchQuery): ?>
-                        <a href="?" class="btn btn-secondary btn-secondary-margin">Очистить</a>
+                        <a href="?" class="btn btn-secondary btn-secondary-margin"><?= htmlspecialchars(t('clear_btn'), ENT_QUOTES, 'UTF-8') ?></a>
                     <?php endif; ?>
                 </form>
             </div>
@@ -2998,17 +3278,17 @@ if ($viewDuel) {
                 <div class="search-results">
                     <div class="card">
                         <div class="card-header">
-                            <h2 class="card-title"><i class="fas fa-search"></i> Результаты поиска</h2>
+                            <h2 class="card-title"><i class="fas fa-search"></i> <?= htmlspecialchars(t('search_results_title'), ENT_QUOTES, 'UTF-8') ?></h2>
                         </div>
                         <div class="overflow-x-auto-alt">
                             <table class="top-players-table">
                                 <thead>
                                     <tr>
-                                        <th>Место</th>
-                                        <th>Игрок</th>
+                                        <th><?= htmlspecialchars(t('table_place'), ENT_QUOTES, 'UTF-8') ?></th>
+                                        <th><?= htmlspecialchars(t('table_player'), ENT_QUOTES, 'UTF-8') ?></th>
                                         <th>
                                             <a href="?search=<?= urlencode($searchQuery) ?>&sort_by=rating&sort_dir=<?= $orderBy === 'rating' && $orderDir === 'DESC' ? 'ASC' : 'DESC' ?>" class="inherit-color-no-decoration">
-                                                Рейтинг
+                                                <?= htmlspecialchars(t('profile_rating'), ENT_QUOTES, 'UTF-8') ?>
                                                 <?php if ($orderBy === 'rating'): ?>
                                                     <i class="fas fa-sort-<?= $orderDir === 'ASC' ? 'up' : 'down' ?>"></i>
                                                 <?php endif; ?>
@@ -3016,7 +3296,7 @@ if ($viewDuel) {
                                         </th>
                                         <th>
                                             <a href="?search=<?= urlencode($searchQuery) ?>&sort_by=wins&sort_dir=<?= $orderBy === 'wins' && $orderDir === 'DESC' ? 'ASC' : 'DESC' ?>" style="color: inherit; text-decoration: none;">
-                                                Победы
+                                                <?= htmlspecialchars(t('profile_wins'), ENT_QUOTES, 'UTF-8') ?>
                                                 <?php if ($orderBy === 'wins'): ?>
                                                     <i class="fas fa-sort-<?= $orderDir === 'ASC' ? 'up' : 'down' ?>"></i>
                                                 <?php endif; ?>
@@ -3024,7 +3304,7 @@ if ($viewDuel) {
                                         </th>
                                         <th>
                                             <a href="?search=<?= urlencode($searchQuery) ?>&sort_by=losses&sort_dir=<?= $orderBy === 'losses' && $orderDir === 'DESC' ? 'ASC' : 'DESC' ?>" style="color: inherit; text-decoration: none;">
-                                                Поражения
+                                                <?= htmlspecialchars(t('profile_losses'), ENT_QUOTES, 'UTF-8') ?>
                                                 <?php if ($orderBy === 'losses'): ?>
                                                     <i class="fas fa-sort-<?= $orderDir === 'ASC' ? 'up' : 'down' ?>"></i>
                                                 <?php endif; ?>
@@ -3032,7 +3312,7 @@ if ($viewDuel) {
                                         </th>
                                         <th>
                                             <a href="?search=<?= urlencode($searchQuery) ?>&sort_by=winrate&sort_dir=<?= $orderBy === 'winrate' && $orderDir === 'DESC' ? 'ASC' : 'DESC' ?>" style="color: inherit; text-decoration: none;">
-                                                Винрейт
+                                                <?= htmlspecialchars(t('profile_winrate'), ENT_QUOTES, 'UTF-8') ?>
                                                 <?php if ($orderBy === 'winrate'): ?>
                                                     <i class="fas fa-sort-<?= $orderDir === 'ASC' ? 'up' : 'down' ?>"></i>
                                                 <?php endif; ?>
@@ -3064,46 +3344,46 @@ if ($viewDuel) {
                 </div>
             <?php elseif ($searchQuery): ?>
                 <div class="card">
-                    <p>Игроки не найдены по запросу: <?= htmlspecialchars($searchQuery) ?></p>
+                    <p><?= htmlspecialchars(t('players_not_found', ['query' => $searchQuery]), ENT_QUOTES, 'UTF-8') ?></p>
                 </div>
             <?php else: ?>
                 <div class="stats-overview">
                     <div class="stat-item">
-                        <div class="stat-label">Всего дуэлей</div>
+                        <div class="stat-label"><?= htmlspecialchars(t('total_duels'), ENT_QUOTES, 'UTF-8') ?></div>
                         <div class="stat-value stat-value-accent"><?= $totalStats['total_duels'] + $totalStats['total_duels_2v2'] ?></div>
                     </div>
 
                     <div class="stat-item">
-                        <div class="stat-label">Всего игроков</div>
+                        <div class="stat-label"><?= htmlspecialchars(t('total_players'), ENT_QUOTES, 'UTF-8') ?></div>
                         <div class="stat-value stat-value-success-alt"><?= $totalStats['total_players'] ?></div>
                     </div>
 
                     <div class="stat-item">
-                        <div class="stat-label">Рекордный рейтинг</div>
-                        <div class="stat-value stat-value-warning"><?= $totalStats['highest_rating'] ?: 'N/A' ?></div>
+                        <div class="stat-label"><?= htmlspecialchars(t('highest_rating'), ENT_QUOTES, 'UTF-8') ?></div>
+                        <div class="stat-value stat-value-warning"><?= $totalStats['highest_rating'] ?: t('na') ?></div>
                     </div>
 
                     <div class="stat-item">
-                        <div class="stat-label">Дуэлей 1v1</div>
+                        <div class="stat-label"><?= htmlspecialchars(t('duels_1v1'), ENT_QUOTES, 'UTF-8') ?></div>
                         <div class="stat-value stat-value-danger-alt"><?= $totalStats['total_duels'] ?></div>
                     </div>
 
                     <div class="stat-item">
-                        <div class="stat-label">Дуэлей 2v2</div>
+                        <div class="stat-label"><?= htmlspecialchars(t('duels_2v2'), ENT_QUOTES, 'UTF-8') ?></div>
                         <div class="stat-value stat-value-primary"><?= $totalStats['total_duels_2v2'] ?></div>
                     </div>
                 </div>
 
                 <div class="tabs">
-                    <button class="tab active" data-tab="overview">Список игроков</button>
-                    <button class="tab" data-tab="recent-duels">Последние дуэли</button>
+                    <button class="tab active" data-tab="overview"><?= htmlspecialchars(t('players_list_title'), ENT_QUOTES, 'UTF-8') ?></button>
+                    <button class="tab" data-tab="recent-duels"><?= htmlspecialchars(t('recent_duels_title'), ENT_QUOTES, 'UTF-8') ?></button>
                 </div>
 
                 <div class="tab-content active" id="overview-tab">
                     <div class="main-content">
                         <div class="card">
                             <div class="card-header">
-                                <h2 class="card-title"><i class="fas fa-users"></i> Список игроков</h2>
+                                <h2 class="card-title"><i class="fas fa-users"></i> <?= htmlspecialchars(t('players_list_title'), ENT_QUOTES, 'UTF-8') ?></h2>
                             </div>
 
                             <div id="players-container" class="refreshable-content">
@@ -3115,11 +3395,11 @@ if ($viewDuel) {
                                         <table class="top-players-table">
                                                 <thead>
                                                     <tr>
-                                                        <th>Место</th>
-                                                        <th>Игрок</th>
+                                                        <th><?= htmlspecialchars(t('table_place'), ENT_QUOTES, 'UTF-8') ?></th>
+                                                        <th><?= htmlspecialchars(t('table_player'), ENT_QUOTES, 'UTF-8') ?></th>
                                                         <th>
                                                             <a href="?sort_by=rating&sort_dir=<?= $orderBy === 'rating' && $orderDir === 'DESC' ? 'ASC' : 'DESC' ?><?php if (isset($_GET['page'])) echo '&page=' . $_GET['page']; ?><?php if (isset($_GET['search'])) echo '&search=' . urlencode($_GET['search']); ?>" style="color: inherit; text-decoration: none;">
-                                                                Рейтинг
+                                                                <?= htmlspecialchars(t('profile_rating'), ENT_QUOTES, 'UTF-8') ?>
                                                                 <?php if ($orderBy === 'rating'): ?>
                                                                     <i class="fas fa-sort-<?= $orderDir === 'ASC' ? 'up' : 'down' ?>"></i>
                                                                 <?php endif; ?>
@@ -3127,7 +3407,7 @@ if ($viewDuel) {
                                                         </th>
                                                         <th>
                                                             <a href="?sort_by=wins&sort_dir=<?= $orderBy === 'wins' && $orderDir === 'DESC' ? 'ASC' : 'DESC' ?><?php if (isset($_GET['page'])) echo '&page=' . $_GET['page']; ?><?php if (isset($_GET['search'])) echo '&search=' . urlencode($_GET['search']); ?>" style="color: inherit; text-decoration: none;">
-                                                                Победы
+                                                                <?= htmlspecialchars(t('profile_wins'), ENT_QUOTES, 'UTF-8') ?>
                                                                 <?php if ($orderBy === 'wins'): ?>
                                                                     <i class="fas fa-sort-<?= $orderDir === 'ASC' ? 'up' : 'down' ?>"></i>
                                                                 <?php endif; ?>
@@ -3135,7 +3415,7 @@ if ($viewDuel) {
                                                         </th>
                                                         <th>
                                                             <a href="?sort_by=losses&sort_dir=<?= $orderBy === 'losses' && $orderDir === 'DESC' ? 'ASC' : 'DESC' ?><?php if (isset($_GET['page'])) echo '&page=' . $_GET['page']; ?><?php if (isset($_GET['search'])) echo '&search=' . urlencode($_GET['search']); ?>" style="color: inherit; text-decoration: none;">
-                                                                Поражения
+                                                                <?= htmlspecialchars(t('profile_losses'), ENT_QUOTES, 'UTF-8') ?>
                                                                 <?php if ($orderBy === 'losses'): ?>
                                                                     <i class="fas fa-sort-<?= $orderDir === 'ASC' ? 'up' : 'down' ?>"></i>
                                                                 <?php endif; ?>
@@ -3143,7 +3423,7 @@ if ($viewDuel) {
                                                         </th>
                                                         <th>
                                                             <a href="?sort_by=winrate&sort_dir=<?= $orderBy === 'winrate' && $orderDir === 'DESC' ? 'ASC' : 'DESC' ?><?php if (isset($_GET['page'])) echo '&page=' . $_GET['page']; ?><?php if (isset($_GET['search'])) echo '&search=' . urlencode($_GET['search']); ?>" style="color: inherit; text-decoration: none;">
-                                                                Винрейт
+                                                                <?= htmlspecialchars(t('profile_winrate'), ENT_QUOTES, 'UTF-8') ?>
                                                                 <?php if ($orderBy === 'winrate'): ?>
                                                                     <i class="fas fa-sort-<?= $orderDir === 'ASC' ? 'up' : 'down' ?>"></i>
                                                                 <?php endif; ?>
@@ -3151,7 +3431,7 @@ if ($viewDuel) {
                                                         </th>
                                                         <th>
                                                             <a href="?sort_by=last_duel&sort_dir=<?= ($orderBy === 'last_duel' && $orderDir === 'DESC') ? 'ASC' : 'DESC' ?><?php if (isset($_GET['page'])) echo '&page=' . $_GET['page']; ?><?php if (isset($_GET['search'])) echo '&search=' . urlencode($_GET['search']); ?>" style="color: inherit; text-decoration: none;">
-                                                                Последняя дуэль
+                                                                <?= htmlspecialchars(t('table_last_duel'), ENT_QUOTES, 'UTF-8') ?>
                                                                 <?php if ($orderBy === 'last_duel'): ?>
                                                                     <i class="fas fa-sort-<?= $orderDir === 'ASC' ? 'up' : 'down' ?>"></i>
                                                                 <?php endif; ?>
@@ -3187,7 +3467,7 @@ if ($viewDuel) {
                                                             <?php if ($lastDuel): ?>
                                                                 <?= date('d.m.Y H:i', $lastDuel['endtime']) ?>
                                                             <?php else: ?>
-                                                                Нет данных
+                                                                <?= htmlspecialchars(t('no_data'), ENT_QUOTES, 'UTF-8') ?>
                                                             <?php endif; ?>
                                                         </td>
                                                     </tr>
@@ -3196,14 +3476,14 @@ if ($viewDuel) {
                                         </table>
                                     </div>
                                 <?php else: ?>
-                                    <p>Нет данных о топ игроках</p>
+                                    <p><?= htmlspecialchars(t('no_top_players_data'), ENT_QUOTES, 'UTF-8') ?></p>
                                 <?php endif; ?>
 
                                 <!-- Players Pagination -->
                                 <div class="pagination" id="players-pagination">
                                     <?php if ($totalPagesPlayers > 1): ?>
                                         <?php if ($page > 1): ?>
-                                            <a href="?page=<?= $page - 1 ?>"><i class="fas fa-chevron-left"></i> Назад</a>
+                                            <a href="?page=<?= $page - 1 ?>"><i class="fas fa-chevron-left"></i> <?= htmlspecialchars(t('js_back'), ENT_QUOTES, 'UTF-8') ?></a>
                                         <?php endif; ?>
 
                                         <?php for ($i = max(1, $page - 2); $i <= min($totalPagesPlayers, $page + 2); $i++): ?>
@@ -3215,7 +3495,7 @@ if ($viewDuel) {
                                         <?php endfor; ?>
 
                                         <?php if ($page < $totalPagesPlayers): ?>
-                                            <a href="?page=<?= $page + 1 ?>">Вперед <i class="fas fa-chevron-right"></i></a>
+                                            <a href="?page=<?= $page + 1 ?>"><?= htmlspecialchars(t('js_forward'), ENT_QUOTES, 'UTF-8') ?> <i class="fas fa-chevron-right"></i></a>
                                         <?php endif; ?>
                                     <?php endif; ?>
                                 </div>
@@ -3228,7 +3508,7 @@ if ($viewDuel) {
                 <div class="tab-content" id="recent-duels-tab">
     <div class="card">
         <div class="card-header">
-            <h2 class="card-title"><i class="fas fa-history"></i> Последние дуэли</h2>
+            <h2 class="card-title"><i class="fas fa-history"></i> <?= htmlspecialchars(t('recent_duels_title'), ENT_QUOTES, 'UTF-8') ?></h2>
         </div>
 
         <div id="duels-container-2" class="refreshable-content">
@@ -3247,24 +3527,24 @@ if ($viewDuel) {
                                     <?php endif; ?>
                                 </a>
                             </th>
-                            <th>Тип</th>
+                            <th><?= htmlspecialchars(t('table_type'), ENT_QUOTES, 'UTF-8') ?></th>
                             <th>
                                 <a href="?duel_sort_by=endtime&duel_sort_dir=<?= $duelOrderBy === 'endtime' ? ($duelOrderDir === 'DESC' ? 'ASC' : 'DESC') : 'DESC' ?><?php if (isset($_GET['page'])) echo '&page=' . $_GET['page']; ?><?php if (isset($_GET['search'])) echo '&search=' . urlencode($_GET['search']); ?>" style="color: inherit; text-decoration: none;">
-                                    Дата
+                                    <?= htmlspecialchars(t('table_date'), ENT_QUOTES, 'UTF-8') ?>
                                     <?php if ($duelOrderBy === 'endtime'): ?>
                                         <i class="fas fa-sort-<?= $duelOrderDir === 'ASC' ? 'up' : 'down' ?>"></i>
                                     <?php endif; ?>
                                 </a>
                             </th>
-                            <th>Победитель</th>
-                            <th>Класс</th>
-                            <th>Проигравший</th>
-                            <th>Класс</th>
+                            <th><?= htmlspecialchars(t('table_winner'), ENT_QUOTES, 'UTF-8') ?></th>
+                            <th><?= htmlspecialchars(t('table_class'), ENT_QUOTES, 'UTF-8') ?></th>
+                            <th><?= htmlspecialchars(t('table_loser'), ENT_QUOTES, 'UTF-8') ?></th>
+                            <th><?= htmlspecialchars(t('table_class'), ENT_QUOTES, 'UTF-8') ?></th>
                             <th>ELO</th>
-                            <th>Арена</th>
+                            <th><?= htmlspecialchars(t('table_arena'), ENT_QUOTES, 'UTF-8') ?></th>
                             <th>
                                 <a href="?duel_sort_by=winnerscore&duel_sort_dir=<?= $duelOrderBy === 'winnerscore' ? ($duelOrderDir === 'DESC' ? 'ASC' : 'DESC') : 'DESC' ?><?php if (isset($_GET['page'])) echo '&page=' . $_GET['page']; ?><?php if (isset($_GET['search'])) echo '&search=' . urlencode($_GET['search']); ?>" style="color: inherit; text-decoration: none;">
-                                    Счет
+                                    <?= htmlspecialchars(t('table_score'), ENT_QUOTES, 'UTF-8') ?>
                                     <?php if ($duelOrderBy === 'winnerscore'): ?>
                                         <i class="fas fa-sort-<?= $duelOrderDir === 'ASC' ? 'up' : 'down' ?>"></i>
                                     <?php endif; ?>
@@ -3297,7 +3577,7 @@ if ($viewDuel) {
                                     <?php if (!empty($duel['winnerclass'])): ?>
                                         <?= getClassIconsHtml($duel['winnerclass'], "32") ?>
                                     <?php else: ?>
-                                        <span class="no-class">—</span>
+                                        <span class="no-class">-</span>
                                     <?php endif; ?>
                                 </td>
                                 <td>
@@ -3309,12 +3589,12 @@ if ($viewDuel) {
                                     <?php if (!empty($duel['loserclass'])): ?>
                                         <?= getClassIconsHtml($duel['loserclass'], "32") ?>
                                     <?php else: ?>
-                                        <span class="no-class">—</span>
+                                        <span class="no-class">-</span>
                                     <?php endif; ?>
                                 </td>
                                 <td>
                                     <?php
-                                        // Рассчитываем изменение ELO победителя
+                                        // Р В Р В°РЎРѓРЎРѓРЎвЂЎР С‘РЎвЂљРЎвЂ№Р Р†Р В°Р ВµР С Р С‘Р В·Р СР ВµР Р…Р ВµР Р…Р С‘Р Вµ ELO Р С—Р С•Р В±Р ВµР Т‘Р С‘РЎвЂљР ВµР В»РЎРЏ
                                         $eloChange = null;
                                         if (isset($duel['winner_new_elo']) && isset($duel['winner_previous_elo'])) {
                                             $eloChange = $duel['winner_new_elo'] - $duel['winner_previous_elo'];
@@ -3340,7 +3620,7 @@ if ($viewDuel) {
             <div class="pagination" id="pagination-2">
                 <?php if ($totalPages > 1 || ($totalPages == 1 && $totalDuels > 0)): ?>
                     <?php if ($page > 1): ?>
-                        <a href="?page=<?= $page - 1 ?>&duel_sort_by=<?= $duelOrderBy ?>&duel_sort_dir=<?= $duelOrderDir ?>"><i class="fas fa-chevron-left"></i> Назад</a>
+                        <a href="?page=<?= $page - 1 ?>&duel_sort_by=<?= $duelOrderBy ?>&duel_sort_dir=<?= $duelOrderDir ?>"><i class="fas fa-chevron-left"></i> <?= htmlspecialchars(t('js_back'), ENT_QUOTES, 'UTF-8') ?></a>
                     <?php endif; ?>
 
                     <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
@@ -3352,7 +3632,7 @@ if ($viewDuel) {
                     <?php endfor; ?>
 
                     <?php if ($page < $totalPages): ?>
-                        <a href="?page=<?= $page + 1 ?>&duel_sort_by=<?= $duelOrderBy ?>&duel_sort_dir=<?= $duelOrderDir ?>">Вперед <i class="fas fa-chevron-right"></i></a>
+                        <a href="?page=<?= $page + 1 ?>&duel_sort_by=<?= $duelOrderBy ?>&duel_sort_dir=<?= $duelOrderDir ?>"><?= htmlspecialchars(t('js_forward'), ENT_QUOTES, 'UTF-8') ?> <i class="fas fa-chevron-right"></i></a>
                     <?php endif; ?>
                 <?php elseif ($totalPages == 1 && $totalDuels > 0): ?>
                     <!-- Show single page indicator -->
@@ -3366,6 +3646,17 @@ if ($viewDuel) {
 <?php endif; ?>
 </div>
 
+    <script>
+        window.MGE_LANG = <?= json_encode($MGE_LANG, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+        window.MGE_LOCALE = <?= json_encode($MGE_LOCALE, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+        window.MGE_I18N = <?= json_encode($MGE_I18N, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+        window.tJs = window.tJs || function(key, fallback) {
+            if (window.MGE_I18N && typeof window.MGE_I18N[key] === 'string') {
+                return window.MGE_I18N[key];
+            }
+            return typeof fallback === 'string' && fallback.length ? fallback : key;
+        };
+    </script>
     <script src="js/script.js"></script>
     <script>
         // Initialize rating chart if on profile page
@@ -3427,13 +3718,13 @@ if ($viewDuel) {
             ratings = [];
             dateLabels = [];
             let prevRating = null;
-            let currentSegment = { start: 0, color: 'rgba(76, 175, 80, 0.15)', borderColor: 'rgba(76, 175, 80, 1)' }; // начальный цвет - зеленый
+            let currentSegment = { start: 0, color: 'rgba(76, 175, 80, 0.15)', borderColor: 'rgba(76, 175, 80, 1)' }; // Р Р…Р В°РЎвЂЎР В°Р В»РЎРЉР Р…РЎвЂ№Р в„– РЎвЂ Р Р†Р ВµРЎвЂљ - Р В·Р ВµР В»Р ВµР Р…РЎвЂ№Р в„–
             const segments = [];
 
             ratingHistory.forEach((point, index) => {
                 // Use the exact duel timestamp for precise timing
                 const date = new Date(point.endtime * 1000);
-                const dateString = date.toLocaleString('ru-RU', {
+                const dateString = date.toLocaleString(window.MGE_LOCALE || 'ru-RU', {
                     year: 'numeric',
                     month: '2-digit',
                     day: '2-digit',
@@ -3566,7 +3857,7 @@ if ($viewDuel) {
             console.log('First dataset length:', datasets[0].data.length);
         }
 
-        // Проверим, есть ли элемент canvas в DOM
+        // Р СџРЎР‚Р С•Р Р†Р ВµРЎР‚Р С‘Р С, Р ВµРЎРѓРЎвЂљРЎРЉ Р В»Р С‘ РЎРЊР В»Р ВµР СР ВµР Р…РЎвЂљ canvas Р Р† DOM
         console.log('Canvas element exists in DOM:', document.getElementById('ratingChart') !== null);
 
         const ratingChart = new Chart(ctx, {
@@ -3601,9 +3892,9 @@ if ($viewDuel) {
                                 if (dataIndex > 0) {
                                     const prevRating = ratings[dataIndex - 1];
                                     const diff = rating - prevRating;
-                                    change = diff > 0 ? ` (+${diff})` : diff < 0 ? ` (${diff})` : ' (±0)';
+                                    change = diff > 0 ? ` (+${diff})` : diff < 0 ? ` (${diff})` : ' (+/-0)';
                                 }
-                                return `Рейтинг: ${rating}${change}`;
+                                return `${tJs('js_rating', 'Rating')}: ${rating}${change}`;
                             }
                         }
                     },
@@ -3621,7 +3912,7 @@ if ($viewDuel) {
                 scales: {
                     y: {
                         beginAtZero: false,
-                        title: { display: true, text: 'Рейтинг' },
+                        title: { display: true, text: tJs('js_rating', 'Rating') },
                         grid: {
                             color: function(context) {
                                 if (context.tick.value === 0) return 'rgba(255, 255, 255, 0.1)';
@@ -3630,7 +3921,7 @@ if ($viewDuel) {
                         }
                     },
                     x: {
-                        title: { display: true, text: 'Дата' },
+                        title: { display: true, text: tJs('js_date', 'Date') },
                         grid: {
                             color: 'rgba(255, 255, 255, 0.05)'
                         },
@@ -3697,13 +3988,14 @@ if ($viewDuel) {
 
     <!-- Loading statistics -->
     <div style="margin-top: 20px; padding: 10px; font-size: 12px; color: #666; text-align: center; border-top: 1px solid #eee;">
-        <span>Загрузка: <?php echo round((microtime(true) - $startTime) * 1000, 2); ?> мс</span> |
-        <span>Запросов: <?php echo $queryCount; ?></span>
+        <span><?= htmlspecialchars(t('load_time_label'), ENT_QUOTES, 'UTF-8') ?>: <?php echo round((microtime(true) - $startTime) * 1000, 2); ?> <?= htmlspecialchars(t('ms_label'), ENT_QUOTES, 'UTF-8') ?></span> |
+        <span><?= htmlspecialchars(t('queries_label'), ENT_QUOTES, 'UTF-8') ?>: <?php echo $queryCount; ?></span>
     </div>
 
     <!-- GitHub link -->
     <div class="github-link">
-        <span>Разработано с участием 🤖 | </span>
+        <span><?= htmlspecialchars(t('developed_with_ai'), ENT_QUOTES, 'UTF-8') ?> | </span>
         <a href="https://github.com/MrPanica/MGEMod" target="_blank">GitHub</a>
     </div>
 </body>
+

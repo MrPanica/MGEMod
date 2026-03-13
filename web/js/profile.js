@@ -1,7 +1,10 @@
-/**
+﻿/**
  * Profile Page JavaScript
  * MGE Statistics
  */
+
+const i18n = window.MGE_I18N || {};
+const tJs = (key, fallback = '') => (typeof i18n[key] === 'string' ? i18n[key] : (fallback || key));
 
 // ==================== MATCHUP GRID ====================
 function showMatchupTooltip(event, element) {
@@ -17,9 +20,9 @@ function showMatchupTooltip(event, element) {
 
     tooltip.innerHTML = `
         <div><strong>${myClass} vs ${oppClass}</strong></div>
-        <div>Рейтинг: ${rating}</div>
-        <div>Дуэлей: ${total}</div>
-        <div>Побед: ${wins} (${winrate}%)</div>
+        <div>${tJs('js_rating', 'Rating')}: ${rating}</div>
+        <div>${tJs('js_duels', 'Duels')}: ${total}</div>
+        <div>${tJs('js_wins', 'Wins')}: ${wins} (${winrate}%)</div>
     `;
 
     tooltip.style.left = event.pageX + 10 + 'px';
@@ -50,15 +53,15 @@ function showMatchupDetails(element) {
         <div style="background: #1a1a1a; padding: 14px; border-radius: 6px; height: 100%;">
             <div style="font-weight: bold; color: #fff; font-size: 14px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #333;">${myClass} vs ${oppClass}</div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; font-size: 13px;">
-                <div style="color: #888;">Рейтинг:</div>
+                <div style="color: #888;">${tJs('js_rating', 'Rating')}:</div>
                 <div style="color: #fff; font-weight: bold; font-size: 15px;">${rating}</div>
-                <div style="color: #888;">Дуэлей:</div>
+                <div style="color: #888;">${tJs('js_duels', 'Duels')}:</div>
                 <div style="color: #fff;">${total}</div>
-                <div style="color: #888;">Побед:</div>
+                <div style="color: #888;">${tJs('js_wins', 'Wins')}:</div>
                 <div style="color: #4caf50;">${wins}</div>
-                <div style="color: #888;">Поражений:</div>
+                <div style="color: #888;">${tJs('js_losses', 'Losses')}:</div>
                 <div style="color: #f44336;">${losses}</div>
-                <div style="color: #888;">Винрейт:</div>
+                <div style="color: #888;">${tJs('js_winrate', 'Win rate')}:</div>
                 <div style="color: #fff; font-weight: bold;">${winrate}%</div>
             </div>
         </div>
@@ -99,7 +102,7 @@ async function changeYearAjax(year) {
         console.error('Error loading heatmap data:', error);
         // Restore original content if there's an error
         heatmapContainer.innerHTML = originalContent;
-        alert('Ошибка загрузки данных за указанный год');
+        alert(tJs('js_error_loading_year', 'Failed to load data for selected year'));
     }
 }
 
@@ -113,7 +116,7 @@ async function showDailyDuelsChart(date) {
 
     // Update the date display
     if (dateDisplay) dateDisplay.textContent = date;
-    if (chartTitle) chartTitle.innerHTML = 'Дуэли за <span id="selected-date-display">' + date + '</span>';
+    if (chartTitle) chartTitle.innerHTML = `${tJs('js_duels_for_date', 'Duels for')} <span id="selected-date-display">${date}</span>`;
 
     // Show the chart container
     chartContainer.style.display = 'block';
@@ -127,7 +130,7 @@ async function showDailyDuelsChart(date) {
         createDailyDuelsChart(duelsData, date);
     } catch (error) {
         console.error('Error fetching daily duels data:', error);
-        chartContainer.innerHTML += '<p style="color: #f85149; padding: 10px;">Ошибка загрузки данных</p>';
+        chartContainer.innerHTML += `<p style="color: #f85149; padding: 10px;">${tJs('js_error_loading_data', 'Failed to load data')}</p>`;
     }
 }
 
@@ -180,7 +183,7 @@ function createDailyDuelsChart(chartData, date) {
                 },
                 title: {
                     display: true,
-                    text: `Дуэли за ${date}`
+                    text: `${tJs('js_duels_for_date', 'Duels for')} ${date}`
                 }
             },
             scales: {
