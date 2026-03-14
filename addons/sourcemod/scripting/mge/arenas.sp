@@ -1052,6 +1052,7 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
     g_iArenaQueue[arena_index][player_slot] = 0;
     g_iPlayerHandicap[client] = 0;
     g_bPlayerAddedViaWadd[client] = false;
+    g_bPlayerNoEloCurrentDuel[client] = false;
     
     // Clear public invite if this player created one
     if (g_iPublicInviteArena[arena_index] == client)
@@ -1185,9 +1186,13 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
 
                 g_iArenaStatus[arena_index] = AS_REPORTED;
 
-                if (g_iArenaScore[arena_index][foe_team_slot] > g_iArenaScore[arena_index][player_team_slot])
+                int foeScore = g_iArenaScore[arena_index][foe_team_slot];
+                int playerScore = g_iArenaScore[arena_index][player_team_slot];
+                bool canProcessEarlyLeave = (foeScore >= g_iArenaEarlyLeave[arena_index]);
+
+                if (foeScore > playerScore)
                 {
-                    if (g_iArenaScore[arena_index][foe_team_slot] >= g_iArenaEarlyLeave[arena_index])
+                    if (canProcessEarlyLeave)
                     {
                         CalcELO(foe, client);
                         if (IsValidClient(foe2))
@@ -1204,6 +1209,15 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
                         }
 
                         MC_PrintToChatAll("%t", "XdefeatsYearly", foe_name, g_iArenaScore[arena_index][foe_team_slot], player_name, g_iArenaScore[arena_index][player_team_slot], g_sArenaName[arena_index], duel_time);
+                    }
+                }
+                else if (g_fEarlyLeaveLeadPenaltyFactor > 0.0 && playerScore >= foeScore)
+                {
+                    if (canProcessEarlyLeave)
+                    {
+                        CalcELO(foe, client, g_fEarlyLeaveLeadPenaltyFactor);
+                        if (IsValidClient(foe2))
+                            CalcELO(foe2, client, g_fEarlyLeaveLeadPenaltyFactor);
                     }
                 }
             }
@@ -1287,9 +1301,13 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
 
                 g_iArenaStatus[arena_index] = AS_REPORTED;
 
-                if (g_iArenaScore[arena_index][foe_slot] > g_iArenaScore[arena_index][player_slot])
+                int foeScore = g_iArenaScore[arena_index][foe_slot];
+                int playerScore = g_iArenaScore[arena_index][player_slot];
+                bool canProcessEarlyLeave = (foeScore >= g_iArenaEarlyLeave[arena_index]);
+
+                if (foeScore > playerScore)
                 {
-                    if (g_iArenaScore[arena_index][foe_slot] >= g_iArenaEarlyLeave[arena_index])
+                    if (canProcessEarlyLeave)
                     {
                         CalcELO(foe, client);
                         // Calculate duel duration
@@ -1305,6 +1323,11 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
 
                         MC_PrintToChatAll("%t", "XdefeatsYearly", foe_name, g_iArenaScore[arena_index][foe_slot], player_name, g_iArenaScore[arena_index][player_slot], g_sArenaName[arena_index], duel_time);
                     }
+                }
+                else if (g_fEarlyLeaveLeadPenaltyFactor > 0.0 && playerScore >= foeScore)
+                {
+                    if (canProcessEarlyLeave)
+                        CalcELO(foe, client, g_fEarlyLeaveLeadPenaltyFactor);
                 }
             }
 
@@ -2100,20 +2123,40 @@ void SendArenaJoinMessage(const char[] playername, int player_rating, const char
     }
 }
 
+int GetPlayerArenaIndex(int client)
+{
+    if (!IsValidClient(client))
+        return 0;
+
+    return g_iPlayerArena[client];
+}
+
 // Send formatted message to all players in a specific arena
+void PrintToChatArenaEx(int arena_index, int exclude_client, const char[] message, any ...)
+{
+    if (arena_index <= 0 || arena_index > g_iArenaCount)
+        return;
+
+    char buffer[256];
+    VFormat(buffer, sizeof(buffer), message, 4);
+    
+    for (int i = SLOT_ONE; i < MAXPLAYERS; i++)
+    {
+        int client = g_iArenaQueue[arena_index][i];
+        if (!IsValidClient(client))
+            continue;
+        if (exclude_client > 0 && client == exclude_client)
+            continue;
+
+        MC_PrintToChat(client, "%s", buffer);
+    }
+}
+
 void PrintToChatArena(int arena_index, const char[] message, any ...)
 {
     char buffer[256];
     VFormat(buffer, sizeof(buffer), message, 3);
-    
-    for (int i = SLOT_ONE; i <= SLOT_FOUR; i++)
-    {
-        int client = g_iArenaQueue[arena_index][i];
-        if (client)
-        {
-            MC_PrintToChat(client, "%s", buffer);
-        }
-    }
+    PrintToChatArenaEx(arena_index, 0, "%s", buffer);
 }
 
 
@@ -4043,6 +4086,7 @@ Action Timer_StartDuel(Handle timer, any arena_index)
         if (player != 0 && IsValidClient(player))
         {
             ClearPlayerInvites(player);
+            g_bPlayerNoEloCurrentDuel[player] = false;
         }
     }
     

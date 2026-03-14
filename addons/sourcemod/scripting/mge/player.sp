@@ -13,6 +13,7 @@ void HandleClientConnection(int client)
     g_bSkipNextSpawnTeleport[client] = false;
     g_bPlayerEloVerified[client] = false;
     g_bPlayerAddedViaWadd[client] = false;
+    g_bPlayerNoEloCurrentDuel[client] = false;
     g_bScoreboardOpen[client] = false;
     g_bWaddMenu[client] = false;
     g_iPlayerRespawnroomTouchDepth[client] = 0;
@@ -212,6 +213,7 @@ void HandleClientDisconnection(int client)
     
     // Reset wadd flag
     g_bPlayerAddedViaWadd[client] = false;
+    g_bPlayerNoEloCurrentDuel[client] = false;
     g_bScoreboardOpen[client] = false;
     g_bWaddMenu[client] = false;
     

@@ -54,9 +54,11 @@ void PrintClassRatingMessages(int client, ArrayList classEntries)
 }
 
 // Calculate matchup rating changes for a player based on interactions with opponent
-void CalculateClassRatingChanges(int player, int opponent, bool didWin, ArrayList entries)
+void CalculateClassRatingChanges(int player, int opponent, bool didWin, ArrayList entries, float changeScale = 1.0)
 {
     if (!IsValidClient(player) || !IsValidClient(opponent))
+        return;
+    if (changeScale <= 0.0)
         return;
 
     int totalInteractions = 0;
@@ -114,7 +116,8 @@ void CalculateClassRatingChanges(int player, int opponent, bool didWin, ArrayLis
             float El = 1.0 / (Pow(10.0, ratingDiff / 400.0) + 1.0);
             int k = (previousRating >= 2400) ? 10 : 15;
             int matchupScore = RoundFloat(k * El);
-            int delta = didWin ? matchupScore : -matchupScore;
+            int scaledScore = RoundFloat(float(matchupScore) * changeScale);
+            int delta = didWin ? scaledScore : -scaledScore;
 
             int newRating = previousRating + delta;
             g_iPlayerClassRating[player][classId][oppClassId] = newRating;
@@ -127,8 +130,36 @@ void CalculateClassRatingChanges(int player, int opponent, bool didWin, ArrayLis
     }
 }
 
+float GetClampedEloScale(float requestedScale)
+{
+    if (requestedScale < 0.0)
+        return 0.0;
+    if (requestedScale > 1.0)
+        return 1.0;
+    return requestedScale;
+}
+
+bool IsNoEloActiveInCurrentFight(int client)
+{
+    if (!IsValidClient(client))
+        return false;
+
+    int arena_index = g_iPlayerArena[client];
+    if (arena_index <= 0 || arena_index > g_iArenaCount)
+        return false;
+    if (g_iArenaStatus[arena_index] < AS_FIGHT || g_iArenaStatus[arena_index] >= AS_REPORTED)
+        return false;
+
+    return g_bPlayerNoEloCurrentDuel[client];
+}
+
+bool IsNoEloEnabledForWinningTeam2v2(int winner, int winner2)
+{
+    return IsNoEloActiveInCurrentFight(winner) || IsNoEloActiveInCurrentFight(winner2);
+}
+
 // Calculates ELO ratings for 1v1 duels and updates player statistics in database
-void CalcELO(int winner, int loser)
+void CalcELO(int winner, int loser, float requestedScale = 1.0)
 {
     if (IsFakeClient(winner) || IsFakeClient(loser) || g_bNoStats)
         return;
@@ -137,6 +168,23 @@ void CalcELO(int winner, int loser)
     if (!IsPlayerEligibleForElo(winner) || !IsPlayerEligibleForElo(loser))
         return;
 
+    float changeScale = GetClampedEloScale(requestedScale);
+    bool winnerNoElo = IsNoEloActiveInCurrentFight(winner);
+    int arena_index = g_iPlayerArena[winner];
+    if (!winnerNoElo && arena_index > 0 && arena_index <= g_iArenaCount && g_bFourPersonArena[arena_index])
+    {
+        int winner_slot = g_iPlayerSlot[winner];
+        if (winner_slot >= SLOT_ONE && winner_slot <= SLOT_FOUR)
+        {
+            int teammate = GetPlayerTeammate(winner_slot, arena_index);
+            if (IsNoEloActiveInCurrentFight(teammate))
+                winnerNoElo = true;
+        }
+    }
+
+    if (winnerNoElo)
+        changeScale = 0.0;
+
     // Store previous ELO values before calculating new ones
     int winner_previous_elo = g_iPlayerRating[winner];
     int loser_previous_elo = g_iPlayerRating[loser];
@@ -144,14 +192,16 @@ void CalcELO(int winner, int loser)
     // ELO formula
     float El = 1 / (Pow(10.0, float((g_iPlayerRating[winner] - g_iPlayerRating[loser])) / 400) + 1);
     int k = (g_iPlayerRating[winner] >= 2400) ? 10 : 15;
-    int winnerscore = RoundFloat(k * El);
+    int winnerscore = RoundFloat(float(k) * El);
+    winnerscore = RoundFloat(float(winnerscore) * changeScale);
     g_iPlayerRating[winner] += winnerscore;
     k = (g_iPlayerRating[loser] >= 2400) ? 10 : 15;
-    int loserscore = RoundFloat(k * El);
+    int loserscore = RoundFloat(float(k) * El);
+    loserscore = RoundFloat(float(loserscore) * changeScale);
     g_iPlayerRating[loser] -= loserscore;
     
     // Call ELO change forwards
-    int arena_index = g_iPlayerArena[winner];
+    arena_index = g_iPlayerArena[winner];
     CallForward_OnPlayerELOChange(winner, winner_previous_elo, g_iPlayerRating[winner], arena_index);
     CallForward_OnPlayerELOChange(loser, loser_previous_elo, g_iPlayerRating[loser], arena_index);
     int time = GetTime();
@@ -193,8 +243,8 @@ void CalcELO(int winner, int loser)
     int endTime = time;
     
     ArrayList classEntries = new ArrayList(sizeof(ClassRatingEntry));
-    CalculateClassRatingChanges(winner, loser, true, classEntries);
-    CalculateClassRatingChanges(loser, winner, false, classEntries);
+    CalculateClassRatingChanges(winner, loser, true, classEntries, changeScale);
+    CalculateClassRatingChanges(loser, winner, false, classEntries, changeScale);
 
     PrintClassRatingMessages(winner, classEntries);
     PrintClassRatingMessages(loser, classEntries);
@@ -218,7 +268,7 @@ void CalcELO(int winner, int loser)
 }
 
 // Calculates ELO ratings for 2v2 duels using team-averaged ratings and updates player statistics
-void CalcELO2(int winner, int winner2, int loser, int loser2)
+void CalcELO2(int winner, int winner2, int loser, int loser2, float requestedScale = 1.0)
 {
     if (IsFakeClient(winner) || IsFakeClient(loser) || g_bNoStats || IsFakeClient(loser2) || IsFakeClient(winner2) || !g_b2v2Elo)
         return;
@@ -227,6 +277,10 @@ void CalcELO2(int winner, int winner2, int loser, int loser2)
     if (!IsPlayerEligibleForElo(winner) || !IsPlayerEligibleForElo(winner2) || 
         !IsPlayerEligibleForElo(loser) || !IsPlayerEligibleForElo(loser2))
         return;
+
+    float changeScale = GetClampedEloScale(requestedScale);
+    if (IsNoEloEnabledForWinningTeam2v2(winner, winner2))
+        changeScale = 0.0;
 
     // Store previous ELO values before calculating new ones
     int winner_previous_elo = g_iPlayerRating[winner];
@@ -240,11 +294,13 @@ void CalcELO2(int winner, int winner2, int loser, int loser2)
     // ELO formula
     float El = 1 / (Pow(10.0, (Winners_ELO - Losers_ELO) / 400) + 1);
     int k = (Winners_ELO >= 2400) ? 10 : 15;
-    int winnerscore = RoundFloat(k * El);
+    int winnerscore = RoundFloat(float(k) * El);
+    winnerscore = RoundFloat(float(winnerscore) * changeScale);
     g_iPlayerRating[winner] += winnerscore;
     g_iPlayerRating[winner2] += winnerscore;
     k = (Losers_ELO >= 2400) ? 10 : 15;
-    int loserscore = RoundFloat(k * El);
+    int loserscore = RoundFloat(float(k) * El);
+    loserscore = RoundFloat(float(loserscore) * changeScale);
     g_iPlayerRating[loser] -= loserscore;
     g_iPlayerRating[loser2] -= loserscore;
     
@@ -293,14 +349,14 @@ void CalcELO2(int winner, int winner2, int loser, int loser2)
     
     ArrayList classEntries = new ArrayList(sizeof(ClassRatingEntry));
     // Calculate matchup ratings for all players against all opponents
-    CalculateClassRatingChanges(winner, loser, true, classEntries);
-    CalculateClassRatingChanges(winner, loser2, true, classEntries);
-    CalculateClassRatingChanges(winner2, loser, true, classEntries);
-    CalculateClassRatingChanges(winner2, loser2, true, classEntries);
-    CalculateClassRatingChanges(loser, winner, false, classEntries);
-    CalculateClassRatingChanges(loser, winner2, false, classEntries);
-    CalculateClassRatingChanges(loser2, winner, false, classEntries);
-    CalculateClassRatingChanges(loser2, winner2, false, classEntries);
+    CalculateClassRatingChanges(winner, loser, true, classEntries, changeScale);
+    CalculateClassRatingChanges(winner, loser2, true, classEntries, changeScale);
+    CalculateClassRatingChanges(winner2, loser, true, classEntries, changeScale);
+    CalculateClassRatingChanges(winner2, loser2, true, classEntries, changeScale);
+    CalculateClassRatingChanges(loser, winner, false, classEntries, changeScale);
+    CalculateClassRatingChanges(loser, winner2, false, classEntries, changeScale);
+    CalculateClassRatingChanges(loser2, winner, false, classEntries, changeScale);
+    CalculateClassRatingChanges(loser2, winner2, false, classEntries, changeScale);
 
     PrintClassRatingMessages(winner, classEntries);
     PrintClassRatingMessages(winner2, classEntries);
@@ -384,5 +440,43 @@ Action Command_ToggleElo(int client, int args)
         UpdateHud(client);
     }
     
+    return Plugin_Handled;
+}
+
+Action Command_NoElo(int client, int args)
+{
+    if (!IsValidClient(client))
+        return Plugin_Continue;
+
+    int arena_index = GetPlayerArenaIndex(client);
+    if (arena_index <= 0 || arena_index > g_iArenaCount)
+    {
+        MC_PrintToChat(client, "%t", "NoEloUnavailable");
+        return Plugin_Handled;
+    }
+
+    int slot = g_iPlayerSlot[client];
+    int max_slot = g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO;
+    bool isActiveDuelSlot = (slot >= SLOT_ONE && slot <= max_slot && g_iArenaQueue[arena_index][slot] == client);
+    bool isActiveFight = (g_iArenaStatus[arena_index] >= AS_FIGHT && g_iArenaStatus[arena_index] < AS_REPORTED);
+    if (!isActiveDuelSlot || !isActiveFight)
+    {
+        MC_PrintToChat(client, "%t", "NoEloUnavailable");
+        return Plugin_Handled;
+    }
+
+    if (g_bPlayerNoEloCurrentDuel[client])
+    {
+        MC_PrintToChat(client, "%t", "NoEloAlreadyEnabled");
+        return Plugin_Handled;
+    }
+
+    g_bPlayerNoEloCurrentDuel[client] = true;
+    MC_PrintToChat(client, "%t", "NoEloEnabledSelf");
+
+    char player_name[MAX_NAME_LENGTH];
+    GetClientName(client, player_name, sizeof(player_name));
+    PrintToChatArenaEx(arena_index, client, "%t", "NoEloEnabledArena", player_name);
+
     return Plugin_Handled;
 }

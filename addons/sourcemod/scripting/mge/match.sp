@@ -76,6 +76,15 @@ void ProcessMatchCompletion(int arena_index, int winner1, int winner2, int loser
             }
         }
     }
+
+    if (IsValidClient(winner1))
+        g_bPlayerNoEloCurrentDuel[winner1] = false;
+    if (IsValidClient(winner2))
+        g_bPlayerNoEloCurrentDuel[winner2] = false;
+    if (IsValidClient(loser1))
+        g_bPlayerNoEloCurrentDuel[loser1] = false;
+    if (IsValidClient(loser2))
+        g_bPlayerNoEloCurrentDuel[loser2] = false;
     
     // Reset duel start time since match is completed
     g_iArenaDuelStartTime[arena_index] = 0;

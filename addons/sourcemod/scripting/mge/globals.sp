@@ -55,6 +55,7 @@ bool g_bBlockFallDamage,
 int
     g_iDefaultFragLimit,
     g_iAirshotHeight = 80;
+float g_fEarlyLeaveLeadPenaltyFactor = 0.0;
 
 // Database
 Database g_DB; // Connection to SQL database.
@@ -80,6 +81,7 @@ Convar
     gcvar_dbConfig,
     gcvar_serverId,
     gcvar_logDuelRounds,
+    gcvar_earlyLeaveLeadPenaltyFactor,
     gcvar_midairHP,
     gcvar_airshotHeight,
     gcvar_RocketForceX,
@@ -242,6 +244,7 @@ bool
     g_bShowHud              [MAXPLAYERS + 1] = { true, ... },
     g_bShowElo              [MAXPLAYERS + 1] = { true, ... },
     g_bShowQueue            [MAXPLAYERS + 1] = { true, ... }, // Show queue in keyhint (default: enabled)
+    g_bPlayerNoEloCurrentDuel [MAXPLAYERS + 1],
     g_iPlayerWaiting        [MAXPLAYERS + 1],
     g_bCanPlayerSwap        [MAXPLAYERS + 1],
     g_bCanPlayerGetIntel    [MAXPLAYERS + 1],

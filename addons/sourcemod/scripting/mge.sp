@@ -177,6 +177,7 @@ public void OnPluginStart()
     gcvar_dbConfig = new Convar("mgemod_dbconfig", "mgemod", "Name of database config");
     gcvar_serverId = new Convar("mgemod_server_id", "1", "Server identifier written to duel rows (rating/stats stay shared)", FCVAR_NONE, true, 1.0);
     gcvar_logDuelRounds = new Convar("mgemod_log_duel_rounds", "1", "Write compact duel round logs into mgemod_duels(_2v2).rounds_compact_json. (0 = Disabled, 1 = Enabled)", FCVAR_NONE, true, 0.0, true, 1.0);
+    gcvar_earlyLeaveLeadPenaltyFactor = new Convar("mgemod_earlyleave_lead_penalty_factor", "0.0", "Early-leave penalty factor when leaver score is equal/higher than opponent score. 0.0 disables this mechanic.", FCVAR_NONE, true, 0.0, true, 1.0);
     gcvar_stats = new Convar("mgemod_stats", "1", "Enable/Disable stats.");
     gcvar_airshotHeight = new Convar("mgemod_airshot_height", "80", "The minimum height at which it will count airshot", FCVAR_NONE, true, 10.0, true, 500.0);
     gcvar_RocketForceX = new Convar("mgemod_endif_force_x", "1.1", "The amount by which to multiply the X push force on Endif.", FCVAR_NONE, true, 1.0, true, 10.0);
@@ -212,6 +213,7 @@ public void OnPluginStart()
     g_iMidairHP = gcvar_midairHP.IntValue;
     g_bAutoCvar = gcvar_autoCvar.IntValue ? true : false;
     g_bLogDuelRounds = gcvar_logDuelRounds.IntValue ? true : false;
+    g_fEarlyLeaveLeadPenaltyFactor = gcvar_earlyLeaveLeadPenaltyFactor.FloatValue;
     g_bNoDisplayRating = gcvar_noDisplayRating.IntValue ? true : false;
     g_iReconnectInterval = gcvar_reconnectInterval.IntValue;
     g_iServerId = gcvar_serverId.IntValue;
@@ -258,6 +260,7 @@ public void OnPluginStart()
     gcvar_dbConfig.AddChangeHook(handler_ConVarChange);
     gcvar_serverId.AddChangeHook(handler_ConVarChange);
     gcvar_logDuelRounds.AddChangeHook(handler_ConVarChange);
+    gcvar_earlyLeaveLeadPenaltyFactor.AddChangeHook(handler_ConVarChange);
     gcvar_stats.AddChangeHook(handler_ConVarChange);
     gcvar_airshotHeight.AddChangeHook(handler_ConVarChange);
     gcvar_midairHP.AddChangeHook(handler_ConVarChange);
@@ -300,6 +303,7 @@ public void OnPluginStart()
     RegConsoleCmd("hud", Command_ToggleHud, "Toggle text hud.");
     RegConsoleCmd("hidehud", Command_ToggleHud, "Toggle text hud. (alias)");
     RegConsoleCmd("elo", Command_ToggleElo, "Toggle ELO display.");
+    RegConsoleCmd("noelo", Command_NoElo, "Disable rating gains for your winning side in the current duel.");
     RegConsoleCmd("rank", Command_Rank, "Usage: rank <player name>. Show that player's rank.");
     RegConsoleCmd("stats", Command_Rank, "Alias for \"rank\".");
     RegConsoleCmd("mgehelp", Command_Help);
@@ -1250,6 +1254,8 @@ void handler_ConVarChange(Handle convar, const char[] oldValue, const char[] new
         g_iServerId = intValue;
     else if (convar == gcvar_logDuelRounds)
         g_bLogDuelRounds = boolValue;
+    else if (convar == gcvar_earlyLeaveLeadPenaltyFactor)
+        g_fEarlyLeaveLeadPenaltyFactor = floatValue;
     else if (convar == gcvar_stats)
         g_bNoStats = !boolValue;
     else if (convar == gcvar_airshotHeight)
