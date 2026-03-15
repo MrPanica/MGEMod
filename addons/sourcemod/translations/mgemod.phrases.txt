@@ -1509,25 +1509,25 @@
 		"es"			"especteando"
 		"pt"			"assistindo"
 	}
-	"NoEloUnavailable"
-	{
-		"en"			"{green}[MGE]{default} !noelo can be used only during an active duel."
-		"ru"			"{green}[MGE]{default} Komandu !noelo mozhno ispolzovat tolko vo vremya aktivnoy dueli."
-	}
-	"NoEloAlreadyEnabled"
-	{
-		"en"			"{green}[MGE]{default} !noelo is already enabled for this duel."
-		"ru"			"{green}[MGE]{default} !noelo uzhe aktivirovan dlya etoy dueli."
-	}
-	"NoEloEnabledSelf"
-	{
-		"en"			"{green}[MGE]{default} !noelo enabled for this duel: if you win, rating changes are disabled."
-		"ru"			"{green}[MGE]{default} !noelo aktivirovan na etu duel: pri vashey pobede rating ne izmenitsya."
-	}
-	"NoEloEnabledArena"
-	{
-		"#format"		"{1:s}"
-		"en"			"{green}[MGE]{default} {lightgreen}{1}{default} enabled {green}!noelo{default} for this duel."
-		"ru"			"{green}[MGE]{default} {lightgreen}{1}{default} aktiviroval {green}!noelo{default} dlya etoy dueli."
-	}
+		"NoEloUnavailable"
+		{
+			"en"			"{green}[MGE]{default} !noelo can be used only during an active duel."
+			"ru"			"{green}[MGE]{default} Команду !noelo можно использовать только во время активной дуэли."
+		}
+		"NoEloAlreadyEnabled"
+		{
+			"en"			"{green}[MGE]{default} !noelo is already enabled for this duel."
+			"ru"			"{green}[MGE]{default} !noelo уже активирован для этой дуэли."
+		}
+		"NoEloEnabledSelf"
+		{
+			"en"			"{green}[MGE]{default} !noelo enabled for this duel: if you win, rating changes are disabled."
+			"ru"			"{green}[MGE]{default} !noelo активирован на эту дуэль: при вашей победе рейтинг не изменится."
+		}
+		"NoEloEnabledArena"
+		{
+			"#format"		"{1:s}"
+			"en"			"{green}[MGE]{default} {lightgreen}{1}{default} enabled {green}!noelo{default} for this duel."
+			"ru"			"{green}[MGE]{default} {lightgreen}{1}{default} активировал {green}!noelo{default} для этой дуэли."
+		}
 }

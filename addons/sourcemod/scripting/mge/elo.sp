@@ -147,8 +147,6 @@ bool IsNoEloActiveInCurrentFight(int client)
     int arena_index = g_iPlayerArena[client];
     if (arena_index <= 0 || arena_index > g_iArenaCount)
         return false;
-    if (g_iArenaStatus[arena_index] < AS_FIGHT || g_iArenaStatus[arena_index] >= AS_REPORTED)
-        return false;
 
     return g_bPlayerNoEloCurrentDuel[client];
 }

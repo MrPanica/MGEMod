@@ -1211,14 +1211,11 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
                         MC_PrintToChatAll("%t", "XdefeatsYearly", foe_name, g_iArenaScore[arena_index][foe_team_slot], player_name, g_iArenaScore[arena_index][player_team_slot], g_sArenaName[arena_index], duel_time);
                     }
                 }
-                else if (g_fEarlyLeaveLeadPenaltyFactor > 0.0 && playerScore >= foeScore)
+                else if (g_fEarlyLeaveLeadPenaltyFactor > 0.0 && playerScore >= foeScore && (playerScore > 0 || foeScore > 0))
                 {
-                    if (canProcessEarlyLeave)
-                    {
-                        CalcELO(foe, client, g_fEarlyLeaveLeadPenaltyFactor);
-                        if (IsValidClient(foe2))
-                            CalcELO(foe2, client, g_fEarlyLeaveLeadPenaltyFactor);
-                    }
+                    CalcELO(foe, client, g_fEarlyLeaveLeadPenaltyFactor);
+                    if (IsValidClient(foe2))
+                        CalcELO(foe2, client, g_fEarlyLeaveLeadPenaltyFactor);
                 }
             }
 
@@ -1324,10 +1321,9 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
                         MC_PrintToChatAll("%t", "XdefeatsYearly", foe_name, g_iArenaScore[arena_index][foe_slot], player_name, g_iArenaScore[arena_index][player_slot], g_sArenaName[arena_index], duel_time);
                     }
                 }
-                else if (g_fEarlyLeaveLeadPenaltyFactor > 0.0 && playerScore >= foeScore)
+                else if (g_fEarlyLeaveLeadPenaltyFactor > 0.0 && playerScore >= foeScore && (playerScore > 0 || foeScore > 0))
                 {
-                    if (canProcessEarlyLeave)
-                        CalcELO(foe, client, g_fEarlyLeaveLeadPenaltyFactor);
+                    CalcELO(foe, client, g_fEarlyLeaveLeadPenaltyFactor);
                 }
             }
 
