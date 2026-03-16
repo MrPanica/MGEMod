@@ -68,6 +68,8 @@ Handle g_hMapWorldTextApplyTimer;
 Handle g_hBBallIntelSpinTimer[MAXARENAS + 1];
 Handle g_hBBallScoreboardTimer;
 Handle g_hPlayerWaitingSpecTimer[MAXPLAYERS + 1];
+Handle g_hArenaMatchupWaitTimer[MAXARENAS + 1];
+Handle g_hArenaRestart2v2ReadyTimer[MAXARENAS + 1];
 
 char g_sDBConfig[256];
 int g_iReconnectInterval;
@@ -248,7 +250,14 @@ bool
     g_iPlayerWaiting        [MAXPLAYERS + 1],
     g_bCanPlayerSwap        [MAXPLAYERS + 1],
     g_bCanPlayerGetIntel    [MAXPLAYERS + 1],
-    g_bPlayerEloVerified    [MAXPLAYERS + 1]; // ELO loaded from authenticated Steam account
+    g_bPlayerEloVerified    [MAXPLAYERS + 1], // ELO loaded from authenticated Steam account
+    g_bPlayerBaseStatsLoaded[MAXPLAYERS + 1],
+    g_bPlayerBaseStatsQueryInFlight[MAXPLAYERS + 1],
+    g_bPlayerMatchupRatingsLoaded[MAXPLAYERS + 1],
+    g_bPlayerMatchupRatingsQueryInFlight[MAXPLAYERS + 1],
+    g_bPlayerJoinTimersInitialized[MAXPLAYERS + 1],
+    g_bArenaDeferredReadyStart[MAXARENAS + 1],
+    g_bArenaMatchupStartBypass[MAXARENAS + 1];
 
 bool g_bSetSpawnAwaitInput [MAXPLAYERS + 1];
 int g_iSetSpawnArena       [MAXPLAYERS + 1];
@@ -293,12 +302,15 @@ TFClassType g_tfctPlayerDuelClass[MAXPLAYERS + 1];
 ArrayList g_alPlayerDuelClasses[MAXPLAYERS + 1];
 // Track all weapon item definition indexes used during a duel
 ArrayList g_alPlayerDuelWeaponIds[MAXPLAYERS + 1];
+// Track projectile entity refs for cheap arena cleanup without scanning all edicts
+ArrayList g_alTrackedProjectileRefs;
 // Per-arena completed round logs for current duel
 ArrayList g_alArenaRoundLogs[MAXARENAS + 1];
 int g_iArenaRoundNumber[MAXARENAS + 1];
 int g_iArenaRoundStartTime[MAXARENAS + 1];
 float g_fArenaRoundStartGameTime[MAXARENAS + 1];
 bool g_bArenaRoundInProgress[MAXARENAS + 1];
+int g_iArenaMatchupWaitTicks[MAXARENAS + 1];
 
 // Bot things
 bool g_bPlayerAskedForBot[MAXPLAYERS + 1];

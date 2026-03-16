@@ -1,5 +1,81 @@
 // ===== PLAYER STATE MANAGEMENT =====
 
+void EnsurePlayerTrackingLists(int client)
+{
+    if (g_alPlayerDuelClasses[client] == null)
+        g_alPlayerDuelClasses[client] = new ArrayList();
+    else
+        g_alPlayerDuelClasses[client].Clear();
+
+    if (g_alPlayerDuelWeaponIds[client] == null)
+        g_alPlayerDuelWeaponIds[client] = new ArrayList();
+    else
+        g_alPlayerDuelWeaponIds[client].Clear();
+}
+
+void ResetPlayerMatchupCache(int client)
+{
+    for (int classId = 1; classId <= 9; classId++)
+    {
+        g_iPlayerClassPoints[client][classId] = 0;
+        for (int oppClassId = 1; oppClassId <= 9; oppClassId++)
+        {
+            g_iPlayerClassRating[client][classId][oppClassId] = 0;
+            g_iPlayerMatchupCount[client][classId][oppClassId] = 0;
+            g_bPlayerMatchupDirty[client][classId][oppClassId] = false;
+        }
+    }
+
+    g_bPlayerMatchupRatingsLoaded[client] = false;
+    g_bPlayerMatchupRatingsQueryInFlight[client] = false;
+}
+
+void ResetPlayerStatsCache(int client)
+{
+    g_iPlayerRating[client] = 0;
+    g_iPlayerWins[client] = 0;
+    g_iPlayerLosses[client] = 0;
+    g_bPlayerEloVerified[client] = false;
+    g_bPlayerBaseStatsLoaded[client] = false;
+    g_bPlayerBaseStatsQueryInFlight[client] = false;
+    g_sPlayerSteamID[client][0] = '\0';
+    ResetPlayerMatchupCache(client);
+}
+
+void EnsureClientPostAuthTimers(int client)
+{
+    if (!IsValidClient(client) || IsFakeClient(client) || g_bPlayerJoinTimersInitialized[client])
+        return;
+
+    g_bPlayerJoinTimersInitialized[client] = true;
+    CreateTimer(5.0, Timer_ShowAdv, GetClientUserId(client));
+    CreateTimer(15.0, Timer_WelcomePlayer, GetClientUserId(client));
+}
+
+int GetDisconnectBotQuotaDecrement(int foe, int foe2, int teammate)
+{
+    int decrement = 0;
+
+    if (IsValidClient(foe) && IsFakeClient(foe))
+        decrement++;
+    if (IsValidClient(foe2) && IsFakeClient(foe2) && foe2 != foe)
+        decrement++;
+    if (IsValidClient(teammate) && IsFakeClient(teammate) && teammate != foe && teammate != foe2)
+        decrement++;
+
+    return decrement;
+}
+
+void QueueArenaReadyRestartIfNeeded(int arena_index, float delay)
+{
+    if (arena_index <= 0 || arena_index > g_iArenaCount || !g_bFourPersonArena[arena_index])
+        return;
+    if (g_hArenaRestart2v2ReadyTimer[arena_index] != null)
+        return;
+
+    g_hArenaRestart2v2ReadyTimer[arena_index] = CreateTimer(delay, Timer_Restart2v2Ready, arena_index, TIMER_FLAG_NO_MAPCHANGE);
+}
+
 // Initialize basic client data when they connect (regardless of Steam status)
 void HandleClientConnection(int client)
 {
@@ -23,55 +99,27 @@ void HandleClientConnection(int client)
     g_iSetSpawnArena[client] = 0;
     g_iSetSpawnMode[client] = 0;
     g_iPlayerWaiting[client] = false;
+    g_bPlayerJoinTimersInitialized[client] = false;
     if (g_hPlayerWaitingSpecTimer[client] != null)
     {
         delete g_hPlayerWaitingSpecTimer[client];
         g_hPlayerWaitingSpecTimer[client] = null;
     }
-    
-    // Clear any inherited statistics data immediately (but preserve if already properly loaded)
-    // This prevents stats from being inherited from previous client in the same slot
-    if (g_iPlayerRating[client] == 0 || strlen(g_sPlayerSteamID[client]) == 0)
+
+    if (g_iPlayerRating[client] != 0
+        || g_iPlayerWins[client] != 0
+        || g_iPlayerLosses[client] != 0
+        || g_bPlayerEloVerified[client]
+        || g_bPlayerBaseStatsLoaded[client]
+        || g_bPlayerBaseStatsQueryInFlight[client]
+        || g_bPlayerMatchupRatingsLoaded[client]
+        || g_bPlayerMatchupRatingsQueryInFlight[client]
+        || strlen(g_sPlayerSteamID[client]) > 0)
     {
-        g_iPlayerRating[client] = 0;
-        g_iPlayerWins[client] = 0;
-        g_iPlayerLosses[client] = 0;
-        g_bPlayerEloVerified[client] = false;
-        for (int classId = 1; classId <= 9; classId++)
-        {
-            g_iPlayerClassPoints[client][classId] = 0;
-            for (int oppClassId = 1; oppClassId <= 9; oppClassId++)
-            {
-                g_iPlayerClassRating[client][classId][oppClassId] = 0;
-                g_iPlayerMatchupCount[client][classId][oppClassId] = 0;
-            }
-        }
+        ResetPlayerStatsCache(client);
     }
 
-    for (int classId = 1; classId <= 9; classId++)
-    {
-        for (int oppClassId = 1; oppClassId <= 9; oppClassId++)
-            g_bPlayerMatchupDirty[client][classId][oppClassId] = false;
-    }
-    
-    // Initialize class tracking ArrayList
-    if (g_alPlayerDuelClasses[client] != null)
-        delete g_alPlayerDuelClasses[client];
-    g_alPlayerDuelClasses[client] = new ArrayList();
-
-    // Initialize weapon tracking ArrayList
-    if (g_alPlayerDuelWeaponIds[client] != null)
-        delete g_alPlayerDuelWeaponIds[client];
-    g_alPlayerDuelWeaponIds[client] = new ArrayList();
-    
-    // Try to load player stats (will retry in HandleClientAuthentication if Steam ID not ready)
-    TryLoadPlayerStats(client, false);
-    
-    CreateTimer(5.0, Timer_ShowAdv, GetClientUserId(client));
-    CreateTimer(15.0, Timer_WelcomePlayer, GetClientUserId(client));
-    
-    // Initialize spectator target detection for HUD display
-    CreateTimer(0.5, Timer_ChangeSpecTarget, GetClientUserId(client));
+    EnsurePlayerTrackingLists(client);
     
     SDKHook(client, SDKHook_OnTakeDamage, OnTakeDamage);
 }
@@ -107,8 +155,8 @@ void HandleClientAuthentication(int client)
     }
     else
     {
-        // Steam authentication successful - retry stats loading if it failed before
-        TryLoadPlayerStats(client, true);
+        EnsureClientPostAuthTimers(client);
+        TryLoadPlayerBaseStats(client, true);
     }
 }
 
@@ -216,6 +264,7 @@ void HandleClientDisconnection(int client)
     g_bPlayerNoEloCurrentDuel[client] = false;
     g_bScoreboardOpen[client] = false;
     g_bWaddMenu[client] = false;
+    g_bPlayerJoinTimersInitialized[client] = false;
     
     // Remove from waiting lists
     for (int i = 1; i <= g_iArenaCount; i++)
@@ -257,36 +306,11 @@ void HandleClientDisconnection(int client)
         g_iArenaQueue[arena_index][player_slot] = 0;
         g_iPlayerHandicap[client] = 0;
         
-        // Cleanup class tracking ArrayList
-        if (g_alPlayerDuelClasses[client] != null)
-        {
-            delete g_alPlayerDuelClasses[client];
-            g_alPlayerDuelClasses[client] = null;
-        }
-
-        if (g_alPlayerDuelWeaponIds[client] != null)
-        {
-            delete g_alPlayerDuelWeaponIds[client];
-            g_alPlayerDuelWeaponIds[client] = null;
-        }
+        EnsurePlayerTrackingLists(client);
         
         // Clear 2v2 ready status
         g_bPlayer2v2Ready[client] = false;
-        
-        // Clear player statistics to prevent inheritance by new clients with same ID
-        g_iPlayerRating[client] = 0;
-        g_iPlayerWins[client] = 0;
-        g_iPlayerLosses[client] = 0;
-        for (int classId = 1; classId <= 9; classId++)
-        {
-            g_iPlayerClassPoints[client][classId] = 0;
-            for (int oppClassId = 1; oppClassId <= 9; oppClassId++)
-            {
-                g_iPlayerClassRating[client][classId][oppClassId] = 0;
-                g_iPlayerMatchupCount[client][classId][oppClassId] = 0;
-                g_bPlayerMatchupDirty[client][classId][oppClassId] = false;
-            }
-        }
+        ResetPlayerStatsCache(client);
         
         // Clear hud text if arena was in ready state
         if (g_iArenaStatus[arena_index] == AS_WAITING_READY)
@@ -295,32 +319,21 @@ void HandleClientDisconnection(int client)
         }
 
         // Bot cleanup logic (queue advancement is handled by RemoveFromQueue)
-        if (IsValidClient(foe) && IsFakeClient(foe))
+        int quotaDecrement = GetDisconnectBotQuotaDecrement(foe, foe2, player_teammate);
+        if (quotaDecrement > 0)
         {
             ConVar cvar = FindConVar("tf_bot_quota");
-            int quota = cvar.IntValue;
-            ServerCommand("tf_bot_quota %d", quota - 1);
-        }
-
-        if (IsValidClient(foe2) && IsFakeClient(foe2))
-        {
-            ConVar cvar = FindConVar("tf_bot_quota");
-            int quota = cvar.IntValue;
-            ServerCommand("tf_bot_quota %d", quota - 1);
-        }
-
-        if (IsValidClient(player_teammate) && IsFakeClient(player_teammate))
-        {
-            ConVar cvar = FindConVar("tf_bot_quota");
-            int quota = cvar.IntValue;
-            ServerCommand("tf_bot_quota %d", quota - 1);
+            int newQuota = cvar.IntValue - quotaDecrement;
+            if (newQuota < 0)
+                newQuota = 0;
+            ServerCommand("tf_bot_quota %d", newQuota);
         }
 
         // Ensure any 2v2 waiting/spec players are restored on disconnect
         if (g_bFourPersonArena[arena_index])
         {
             Restore2v2WaitingSpectators(arena_index);
-            CreateTimer(3.0, Timer_Restart2v2Ready, arena_index);
+            QueueArenaReadyRestartIfNeeded(arena_index, 3.0);
         }
 
         g_iArenaStatus[arena_index] = AS_IDLE;
@@ -329,17 +342,8 @@ void HandleClientDisconnection(int client)
         return;
     }
 
-    if (g_alPlayerDuelClasses[client] != null)
-    {
-        delete g_alPlayerDuelClasses[client];
-        g_alPlayerDuelClasses[client] = null;
-    }
-
-    if (g_alPlayerDuelWeaponIds[client] != null)
-    {
-        delete g_alPlayerDuelWeaponIds[client];
-        g_alPlayerDuelWeaponIds[client] = null;
-    }
+    EnsurePlayerTrackingLists(client);
+    ResetPlayerStatsCache(client);
 }
 
 bool IsClientInRespawnroomByNetprop(int client)
@@ -461,9 +465,9 @@ Action Timer_TeleWithDebug(Handle timer, DataPack pack)
 }
 
 // Attempts to load player statistics from database with Steam ID validation
-void TryLoadPlayerStats(int client, bool isRetry, bool forceReload = false)
+void TryLoadPlayerBaseStats(int client, bool isRetry, bool forceReload = false)
 {
-    if (g_bNoStats || !IsValidClient(client))
+    if (g_bNoStats || !IsValidClient(client) || g_DB == null)
         return;
     
     char steamid_dirty[31], steamid[64], query[256];
@@ -479,18 +483,49 @@ void TryLoadPlayerStats(int client, bool isRetry, bool forceReload = false)
     
     g_DB.Escape(steamid_dirty, steamid, sizeof(steamid));
     
-    // Skip if stats already loaded successfully for this specific Steam ID
-    if (!forceReload && g_bPlayerEloVerified[client] && StrEqual(g_sPlayerSteamID[client], steamid)) {
+    if (!forceReload && g_bPlayerBaseStatsLoaded[client] && StrEqual(g_sPlayerSteamID[client], steamid)) {
         if (isRetry) {
             LogMessage("Stats already loaded for client %d (%s), skipping retry", client, steamid);
         }
         return;
     }
+
+    if (g_bPlayerBaseStatsQueryInFlight[client] && StrEqual(g_sPlayerSteamID[client], steamid))
+        return;
     
     strcopy(g_sPlayerSteamID[client], 32, steamid);
-    
+    g_bPlayerBaseStatsLoaded[client] = false;
+    g_bPlayerBaseStatsQueryInFlight[client] = true;
+
     GetSelectPlayerStatsQuery(query, sizeof(query), steamid);
-    g_DB.Query(SQL_OnPlayerReceived, query, client);
+    DataPack pack = new DataPack();
+    pack.WriteCell(GetClientUserId(client));
+    pack.WriteString(steamid);
+    g_DB.Query(SQL_OnPlayerReceived, query, pack);
+}
+
+bool EnsurePlayerMatchupRatingsLoaded(int client)
+{
+    if (g_bNoStats || !IsValidClient(client) || IsFakeClient(client) || g_DB == null)
+        return true;
+    if (!g_bPlayerEloVerified[client] || strlen(g_sPlayerSteamID[client]) == 0)
+        return false;
+    if (g_bPlayerMatchupRatingsLoaded[client])
+        return true;
+    if (g_bPlayerMatchupRatingsQueryInFlight[client])
+        return false;
+
+    ResetPlayerMatchupCache(client);
+    g_bPlayerMatchupRatingsQueryInFlight[client] = true;
+
+    char query[256];
+    GetSelectMatchupRatingsQuery(query, sizeof(query), g_sPlayerSteamID[client]);
+
+    DataPack pack = new DataPack();
+    pack.WriteCell(GetClientUserId(client));
+    pack.WriteString(g_sPlayerSteamID[client]);
+    g_DB.Query(SQL_OnMatchupRatingsReceived, query, pack);
+    return false;
 }
 
 // Validates if player's ELO is verified and safe for arena play
@@ -1446,51 +1481,6 @@ bool IsClientInTrackedDuel(int client)
     return (g_iArenaStatus[arena_index] != AS_IDLE && g_iArenaStatus[arena_index] != AS_REPORTED);
 }
 
-void CapturePlayerWeaponEntitiesForDuel(int client)
-{
-    if (!IsValidClient(client))
-        return;
-
-    // Snapshot all weapon entities owned by the player.
-    int entity = -1;
-    while ((entity = FindEntityByClassname(entity, "tf_weapon*")) != -1)
-    {
-        if (!IsValidEntity(entity))
-            continue;
-        if (!HasEntProp(entity, Prop_Send, "m_hOwnerEntity"))
-            continue;
-        if (!HasEntProp(entity, Prop_Send, "m_iItemDefinitionIndex"))
-            continue;
-
-        if (GetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity") != client)
-            continue;
-
-        int itemDefIndex = GetEntProp(entity, Prop_Send, "m_iItemDefinitionIndex");
-        AddPlayerDuelWeaponId(client, itemDefIndex);
-    }
-
-    // Snapshot wearable entities and keep only gameplay wearables by itemdef whitelist.
-    entity = -1;
-    while ((entity = FindEntityByClassname(entity, "tf_wearable*")) != -1)
-    {
-        if (!IsValidEntity(entity))
-            continue;
-        if (!HasEntProp(entity, Prop_Send, "m_hOwnerEntity"))
-            continue;
-        if (!HasEntProp(entity, Prop_Send, "m_iItemDefinitionIndex"))
-            continue;
-
-        if (GetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity") != client)
-            continue;
-
-        int itemDefIndex = GetEntProp(entity, Prop_Send, "m_iItemDefinitionIndex");
-        if (!IsWeaponWearable(itemDefIndex))
-            continue;
-
-        AddPlayerDuelWeaponId(client, itemDefIndex);
-    }
-}
-
 void StartDuelWeaponTrackingForArena(int arena_index)
 {
     if (arena_index <= 0 || arena_index > g_iArenaCount)
@@ -1504,7 +1494,7 @@ void StartDuelWeaponTrackingForArena(int arena_index)
             continue;
 
         ClearPlayerDuelWeaponIds(player);
-        CapturePlayerWeaponEntitiesForDuel(player);
+        MergeCurrentPlayerWeaponIdsIntoDuelList(player);
     }
 }
 
@@ -1672,10 +1662,9 @@ Action Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast)
         bool shouldTeleportOnSpawn = true;
         if (g_bSkipNextSpawnTeleport[client])
         {
-            shouldTeleportOnSpawn = false;
             g_bSkipNextSpawnTeleport[client] = false;
             if (g_bDebugTeleport)
-                LogMessage("[MGE tele][debug] player_spawn: skip teleport (already queued by ResetPlayer) client=%N", client);
+                LogMessage("[MGE tele][debug] player_spawn: reset-spawn fallback teleport enabled client=%N", client);
         }
 
         int player_slot = g_iPlayerSlot[client];

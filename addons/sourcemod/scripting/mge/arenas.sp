@@ -1228,7 +1228,7 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
                 BumpTeleportRevision(next_client, "RemoveFromQueue promote_2v2");
                 after_leaver_slot = SLOT_FOUR + 2;
                 char playername[MAX_NAME_LENGTH];
-                CreateTimer(2.0, Timer_Restart2v2Ready, arena_index);
+                QueueArenaReadyRestartIfNeeded(arena_index, 2.0);
                 GetClientName(next_client, playername, sizeof(playername));
 
                 SendArenaJoinMessage(playername, g_iPlayerRating[next_client], g_sArenaName[arena_index], !g_bNoStats && !g_bNoDisplayRating && g_bShowElo[next_client], IsPlayerEligibleForElo(next_client));
@@ -1252,7 +1252,7 @@ void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
                 if (g_bFourPersonArena[arena_index])
                 {
                     Restore2v2WaitingSpectators(arena_index);
-                    CreateTimer(3.0, Timer_Restart2v2Ready, arena_index);
+                    QueueArenaReadyRestartIfNeeded(arena_index, 3.0);
                 }
 
                 g_iArenaStatus[arena_index] = AS_IDLE;
@@ -1489,6 +1489,133 @@ void PlayArenaSound(int client)
     CloseHandle(setup);
 }
 
+bool DoesArenaHaveRequiredActivePlayers(int arena_index, bool readyStart)
+{
+    if (arena_index <= 0 || arena_index > g_iArenaCount)
+        return false;
+
+    if (readyStart)
+    {
+        if (!g_bFourPersonArena[arena_index])
+            return false;
+
+        for (int slot = SLOT_ONE; slot <= SLOT_FOUR; slot++)
+        {
+            if (!IsValidClient(g_iArenaQueue[arena_index][slot]))
+                return false;
+        }
+        return true;
+    }
+
+    return (IsValidClient(g_iArenaQueue[arena_index][SLOT_ONE]) && IsValidClient(g_iArenaQueue[arena_index][SLOT_TWO]));
+}
+
+bool AreArenaMatchupRatingsReady(int arena_index, bool readyStart)
+{
+    if (g_bNoStats)
+        return true;
+    if (!DoesArenaHaveRequiredActivePlayers(arena_index, readyStart))
+        return false;
+
+    int maxSlot = readyStart ? SLOT_FOUR : SLOT_TWO;
+    for (int slot = SLOT_ONE; slot <= maxSlot; slot++)
+    {
+        int client = g_iArenaQueue[arena_index][slot];
+        if (!IsValidClient(client) || IsFakeClient(client))
+            continue;
+
+        if (!EnsurePlayerMatchupRatingsLoaded(client))
+            return false;
+    }
+
+    return true;
+}
+
+void StopArenaMatchupWaitTimer(int arena_index)
+{
+    if (arena_index <= 0 || arena_index > g_iArenaCount)
+        return;
+
+    if (g_hArenaMatchupWaitTimer[arena_index] != null)
+    {
+        delete g_hArenaMatchupWaitTimer[arena_index];
+        g_hArenaMatchupWaitTimer[arena_index] = null;
+    }
+
+    g_iArenaMatchupWaitTicks[arena_index] = 0;
+    g_bArenaDeferredReadyStart[arena_index] = false;
+    g_bArenaMatchupStartBypass[arena_index] = false;
+}
+
+Action Timer_WaitForArenaMatchupRatings(Handle timer, any arena_index)
+{
+    if (arena_index <= 0 || arena_index > g_iArenaCount)
+        return Plugin_Stop;
+    if (g_hArenaMatchupWaitTimer[arena_index] != timer)
+        return Plugin_Stop;
+
+    bool readyStart = g_bArenaDeferredReadyStart[arena_index];
+    if (!DoesArenaHaveRequiredActivePlayers(arena_index, readyStart))
+    {
+        StopArenaMatchupWaitTimer(arena_index);
+        return Plugin_Stop;
+    }
+
+    bool ready = AreArenaMatchupRatingsReady(arena_index, readyStart);
+    g_iArenaMatchupWaitTicks[arena_index]++;
+
+    if (!ready && g_iArenaMatchupWaitTicks[arena_index] < 5)
+        return Plugin_Continue;
+
+    bool timedOut = !ready;
+    g_hArenaMatchupWaitTimer[arena_index] = null;
+    g_iArenaMatchupWaitTicks[arena_index] = 0;
+    g_bArenaMatchupStartBypass[arena_index] = true;
+
+    if (timedOut && g_bPerfDebug)
+    {
+        LogMessage("[MGE perf] arena %d matchup rating wait timed out after 1.0s, starting with fallback ratings", arena_index);
+    }
+
+    if (readyStart)
+    {
+        g_bArenaDeferredReadyStart[arena_index] = false;
+        Start2v2ReadySystem(arena_index);
+    }
+    else
+    {
+        g_bArenaDeferredReadyStart[arena_index] = false;
+        Timer_StartDuel(null, arena_index);
+    }
+
+    return Plugin_Stop;
+}
+
+bool BeginArenaStartAfterMatchupWaitIfNeeded(int arena_index, bool readyStart)
+{
+    if (g_bNoStats)
+        return true;
+
+    if (g_bArenaMatchupStartBypass[arena_index])
+    {
+        g_bArenaMatchupStartBypass[arena_index] = false;
+        g_iArenaMatchupWaitTicks[arena_index] = 0;
+        return true;
+    }
+
+    if (AreArenaMatchupRatingsReady(arena_index, readyStart))
+        return true;
+
+    g_bArenaDeferredReadyStart[arena_index] = readyStart;
+    if (g_hArenaMatchupWaitTimer[arena_index] == null)
+    {
+        g_iArenaMatchupWaitTicks[arena_index] = 0;
+        g_hArenaMatchupWaitTimer[arena_index] = CreateTimer(0.2, Timer_WaitForArenaMatchupRatings, arena_index, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+    }
+
+    return false;
+}
+
 // Add player to arena queue with team preference and menu options
 void AddInQueue(int client, int arena_index, bool showmsg = true, int playerPrefTeam = 0, bool show2v2Menu = true, int forcedSlot = 0)
 {
@@ -1591,6 +1718,7 @@ void AddInQueue(int client, int arena_index, bool showmsg = true, int playerPref
     g_iPlayerSlot[client] = player_slot;
     BumpTeleportRevision(client, "AddInQueue");
     g_iArenaQueue[arena_index][player_slot] = client;
+    EnsurePlayerMatchupRatingsLoaded(client);
 
     // Update keyhint immediately when queue changes
     UpdateQueueKeyHintText(arena_index);
@@ -4058,6 +4186,9 @@ Action Timer_CountDown(Handle timer, any arena_index)
 // Initialize duel start sequence and player setup
 Action Timer_StartDuel(Handle timer, any arena_index)
 {
+    if (!BeginArenaStartAfterMatchupWaitIfNeeded(arena_index, false))
+        return Plugin_Stop;
+
     if (g_bArenaNoFight[arena_index])
     {
         g_iArenaStatus[arena_index] = AS_IDLE;
@@ -4395,62 +4526,69 @@ void RemoveArenaProjectiles(int arena_index)
     if (!arena_index)
         return;
 
-    int entity = -1;
-    char classname[64];
-    
-    // Collect entities to remove first, then remove them
-    ArrayList entitiesToRemove = new ArrayList();
-    
-    while ((entity = FindEntityByClassname(entity, "*")) != -1)
+    EnsureTrackedProjectileList();
+
+    for (int i = g_alTrackedProjectileRefs.Length - 1; i >= 0; i--)
     {
-        if (!IsValidEntity(entity))
+        int entity = EntRefToEntIndex(g_alTrackedProjectileRefs.Get(i));
+        if (entity == INVALID_ENT_REFERENCE || !IsValidEntity(entity))
+        {
+            g_alTrackedProjectileRefs.Erase(i);
             continue;
-            
-        GetEntityClassname(entity, classname, sizeof(classname));
-        
-        if (StrContains(classname, "tf_projectile_", false) == 0)
-        {
-            // Skip sentry rockets as they don't have m_hThrower property and use different owner system
-            if (StrEqual(classname, "tf_projectile_sentryrocket", false))
-                continue;
-                
-            int owner = GetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity");
-            if (owner == -1)
-            {
-                // Only try m_hThrower if the property exists and entity is not sentryrocket
-                if (HasEntProp(entity, Prop_Send, "m_hThrower"))
-                {
-                    owner = GetEntPropEnt(entity, Prop_Send, "m_hThrower");
-                }
-            }
-                
-            if (IsValidClient(owner) && g_iPlayerArena[owner] == arena_index)
-            {
-                entitiesToRemove.Push(entity);
-            }
         }
-        else if (StrEqual(classname, "tf_ball_ornament", false))
-        {
-            int owner = -1;
-            if (HasEntProp(entity, Prop_Send, "m_hThrower"))
-                owner = GetEntPropEnt(entity, Prop_Send, "m_hThrower");
-            if (IsValidClient(owner) && g_iPlayerArena[owner] == arena_index)
-            {
-                entitiesToRemove.Push(entity);
-            }
-        }
+
+        int owner = GetTrackedProjectileOwner(entity);
+        if (!IsValidClient(owner))
+            continue;
+        if (g_iPlayerArena[owner] != arena_index)
+            continue;
+
+        RemoveEdict(entity);
+        g_alTrackedProjectileRefs.Erase(i);
     }
-    
-    for (int i = 0; i < entitiesToRemove.Length; i++)
+}
+
+void EnsureTrackedProjectileList()
+{
+    if (g_alTrackedProjectileRefs == null)
+        g_alTrackedProjectileRefs = new ArrayList();
+}
+
+bool IsTrackedArenaProjectileClassname(const char[] classname)
+{
+    if (StrEqual(classname, "tf_projectile_sentryrocket", false))
+        return false;
+
+    return (StrContains(classname, "tf_projectile_", false) == 0 || StrEqual(classname, "tf_ball_ornament", false));
+}
+
+void TrackArenaProjectileEntity(int entity, const char[] classname)
+{
+    if (entity <= MaxClients)
+        return;
+    if (!IsTrackedArenaProjectileClassname(classname))
+        return;
+
+    EnsureTrackedProjectileList();
+    g_alTrackedProjectileRefs.Push(EntIndexToEntRef(entity));
+}
+
+int GetTrackedProjectileOwner(int entity)
+{
+    if (entity <= MaxClients || !IsValidEntity(entity))
+        return -1;
+
+    if (HasEntProp(entity, Prop_Send, "m_hOwnerEntity"))
     {
-        entity = entitiesToRemove.Get(i);
-        if (IsValidEntity(entity))
-        {
-            RemoveEdict(entity);
-        }
+        int owner = GetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity");
+        if (owner != -1)
+            return owner;
     }
-    
-    delete entitiesToRemove;
+
+    if (HasEntProp(entity, Prop_Send, "m_hThrower"))
+        return GetEntPropEnt(entity, Prop_Send, "m_hThrower");
+
+    return -1;
 }
 
 // ===== ARENA VALIDATION =====

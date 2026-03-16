@@ -167,7 +167,7 @@ void SQLDbConnTest(Database db, DBResultSet results, const char[] error, any dat
             {
                 if (IsValidClient(i))
                 {
-                    char steamid_dirty[31], steamid[64], query[256];
+                    char steamid_dirty[31], steamid[64];
                     
                     // Get Steam ID and validate the operation succeeded
                     if (!GetClientAuthId(i, AuthId_Steam2, steamid_dirty, sizeof(steamid_dirty))) {
@@ -177,8 +177,7 @@ void SQLDbConnTest(Database db, DBResultSet results, const char[] error, any dat
 
                     db.Escape(steamid_dirty, steamid, sizeof(steamid));
                     strcopy(g_sPlayerSteamID[i], 32, steamid);
-                    GetSelectPlayerStatsQuery(query, sizeof(query), steamid);
-                    db.Query(SQL_OnPlayerReceived, query, i);
+                    TryLoadPlayerBaseStats(i, false, true);
                     
                     // Handle hot-loading case: initialize client state that requires DB
                     if (!IsFakeClient(i))
@@ -240,7 +239,23 @@ void SQL_OnTestReceived(Database db, DBResultSet results, const char[] error, an
 // Handles player statistics retrieval from database and creates new player records if needed
 void SQL_OnPlayerReceived(Database db, DBResultSet results, const char[] error, any data)
 {
-    int client = data;
+    DataPack pack = view_as<DataPack>(data);
+    int userid = 0;
+    char steamid[64];
+    steamid[0] = '\0';
+
+    if (pack != null)
+    {
+        pack.Reset();
+        userid = pack.ReadCell();
+        pack.ReadString(steamid, sizeof(steamid));
+        delete pack;
+    }
+
+    int client = GetClientOfUserId(userid);
+
+    if (client >= 1 && client <= MaxClients && IsClientConnected(client) && StrEqual(g_sPlayerSteamID[client], steamid))
+        g_bPlayerBaseStatsQueryInFlight[client] = false;
 
     if (db == null)
     {
@@ -250,19 +265,23 @@ void SQL_OnPlayerReceived(Database db, DBResultSet results, const char[] error, 
     
     if (results == null)
     {
-        LogError("SQL_OnPlayerReceived FAILED for client %d (%s): %s", 
-                 client, g_sPlayerSteamID[client], error);
+        LogError("SQL_OnPlayerReceived FAILED for client %d (%s): %s",
+                 client, steamid, error);
         return;
     }
 
     if ( client < 1 || client > MaxClients || !IsClientConnected(client) )
     {
-        LogError("SQL_OnPlayerReceived failed: client %d <%s> is invalid.", client, g_sPlayerSteamID[client]);
         return;
     }
 
+    if (!StrEqual(g_sPlayerSteamID[client], steamid))
+    {
+        return;
+    }
     char query[512];
     char namesql_dirty[MAX_NAME_LENGTH], namesql[(MAX_NAME_LENGTH * 2) + 1];
+    char dbName[MAX_NAME_LENGTH];
     GetClientName(client, namesql_dirty, sizeof(namesql_dirty));
     db.Escape(namesql_dirty, namesql, sizeof(namesql));
 
@@ -271,24 +290,26 @@ void SQL_OnPlayerReceived(Database db, DBResultSet results, const char[] error, 
         g_iPlayerRating[client] = results.FetchInt(0);
         g_iPlayerWins[client] = results.FetchInt(1);
         g_iPlayerLosses[client] = results.FetchInt(2);
-        // Legacy class ratings (for backward compatibility, but not used in new system)
-        // Load matchup ratings separately
+        results.FetchString(3, dbName, sizeof(dbName));
         g_bPlayerEloVerified[client] = true;
-        
-        // Load matchup ratings from separate table
-        char matchupQuery[256];
-        GetSelectMatchupRatingsQuery(matchupQuery, sizeof(matchupQuery), g_sPlayerSteamID[client]);
-        g_DB.Query(SQL_OnMatchupRatingsReceived, matchupQuery, client);
+        g_bPlayerBaseStatsLoaded[client] = true;
 
-        GetUpdatePlayerNameQuery(query, sizeof(query), namesql, g_sPlayerSteamID[client]);
-        db.Query(SQL_OnGenericQueryFinished, query);
-    } else {
+        if (!StrEqual(dbName, namesql))
+        {
+            GetUpdatePlayerNameQuery(query, sizeof(query), namesql, g_sPlayerSteamID[client]);
+            db.Query(SQL_OnGenericQueryFinished, query);
+        }
+    }
+    else
+    {
         GetInsertPlayerQuery(query, sizeof(query), g_sPlayerSteamID[client], namesql, GetTime());
         db.Query(SQL_OnGenericQueryFinished, query);
 
         g_iPlayerRating[client] = 1600;
+        g_iPlayerWins[client] = 0;
+        g_iPlayerLosses[client] = 0;
         g_bPlayerEloVerified[client] = true;
-        // Matchup ratings will be initialized to 1500 when first used (in AddClassPointForPlayer)
+        g_bPlayerBaseStatsLoaded[client] = true;
     }
 }
 
@@ -540,8 +561,7 @@ void GetInsertPlayerQuery(char[] query, int maxlen, const char[] steamid, const 
 // Gets database-specific SELECT statement for player stats
 void GetSelectPlayerStatsQuery(char[] query, int maxlen, const char[] steamid)
 {
-    // Only load basic stats, matchup ratings are loaded separately
-    g_DB.Format(query, maxlen, "SELECT rating, wins, losses, 0, 0, 0, 0, 0, 0, 0, 0, 0 FROM mgemod_stats WHERE steamid='%s' LIMIT 1", steamid);
+    g_DB.Format(query, maxlen, "SELECT rating, wins, losses, name FROM mgemod_stats WHERE steamid='%s' LIMIT 1", steamid);
 }
 
 // Gets database-specific UPDATE statement for player name
@@ -952,9 +972,18 @@ bool BuildCompactRoundJson(char[] json, int maxlen, bool is2v2, ArrayList roundE
         if (scoringWeaponDefIndex < 0)
             scoringWeaponDefIndex = 0;
 
+        int slot1Hp = entry.slot1Hp;
+        int slot2Hp = entry.slot2Hp;
+        int slot3Hp = entry.slot3Hp;
+        int slot4Hp = entry.slot4Hp;
+        if (slot1Hp < 0) slot1Hp = 0;
+        if (slot2Hp < 0) slot2Hp = 0;
+        if (slot3Hp < 0) slot3Hp = 0;
+        if (slot4Hp < 0) slot4Hp = 0;
+
         if (is2v2)
         {
-            Format(row, sizeof(row), "[%d,%d,%d,%d,%d,%d,%d,\"%s\",\"%s\",\"%s\",\"%s\"]",
+            Format(row, sizeof(row), "[%d,%d,%d,%d,%d,%d,%d,\"%s\",\"%s\",\"%s\",\"%s\",%d,%d,%d,%d]",
                 scorerSlot,
                 roundDuration,
                 scoringWeaponDefIndex,
@@ -965,18 +994,24 @@ bool BuildCompactRoundJson(char[] json, int maxlen, bool is2v2, ArrayList roundE
                 slot1Weapons,
                 slot2Weapons,
                 slot3Weapons,
-                slot4Weapons);
+                slot4Weapons,
+                slot1Hp,
+                slot2Hp,
+                slot3Hp,
+                slot4Hp);
         }
         else
         {
-            Format(row, sizeof(row), "[%d,%d,%d,%d,%d,\"%s\",\"%s\"]",
+            Format(row, sizeof(row), "[%d,%d,%d,%d,%d,\"%s\",\"%s\",%d,%d]",
                 scorerSlot,
                 roundDuration,
                 scoringWeaponDefIndex,
                 GetCompactRoundClassId(entry.slot1Class),
                 GetCompactRoundClassId(entry.slot2Class),
                 slot1Weapons,
-                slot2Weapons);
+                slot2Weapons,
+                slot1Hp,
+                slot2Hp);
         }
 
         if (i > 0 && !AppendCompactRoundJsonFragment(json, maxlen, ","))
@@ -1119,7 +1154,23 @@ void GetSelectMatchupRatingsQuery(char[] query, int maxlen, const char[] steamid
 // Callback for loading matchup ratings
 void SQL_OnMatchupRatingsReceived(Database db, DBResultSet results, const char[] error, any data)
 {
-    int client = data;
+    DataPack pack = view_as<DataPack>(data);
+    int userid = 0;
+    char steamid[64];
+    steamid[0] = '\0';
+
+    if (pack != null)
+    {
+        pack.Reset();
+        userid = pack.ReadCell();
+        pack.ReadString(steamid, sizeof(steamid));
+        delete pack;
+    }
+
+    int client = GetClientOfUserId(userid);
+
+    if (client >= 1 && client <= MaxClients && IsClientConnected(client) && StrEqual(g_sPlayerSteamID[client], steamid))
+        g_bPlayerMatchupRatingsQueryInFlight[client] = false;
 
     if (db == null || results == null || !StrEqual("", error))
     {
@@ -1130,6 +1181,9 @@ void SQL_OnMatchupRatingsReceived(Database db, DBResultSet results, const char[]
 
     if (client < 1 || client > MaxClients || !IsClientConnected(client))
         return;
+    if (!StrEqual(g_sPlayerSteamID[client], steamid))
+        return;
+    g_bPlayerMatchupRatingsLoaded[client] = false;
 
     while (results.FetchRow())
     {
@@ -1143,6 +1197,8 @@ void SQL_OnMatchupRatingsReceived(Database db, DBResultSet results, const char[]
             g_bPlayerMatchupDirty[client][myClass][opponentClass] = false;
         }
     }
+
+    g_bPlayerMatchupRatingsLoaded[client] = true;
 }
 
 // Update matchup ratings in database
@@ -1151,7 +1207,32 @@ void UpdateMatchupRatings(int client)
     if (!IsValidClient(client) || strlen(g_sPlayerSteamID[client]) == 0)
         return;
 
-    // Update only matchup ratings changed during this duel (dirty flags)
+    char query[4096];
+    if (!BuildBatchMatchupRatingQuery(client, query, sizeof(query)))
+        return;
+
+    g_DB.Query(SQL_OnGenericQueryFinished, query);
+}
+
+bool BuildBatchMatchupRatingQuery(int client, char[] query, int maxlen)
+{
+    query[0] = '\0';
+
+    switch (g_DatabaseType)
+    {
+        case DB_SQLITE:
+        {
+            strcopy(query, maxlen, "INSERT OR REPLACE INTO mgemod_matchup_ratings (steamid, my_class, opponent_class, rating) VALUES ");
+        }
+        case DB_MYSQL, DB_POSTGRESQL:
+        {
+            strcopy(query, maxlen, "INSERT INTO mgemod_matchup_ratings (steamid, my_class, opponent_class, rating) VALUES ");
+        }
+    }
+
+    bool hasValues = false;
+    char row[96];
+
     for (int myClass = 1; myClass <= MGE_CLASS_MAX; myClass++)
     {
         for (int oppClass = 1; oppClass <= MGE_CLASS_MAX; oppClass++)
@@ -1159,35 +1240,35 @@ void UpdateMatchupRatings(int client)
             if (!g_bPlayerMatchupDirty[client][myClass][oppClass])
                 continue;
 
-            int rating = g_iPlayerClassRating[client][myClass][oppClass];
-            if (rating > 0)
-            {
-                char query[256];
-                GetUpsertMatchupRatingQuery(query, sizeof(query), g_sPlayerSteamID[client], myClass, oppClass, rating);
-                g_DB.Query(SQL_OnGenericQueryFinished, query);
-            }
-
             g_bPlayerMatchupDirty[client][myClass][oppClass] = false;
+
+            int rating = g_iPlayerClassRating[client][myClass][oppClass];
+            if (rating <= 0)
+                continue;
+
+            Format(row, sizeof(row), "%s('%s', %d, %d, %d)", hasValues ? "," : "", g_sPlayerSteamID[client], myClass, oppClass, rating);
+            if (strlen(query) + strlen(row) >= maxlen)
+                return hasValues;
+
+            StrCat(query, maxlen, row);
+            hasValues = true;
         }
     }
-}
 
-// Gets database-specific UPSERT statement for matchup rating
-void GetUpsertMatchupRatingQuery(char[] query, int maxlen, const char[] steamid, int myClass, int opponentClass, int rating)
-{
+    if (!hasValues)
+        return false;
+
     switch (g_DatabaseType)
     {
-        case DB_SQLITE:
-        {
-            g_DB.Format(query, maxlen, "INSERT OR REPLACE INTO mgemod_matchup_ratings (steamid, my_class, opponent_class, rating) VALUES ('%s', %d, %d, %d)", steamid, myClass, opponentClass, rating);
-        }
         case DB_MYSQL:
         {
-            g_DB.Format(query, maxlen, "INSERT INTO mgemod_matchup_ratings (steamid, my_class, opponent_class, rating) VALUES ('%s', %d, %d, %d) ON DUPLICATE KEY UPDATE rating = VALUES(rating)", steamid, myClass, opponentClass, rating);
+            StrCat(query, maxlen, " ON DUPLICATE KEY UPDATE rating = VALUES(rating)");
         }
         case DB_POSTGRESQL:
         {
-            g_DB.Format(query, maxlen, "INSERT INTO mgemod_matchup_ratings (steamid, my_class, opponent_class, rating) VALUES ('%s', %d, %d, %d) ON CONFLICT (steamid, my_class, opponent_class) DO UPDATE SET rating = EXCLUDED.rating", steamid, myClass, opponentClass, rating);
+            StrCat(query, maxlen, " ON CONFLICT (steamid, my_class, opponent_class) DO UPDATE SET rating = EXCLUDED.rating");
         }
     }
+
+    return true;
 }

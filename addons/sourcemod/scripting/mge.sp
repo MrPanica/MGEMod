@@ -408,7 +408,7 @@ void HandleHotReload()
                     continue;
 
                 // Force stats refresh for all online players after plugin reload.
-                TryLoadPlayerStats(i, true, true);
+                TryLoadPlayerBaseStats(i, true, true);
             }
         }
 
@@ -862,6 +862,11 @@ public void OnMapStart()
     else
         g_smNamedEntityCache.Clear();
 
+    if (g_alTrackedProjectileRefs == null)
+        g_alTrackedProjectileRefs = new ArrayList();
+    else
+        g_alTrackedProjectileRefs.Clear();
+
     for (int i = 0; i < sizeof(stockSounds); i++) {
         PrecacheSound(stockSounds[i], true);
     }
@@ -1037,6 +1042,8 @@ public void OnMapEnd()
 {
     if (g_smNamedEntityCache != null)
         g_smNamedEntityCache.Clear();
+    if (g_alTrackedProjectileRefs != null)
+        g_alTrackedProjectileRefs.Clear();
 
     g_bCameraMonitorVolumeEnabled = true;
     g_iMonitorMicSpeaker1EntRef = INVALID_ENT_REFERENCE;
@@ -1103,6 +1110,8 @@ public void OnEntityCreated(int entity, const char[] classname)
 {
     if (StrEqual(classname, "tf_projectile_rocket") || StrEqual(classname, "tf_projectile_pipe"))
         SDKHook(entity, SDKHook_Touch, OnProjectileTouch);
+
+    TrackArenaProjectileEntity(entity, classname);
 }
 
 // Track direct hits from projectiles for airshot calculations

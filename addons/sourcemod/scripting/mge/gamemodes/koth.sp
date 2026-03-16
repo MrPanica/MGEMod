@@ -341,7 +341,7 @@ void EndKoth(any arena_index, any winner_team)
             // For 2v2 arenas, return to ready state instead of restarting immediately
             if (g_bFourPersonArena[arena_index])
             {
-                CreateTimer(3.0, Timer_Restart2v2Ready, arena_index);
+                QueueArenaReadyRestartIfNeeded(arena_index, 3.0);
             }
             else
             {

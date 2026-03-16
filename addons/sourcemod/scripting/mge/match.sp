@@ -134,7 +134,7 @@ void HandlePostMatchQueueRotation(int arena_index, int loser1, int loser2)
         else 
         {
             // Return to ready state for 2v2 arenas
-            CreateTimer(3.0, Timer_Restart2v2Ready, arena_index);
+            QueueArenaReadyRestartIfNeeded(arena_index, 3.0);
         }
     }
 }

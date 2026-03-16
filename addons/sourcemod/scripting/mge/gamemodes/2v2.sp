@@ -208,6 +208,9 @@ int Menu_2v2Selection(Menu menu, MenuAction action, int param1, int param2)
 // Initializes the 2v2 ready system when all 4 players have joined an arena
 void Start2v2ReadySystem(int arena_index)
 {
+    if (!BeginArenaStartAfterMatchupWaitIfNeeded(arena_index, true))
+        return;
+
     // Reset all players' ready status
     for (int i = SLOT_ONE; i <= SLOT_FOUR; i++)
     {
@@ -977,6 +980,9 @@ Action Timer_ShowReadyMenu(Handle timer, int userid)
 // Handles post-match cleanup and ready system restart for continuous 2v2 play
 Action Timer_Restart2v2Ready(Handle timer, any arena_index)
 {
+    if (g_hArenaRestart2v2ReadyTimer[arena_index] == timer)
+        g_hArenaRestart2v2ReadyTimer[arena_index] = null;
+
     // Check if we still have 4 players in the arena
     int player_count = 0;
     for (int i = SLOT_ONE; i <= SLOT_FOUR; i++)
