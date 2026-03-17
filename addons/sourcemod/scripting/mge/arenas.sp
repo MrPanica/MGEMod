@@ -1033,6 +1033,9 @@ void AddLoserToQueue(int client, int arena_index)
 // TODO: refactor this crap
 void RemoveFromQueue(int client, bool calcstats = false, bool specfix = false)
 {
+    g_bPendingResetSpawnFallback[client] = false;
+    g_iPendingResetSpawnRevision[client] = 0;
+
     int arena_index = g_iPlayerArena[client];
 
     if (arena_index == 0)
@@ -1621,6 +1624,9 @@ void AddInQueue(int client, int arena_index, bool showmsg = true, int playerPref
 {
     if (!IsValidClient(client))
         return;
+
+    g_bPendingResetSpawnFallback[client] = false;
+    g_iPendingResetSpawnRevision[client] = 0;
 
     // Leave any waiting lists when joining an arena
     RemoveClientFromWaitingLists(client, 0, false);

@@ -230,6 +230,7 @@ int
     g_iRankTargetClient     [MAXPLAYERS + 1];
     
 float g_fPublicInviteTime   [MAXARENAS + 1];
+float g_fLastSuccessfulTeleportAt [MAXPLAYERS + 1];
 
 bool g_tfctArenaAllowedClasses[MAXARENAS + 1][10];
 
@@ -240,6 +241,7 @@ bool
     g_bPlayerTakenDirectHit [MAXPLAYERS + 1],// Player was hit directly
     g_bPlayerRestoringAmmo  [MAXPLAYERS + 1],// Player is awaiting full ammo restore
     g_bSkipNextSpawnTeleport [MAXPLAYERS + 1],// Skip Event_PlayerSpawn teleport once (ResetPlayer already queued it)
+    g_bPendingResetSpawnFallback [MAXPLAYERS + 1],// Pending reset-spawn fallback check
     g_bPlayerHasIntel       [MAXPLAYERS + 1],
     g_bScoreboardOpen       [MAXPLAYERS + 1],
     g_bWaddMenu             [MAXPLAYERS + 1],
@@ -267,6 +269,8 @@ int
     g_iPlayerArena          [MAXPLAYERS + 1],
     g_iPlayerSlot           [MAXPLAYERS + 1],
     g_iTeleportRevision     [MAXPLAYERS + 1],
+    g_iPendingResetSpawnRevision [MAXPLAYERS + 1],
+    g_iLastSuccessfulTeleportRevision [MAXPLAYERS + 1],
     g_iPlayerRespawnroomTouchDepth [MAXPLAYERS + 1],
     g_iPlayerHP             [MAXPLAYERS + 1], // True HP of players
     g_iPlayerSpecTarget     [MAXPLAYERS + 1],

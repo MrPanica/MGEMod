@@ -95,6 +95,10 @@ void HandleClientConnection(int client)
     g_iPlayerRespawnroomTouchDepth[client] = 0;
     g_iTeleportRevision[client] = 0;
     g_bSkipNextSpawnTeleport[client] = false;
+    g_bPendingResetSpawnFallback[client] = false;
+    g_iPendingResetSpawnRevision[client] = 0;
+    g_iLastSuccessfulTeleportRevision[client] = 0;
+    g_fLastSuccessfulTeleportAt[client] = 0.0;
     g_bSetSpawnAwaitInput[client] = false;
     g_iSetSpawnArena[client] = 0;
     g_iSetSpawnMode[client] = 0;
@@ -166,6 +170,8 @@ void BumpTeleportRevision(int client, const char[] reason = "")
         return;
 
     g_iTeleportRevision[client]++;
+    g_bPendingResetSpawnFallback[client] = false;
+    g_iPendingResetSpawnRevision[client] = 0;
 
     if (!g_bDebugTeleport)
         return;
@@ -245,6 +251,11 @@ void HandleClientDisconnection(int client)
     ClearBBallCarryState(client, true);
 
     g_iPlayerRespawnroomTouchDepth[client] = 0;
+    g_bSkipNextSpawnTeleport[client] = false;
+    g_bPendingResetSpawnFallback[client] = false;
+    g_iPendingResetSpawnRevision[client] = 0;
+    g_iLastSuccessfulTeleportRevision[client] = 0;
+    g_fLastSuccessfulTeleportAt[client] = 0.0;
     g_bSetSpawnAwaitInput[client] = false;
     g_iSetSpawnArena[client] = 0;
     g_iSetSpawnMode[client] = 0;
@@ -357,6 +368,27 @@ bool IsClientInRespawnroomByNetprop(int client)
     return (GetEntProp(client, Prop_Send, "m_bInUpgradeZone") != 0);
 }
 
+void MarkSuccessfulTeleport(int client, int revision, const char[] reason)
+{
+    if (client <= 0 || client > MaxClients || revision <= 0)
+        return;
+
+    g_iLastSuccessfulTeleportRevision[client] = revision;
+    g_fLastSuccessfulTeleportAt[client] = GetGameTime();
+
+    if (g_bPendingResetSpawnFallback[client] && g_iPendingResetSpawnRevision[client] == revision)
+    {
+        g_bPendingResetSpawnFallback[client] = false;
+        g_iPendingResetSpawnRevision[client] = 0;
+    }
+
+    if (g_bDebugTeleport && IsClientInGame(client))
+    {
+        LogMessage("[MGE tele][debug] tele success client=%N rev=%d reason=%s game_time=%.3f",
+            client, revision, reason, g_fLastSuccessfulTeleportAt[client]);
+    }
+}
+
 void OnRespawnroomStartTouchOutput(const char[] output, int caller, int activator, float delay)
 {
     #pragma unused output
@@ -462,6 +494,68 @@ Action Timer_TeleWithDebug(Handle timer, DataPack pack)
     }
 
     return Timer_Tele(timer, userid, queued_arena, queued_slot, queued_revision, reason);
+}
+
+Action Timer_EnsureResetSpawnTeleport(Handle timer, DataPack pack)
+{
+    #pragma unused timer
+    pack.Reset();
+
+    int userid = pack.ReadCell();
+    int queued_arena = pack.ReadCell();
+    int queued_slot = pack.ReadCell();
+    int queued_revision = pack.ReadCell();
+
+    int client = GetClientOfUserId(userid);
+    if (!IsValidClient(client))
+        return Plugin_Stop;
+
+    if (!g_bPendingResetSpawnFallback[client] || g_iPendingResetSpawnRevision[client] != queued_revision)
+        return Plugin_Stop;
+
+    if (!IsTeleportContextCurrent(client, queued_arena, queued_slot, queued_revision, "reset_spawn_fallback", "pending_check"))
+    {
+        g_bPendingResetSpawnFallback[client] = false;
+        g_iPendingResetSpawnRevision[client] = 0;
+        return Plugin_Stop;
+    }
+
+    if (g_iLastSuccessfulTeleportRevision[client] == queued_revision)
+    {
+        if (g_bDebugTeleport)
+        {
+            float elapsed = GetGameTime() - g_fLastSuccessfulTeleportAt[client];
+            LogMessage("[MGE tele][debug] reset_spawn_fallback skipped (already teleported) client=%N rev=%d elapsed=%.3f",
+                client, queued_revision, elapsed);
+        }
+
+        g_bPendingResetSpawnFallback[client] = false;
+        g_iPendingResetSpawnRevision[client] = 0;
+        return Plugin_Stop;
+    }
+
+    bool inRespawnNet = IsClientInRespawnroomByNetprop(client);
+    bool inRespawnOutput = (g_iPlayerRespawnroomTouchDepth[client] > 0);
+    bool inRespawn = (inRespawnNet || inRespawnOutput);
+
+    if (inRespawn)
+    {
+        if (g_bDebugTeleport)
+        {
+            LogMessage("[MGE tele][debug] reset_spawn_fallback queue client=%N rev=%d in_upgrade_zone=%d rr_depth=%d",
+                client, queued_revision, inRespawnNet ? 1 : 0, g_iPlayerRespawnroomTouchDepth[client]);
+        }
+        QueueArenaTeleport(client, 0.0, "reset_spawn_fallback");
+    }
+    else if (g_bDebugTeleport)
+    {
+        LogMessage("[MGE tele][debug] reset_spawn_fallback skipped (not in respawn context) client=%N rev=%d",
+            client, queued_revision);
+    }
+
+    g_bPendingResetSpawnFallback[client] = false;
+    g_iPendingResetSpawnRevision[client] = 0;
+    return Plugin_Stop;
 }
 
 // Attempts to load player statistics from database with Steam ID validation
@@ -581,6 +675,8 @@ int ResetPlayer(int client)
 
     BumpTeleportRevision(client, "ResetPlayer");
     int teleportRevision = g_iTeleportRevision[client];
+    g_bPendingResetSpawnFallback[client] = false;
+    g_iPendingResetSpawnRevision[client] = 0;
 
     // Any pending "move to spec while waiting" timer is stale once we are resetting this player.
     if (g_hPlayerWaitingSpecTimer[client] != null)
@@ -615,6 +711,8 @@ int ResetPlayer(int client)
             TF2_SetPlayerClass(client, class);
 
         g_bSkipNextSpawnTeleport[client] = true;
+        g_bPendingResetSpawnFallback[client] = true;
+        g_iPendingResetSpawnRevision[client] = teleportRevision;
         TF2_RespawnPlayer(client);
         
         // Reset velocity immediately to prevent momentum carryover from death
@@ -1621,7 +1719,8 @@ Action Event_PostInventoryApplication(Event event, const char[] name, bool dontB
 // Handles player spawn events to set class, reset ammo, and manage team assignments
 Action Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast)
 {
-    int client = GetClientOfUserId(event.GetInt("userid"));
+    int userid = event.GetInt("userid");
+    int client = GetClientOfUserId(userid);
     if (!IsValidClient(client))
         return Plugin_Continue;
 
@@ -1660,16 +1759,30 @@ Action Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast)
     if (arena_index > 0)
     {
         bool shouldTeleportOnSpawn = true;
+        int player_slot = g_iPlayerSlot[client];
+        int max_active_slot = g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO;
+        bool isActiveArenaSlot = (g_bArenaNoFight[arena_index] || player_slot <= max_active_slot);
+
         if (g_bSkipNextSpawnTeleport[client])
         {
             g_bSkipNextSpawnTeleport[client] = false;
-            if (g_bDebugTeleport)
-                LogMessage("[MGE tele][debug] player_spawn: reset-spawn fallback teleport enabled client=%N", client);
-        }
 
-        int player_slot = g_iPlayerSlot[client];
-        int max_active_slot = g_bFourPersonArena[arena_index] ? SLOT_FOUR : SLOT_TWO;
-        if (!g_bArenaNoFight[arena_index] && player_slot > max_active_slot)
+            if (isActiveArenaSlot && g_bPendingResetSpawnFallback[client] && g_iPendingResetSpawnRevision[client] == g_iTeleportRevision[client])
+            {
+                DataPack pack = new DataPack();
+                CreateDataTimer(0.15, Timer_EnsureResetSpawnTeleport, pack, TIMER_FLAG_NO_MAPCHANGE);
+                pack.WriteCell(userid);
+                pack.WriteCell(arena_index);
+                pack.WriteCell(player_slot);
+                pack.WriteCell(g_iTeleportRevision[client]);
+            }
+
+            if (g_bDebugTeleport)
+                LogMessage("[MGE tele][debug] player_spawn: reset-spawn detected client=%N rev=%d pending=%d", client, g_iTeleportRevision[client], g_bPendingResetSpawnFallback[client] ? 1 : 0);
+
+            shouldTeleportOnSpawn = false;
+        }
+        else if (!isActiveArenaSlot)
             shouldTeleportOnSpawn = false;
 
         if (shouldTeleportOnSpawn)
@@ -2167,6 +2280,7 @@ Action Timer_Tele(Handle timer, int userid, int arena_index, int player_slot, in
     // If arena defines team-specific spawns, always use them for every spawn cycle.
     if (TeleportToConfiguredTeamSpawn(client, arena_index, vel))
     {
+        MarkSuccessfulTeleport(client, revision, reason);
         if (g_bDebugTeleport)
             LogMessage("[MGE tele][debug] Timer_Tele path=team_spawns client=%N arena=%d", client, arena_index);
         return Plugin_Continue;
@@ -2238,6 +2352,7 @@ Action Timer_Tele(Handle timer, int userid, int arena_index, int player_slot, in
         TeleportEntity(client, g_fArenaSpawnOrigin[arena_index][random_int], g_fArenaSpawnAngles[arena_index][random_int], vel);
         EmitAmbientSound("items/spawn_item.wav", g_fArenaSpawnOrigin[arena_index][random_int], _, SNDLEVEL_NORMAL, _, 1.0);
         UpdateHud(client);
+        MarkSuccessfulTeleport(client, revision, reason);
         if (g_bDebugTeleport)
         {
             LogMessage("[MGE tele][debug] Timer_Tele path=bball client=%N arena=%d spawn=%d range=[%d..%d] total=%d split=%d teammate_spawn=%d",
@@ -2262,6 +2377,7 @@ Action Timer_Tele(Handle timer, int userid, int arena_index, int player_slot, in
         TeleportEntity(client, g_fArenaSpawnOrigin[arena_index][random_int], g_fArenaSpawnAngles[arena_index][random_int], vel);
         EmitAmbientSound("items/spawn_item.wav", g_fArenaSpawnOrigin[arena_index][random_int], _, SNDLEVEL_NORMAL, _, 1.0);
         UpdateHud(client);
+        MarkSuccessfulTeleport(client, revision, reason);
         if (g_bDebugTeleport)
         {
             LogMessage("[MGE tele][debug] Timer_Tele path=koth client=%N arena=%d spawn=%d range=[%d..%d]",
@@ -2301,6 +2417,7 @@ Action Timer_Tele(Handle timer, int userid, int arena_index, int player_slot, in
         TeleportEntity(client, g_fArenaSpawnOrigin[arena_index][random_int], g_fArenaSpawnAngles[arena_index][random_int], vel);
         EmitAmbientSound("items/spawn_item.wav", g_fArenaSpawnOrigin[arena_index][random_int], _, SNDLEVEL_NORMAL, _, 1.0);
         UpdateHud(client);
+        MarkSuccessfulTeleport(client, revision, reason);
         if (g_bDebugTeleport)
         {
             LogMessage("[MGE tele][debug] Timer_Tele path=2v2_legacy client=%N arena=%d spawn=%d range=[%d..%d] team=%d teammate_spawn=%d",
@@ -2340,6 +2457,7 @@ Action Timer_Tele(Handle timer, int userid, int arena_index, int player_slot, in
                     TeleportEntity(client, g_fArenaSpawnOrigin[arena_index][RandomSpawn[i]], g_fArenaSpawnAngles[arena_index][RandomSpawn[i]], vel);
                     EmitAmbientSound("items/spawn_item.wav", g_fArenaSpawnOrigin[arena_index][RandomSpawn[i]], _, SNDLEVEL_NORMAL, _, 1.0);
                     UpdateHud(client);
+                    MarkSuccessfulTeleport(client, revision, reason);
                     if (g_bDebugTeleport)
                     {
                         LogMessage("[MGE tele][debug] Timer_Tele path=random_dist_ok client=%N arena=%d spawn=%d distance=%.1f min=%.1f foe=%N",
@@ -2360,6 +2478,7 @@ Action Timer_Tele(Handle timer, int userid, int arena_index, int player_slot, in
         TeleportEntity(client, g_fArenaSpawnOrigin[arena_index][besteffort_spawn], g_fArenaSpawnAngles[arena_index][besteffort_spawn], vel);
         EmitAmbientSound("items/spawn_item.wav", g_fArenaSpawnOrigin[arena_index][besteffort_spawn], _, SNDLEVEL_NORMAL, _, 1.0);
         UpdateHud(client);
+        MarkSuccessfulTeleport(client, revision, reason);
         if (g_bDebugTeleport)
         {
             LogMessage("[MGE tele][debug] Timer_Tele path=random_best_effort client=%N arena=%d spawn=%d distance=%.1f min=%.1f",
@@ -2372,6 +2491,7 @@ Action Timer_Tele(Handle timer, int userid, int arena_index, int player_slot, in
         TeleportEntity(client, g_fArenaSpawnOrigin[arena_index][random_int], g_fArenaSpawnAngles[arena_index][random_int], vel);
         EmitAmbientSound("items/spawn_item.wav", g_fArenaSpawnOrigin[arena_index][random_int], _, SNDLEVEL_NORMAL, _, 1.0);
         UpdateHud(client);
+        MarkSuccessfulTeleport(client, revision, reason);
         if (g_bDebugTeleport)
         {
             LogMessage("[MGE tele][debug] Timer_Tele path=random_no_foe client=%N arena=%d spawn=%d total=%d",
