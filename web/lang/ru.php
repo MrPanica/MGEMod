@@ -38,6 +38,7 @@ return [
     'team_unknown' => 'UNKNOWN',
     'slot_label' => 'Слот',
     'class_label' => 'Класс',
+    'hp_label' => 'HP',
     'weapons_label' => 'Оружие',
     'point_plus' => '+1 очко',
 

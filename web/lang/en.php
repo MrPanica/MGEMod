@@ -38,6 +38,7 @@ return [
     'team_unknown' => 'UNKNOWN',
     'slot_label' => 'Slot',
     'class_label' => 'Class',
+    'hp_label' => 'HP',
     'weapons_label' => 'Weapons',
     'point_plus' => '+1 point',
 

@@ -602,6 +602,7 @@ function buildMgeRoundsFromCompactJson(array $duel, string $duelType): array {
         $scoringWeaponDefindex = $isV2Shape ? (int)($roundData[2] ?? 0) : 0;
         $classOffset = $isV2Shape ? 3 : 2;
         $weaponOffset = $isV2Shape ? ($is2v2 ? 7 : 5) : ($is2v2 ? 6 : 4);
+        $hpOffset = $isV2Shape ? ($is2v2 ? 11 : 7) : -1;
 
         $scorerSlot = (int)($roundData[0] ?? 0);
         $duration = max(0, (int)($roundData[1] ?? 0));
@@ -629,10 +630,16 @@ function buildMgeRoundsFromCompactJson(array $duel, string $duelType): array {
             $classId = (int)($roundData[$classOffset + ($slot - 1)] ?? 0);
             $weaponValue = $roundData[$weaponOffset + ($slot - 1)] ?? '';
             $weaponIds = is_string($weaponValue) ? trim($weaponValue) : trim((string)$weaponValue);
+            $hpRaw = ($hpOffset >= 0) ? ($roundData[$hpOffset + ($slot - 1)] ?? null) : null;
+            $hp = null;
+            if ($hpRaw !== null && $hpRaw !== '') {
+                $hp = max(0, (int)$hpRaw);
+            }
 
             $row["slot{$slot}_steamid"] = (string)(getMgeSlotSteamIdFromDuel($duel, $duelType, $slot) ?? '');
             $row["slot{$slot}_class_id"] = $classId;
             $row["slot{$slot}_class"] = getMgeClassNameById($classId);
+            $row["slot{$slot}_hp"] = $hp;
             $row["slot{$slot}_weaponids"] = $weaponIds;
         }
 
@@ -695,6 +702,7 @@ function buildMgeRoundsHtmlSimple(array $duel, string $duelType): string {
         $steamid = trim((string)($round["slot{$slot}_steamid"] ?? ''));
         $nick = (string)($slotNickMap[$slot] ?? (t('slot_label') . ' ' . $slot));
         $className = trim((string)($round["slot{$slot}_class"] ?? t('unknown')));
+        $hp = $round["slot{$slot}_hp"] ?? null;
 
         $isWinner = ($winnerTeamSlot > 0 && $slotTeam === $winnerTeamSlot);
         $cardClass = $isWinner ? ' duel-round-card-win' : ' duel-round-card-loss';
@@ -706,6 +714,10 @@ function buildMgeRoundsHtmlSimple(array $duel, string $duelType): string {
 
         $slotTitle = htmlspecialchars(t('slot_label') . ' ' . $slot . ' (' . $sideText . ')', ENT_QUOTES, 'UTF-8');
         $classEsc = htmlspecialchars($className, ENT_QUOTES, 'UTF-8');
+        $hpText = '';
+        if ($hp !== null && $hp !== '') {
+            $hpText = ' | ' . htmlspecialchars(t('hp_label'), ENT_QUOTES, 'UTF-8') . ': ' . (int)$hp;
+        }
 
         $badge = '';
         if ($scorerSlot === $slot) {
@@ -715,7 +727,7 @@ function buildMgeRoundsHtmlSimple(array $duel, string $duelType): string {
         $html = '<div class="duel-round-card' . $cardClass . '">';
         $html .= '<div class="duel-round-card-head">' . $slotTitle . $badge . '</div>';
         $html .= '<div class="duel-round-card-player">' . $nickEsc . '</div>';
-        $html .= '<div class="duel-round-card-meta">' . htmlspecialchars(t('class_label'), ENT_QUOTES, 'UTF-8') . ': ' . $classEsc . '</div>';
+        $html .= '<div class="duel-round-card-meta">' . htmlspecialchars(t('class_label'), ENT_QUOTES, 'UTF-8') . ': ' . $classEsc . $hpText . '</div>';
         $html .= '</div>';
 
         return $html;
